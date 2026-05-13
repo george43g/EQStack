@@ -7,11 +7,7 @@
 
 import type { OAuth2Client } from "google-auth-library";
 import type { gmail_v1 } from "googleapis";
-import {
-  getAuthorizedScopes,
-  getGmail,
-  getOAuth2Client,
-} from "./session.js";
+import { getAuthorizedScopes, getGmail, getOAuth2Client } from "./session.js";
 
 export interface OperationContext {
   gmail: gmail_v1.Gmail;
@@ -26,10 +22,7 @@ export interface OperationContext {
  * Build an OperationContext from the current session + a per-request signal.
  * Throws if the session hasn't been initialised (call setSession first).
  */
-export function createContext(opts: {
-  toolName: string;
-  signal?: AbortSignal;
-}): OperationContext {
+export function createContext(opts: { toolName: string; signal?: AbortSignal }): OperationContext {
   return {
     gmail: getGmail(),
     oauth2Client: getOAuth2Client(),

@@ -84,9 +84,12 @@ describe("Source verification", () => {
   });
 
   it("read_email returns Message-ID", () => {
-    const source = fs.readFileSync(path.join(srcDir, "index.ts"), "utf-8");
-    expect(source).toContain("message-id");
-    expect(source).toContain("rfcMessageId");
-    expect(source).toContain("Message-ID: ${rfcMessageId}");
+    // read_email handler moved to src/core/ops/messages.ts in the Step 4
+    // refactor; extractHeaders helper lives in src/core/email-helpers.ts.
+    const messagesSrc = fs.readFileSync(path.join(srcDir, "core", "ops", "messages.ts"), "utf-8");
+    const helpersSrc = fs.readFileSync(path.join(srcDir, "core", "email-helpers.ts"), "utf-8");
+    expect(helpersSrc).toContain("message-id");
+    expect(helpersSrc).toContain("rfcMessageId");
+    expect(messagesSrc).toContain("Message-ID: ${rfcMessageId}");
   });
 });

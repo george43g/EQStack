@@ -240,10 +240,16 @@ describe("DownloadEmailSchema", () => {
 // 4. extractHeaders refactor verification
 // ─────────────────────────────────────────────
 describe("extractHeaders refactor - source verification", () => {
-  // Helper has been extracted to src/core/email-helpers.ts as part of the
-  // modular refactor. Grep both files so the assertions stay meaningful.
+  // Helper now lives in src/core/email-helpers.ts. The read_email handler
+  // has been extracted to src/core/ops/messages.ts (Step 4 of the modular
+  // refactor); download_email currently still lives in src/index.ts pending
+  // Step 5.
   const indexSource = fs.readFileSync(path.join(__dirname, "index.ts"), "utf-8");
   const helpersSource = fs.readFileSync(path.join(__dirname, "core", "email-helpers.ts"), "utf-8");
+  const messagesSource = fs.readFileSync(
+    path.join(__dirname, "core", "ops", "messages.ts"),
+    "utf-8",
+  );
 
   it("extractHeaders function exists in core/email-helpers.ts and returns rfcMessageId", () => {
     expect(helpersSource).toContain("function extractHeaders");
@@ -252,19 +258,17 @@ describe("extractHeaders refactor - source verification", () => {
   });
 
   it("read_email uses extractHeaders (not inline header extraction)", () => {
-    // The read_email case should use destructured extractHeaders call
-    expect(indexSource).toContain(
+    expect(messagesSource).toContain(
       "const { subject, from, to, date, rfcMessageId } = extractHeaders(",
     );
   });
 
   it("download_email uses extractHeaders", () => {
-    // download_email should also use extractHeaders
     expect(indexSource).toContain("const { subject, from, date } = extractHeaders(");
   });
 
   it("read_email still outputs Message-ID in response", () => {
-    expect(indexSource).toContain("Message-ID: ${rfcMessageId}");
+    expect(messagesSource).toContain("Message-ID: ${rfcMessageId}");
   });
 });
 

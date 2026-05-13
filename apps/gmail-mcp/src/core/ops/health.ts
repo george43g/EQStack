@@ -3,8 +3,8 @@
 
 import { formatHealthText, snapshotHealth } from "../../robustness/index.js";
 import { HealthCheckSchema } from "../../tools.js";
-import { getRecentErrorCount, getToolCallCount } from "../session.js";
 import { type Operation, registry } from "../registry.js";
+import { getRecentErrorCount, getToolCallCount } from "../session.js";
 
 const op: Operation<unknown> = {
   name: "health_check",

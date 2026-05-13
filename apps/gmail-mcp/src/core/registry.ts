@@ -56,11 +56,7 @@ export class OperationRegistry {
    * propagate as zod ZodError — the dispatcher converts to a tool-error
    * MCP response with the wrapToolError formatter.
    */
-  async dispatch(
-    name: string,
-    rawArgs: unknown,
-    ctx: OperationContext,
-  ): Promise<OperationResult> {
+  async dispatch(name: string, rawArgs: unknown, ctx: OperationContext): Promise<OperationResult> {
     const op = this.ops.get(name);
     if (!op) {
       throw new Error(`OperationRegistry: no op registered for "${name}"`);

@@ -6,5 +6,6 @@
 // doesn't matter (the registry rejects duplicates).
 
 import "./health.js";
-
-export {};
+import "./labels.js";
+import "./messages.js";
+import "./threads.js";
