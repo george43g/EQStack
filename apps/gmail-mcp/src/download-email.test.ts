@@ -264,7 +264,13 @@ describe("extractHeaders refactor - source verification", () => {
   });
 
   it("download_email uses extractHeaders", () => {
-    expect(indexSource).toContain("const { subject, from, date } = extractHeaders(");
+    // download_email handler moved to src/core/ops/downloads.ts in Step 5
+    // of the modular refactor.
+    const downloadsSource = fs.readFileSync(
+      path.join(__dirname, "core", "ops", "downloads.ts"),
+      "utf-8",
+    );
+    expect(downloadsSource).toContain("const { subject, from, date } = extractHeaders(");
   });
 
   it("read_email still outputs Message-ID in response", () => {

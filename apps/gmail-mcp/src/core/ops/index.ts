@@ -5,7 +5,12 @@
 // Add an import line per category as the refactor progresses; ordering
 // doesn't matter (the registry rejects duplicates).
 
+import "./batch-ops.js";
+import "./downloads.js";
+import "./drafts.js";
+import "./filters.js";
 import "./health.js";
 import "./labels.js";
 import "./messages.js";
+import "./send.js";
 import "./threads.js";

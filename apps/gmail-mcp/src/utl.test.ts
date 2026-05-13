@@ -76,11 +76,13 @@ describe("Source verification", () => {
   });
 
   it("handleEmailAction auto-resolves threading headers", () => {
-    const source = fs.readFileSync(path.join(srcDir, "index.ts"), "utf-8");
-    expect(source).toContain("validatedArgs.threadId && !validatedArgs.inReplyTo");
-    expect(source).toContain("gmail.users.threads.get");
-    expect(source).toContain("validatedArgs.inReplyTo = lastMessageId");
-    expect(source).toContain('validatedArgs.references = allMessageIds.join(" ")');
+    // handleEmailAction moved to src/core/ops/send.ts in Step 5 of the
+    // modular refactor; it's the shared worker for send / draft / reply_all.
+    const sendSource = fs.readFileSync(path.join(srcDir, "core", "ops", "send.ts"), "utf-8");
+    expect(sendSource).toContain("validatedArgs.threadId && !validatedArgs.inReplyTo");
+    expect(sendSource).toContain("gmail.users.threads.get");
+    expect(sendSource).toContain("validatedArgs.inReplyTo = lastMessageId");
+    expect(sendSource).toContain('validatedArgs.references = allMessageIds.join(" ")');
   });
 
   it("read_email returns Message-ID", () => {
