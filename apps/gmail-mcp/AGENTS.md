@@ -28,29 +28,58 @@ Two-branch model. `main` is stable, `experimental` is staging. Full SOP in `.cla
 
 ```
 src/
-├── index.ts              # Entry: bootstrap, MCP Server build, dispatcher (~1900 lines)
-├── tools.ts              # Zod schemas + tool registry (single source of truth)
+├── index.ts              # Thin orchestrator (~240 lines): bootstrap → buildMcpServer → transport
+├── tools.ts              # Zod schemas + tool registry (single source of truth for metadata)
 ├── scopes.ts             # OAuth scope <-> URL mapping; hasScope() check
 ├── auth-scopes.ts        # Scope resolver: --scopes flag / GMAIL_SCOPES env / interactive checkbox
 ├── auth-errors.ts        # OAuth error wrapping + remediation hints
 ├── safe-path.ts          # Path-traversal guard for downloads
-├── label-manager.ts      # Gmail labels API helpers
-├── filter-manager.ts     # Gmail filters API helpers
+├── label-manager.ts      # Low-level Gmail labels API helpers (wraps gmail.users.labels.*)
+├── filter-manager.ts     # Low-level Gmail filters API helpers
 ├── reply-all-helpers.ts  # RFC5322 parsing + recipient list builders
 ├── email-export.ts       # Email → JSON / EML / TXT / HTML formatters
 ├── utl.ts                # Email construction (raw + nodemailer paths)
+│
 ├── core/                 # Surface-agnostic core (used by stdio MCP, HTTP MCP, CLI, future TUI)
 │   ├── credentials.ts    # Credential loader chain: env JSON → 1Password CLI → file
 │   ├── auth-flow.ts      # OAuth keys loader (env or disk), createOAuthClient, runOAuthFlow
-│   └── config-paths.ts   # getConfigDir / getOAuthPath / getCredentialsPath (all env-overridable)
-├── server/               # Transport layer for the MCP server
+│   ├── config-paths.ts   # getConfigDir / getOAuthPath / getCredentialsPath (env-overridable)
+│   ├── session.ts        # Process session state: oauth2Client / gmail / authorizedScopes / counters
+│   ├── context.ts        # OperationContext type + createContext() factory
+│   ├── registry.ts       # OperationRegistry — name → {schema, handler, scopes}; dispatch()
+│   ├── email-helpers.ts  # extractEmailContent / extractHeaders / extractAttachments (pure)
+│   ├── batch.ts          # processBatches helper (signal-aware, per-item fallback)
+│   └── ops/              # Per-category tool handlers — registry-registered at module load
+│       ├── index.ts      # Barrel: imports each op file for side-effect registration
+│       ├── health.ts     # health_check (no Gmail call)
+│       ├── messages.ts   # read_email, search_emails, modify_email, delete_email
+│       ├── threads.ts    # get_thread, list_inbox_threads, get_inbox_with_threads, modify_thread
+│       ├── labels.ts     # list_email_labels + create/update/delete/get_or_create_label
+│       ├── send.ts       # send_email, reply_all + shared handleEmailAction helper
+│       ├── drafts.ts     # draft_email (delegates to handleEmailAction)
+│       ├── batch-ops.ts  # batch_modify_emails, batch_delete_emails
+│       ├── filters.ts    # list/get/create/delete/template filter ops
+│       └── downloads.ts  # download_email, download_attachment
+│
+├── server/               # Transport + Server construction
+│   ├── build.ts          # buildMcpServer(): { server, dispatch } — owns TOOL_TIMEOUTS_MS,
+│   │                     #   wires CallToolRequestSchema → registry.dispatch with auth-error
+│   │                     #   wrapping + per-tool withTimeout + scope gating
 │   └── http.ts           # Streamable HTTP transport + bearer-token auth + /health endpoint
+│
 ├── cli/                  # gmail-cli (commander)
 │   ├── index.ts          # bin entry; sets up commander program; lazy-loads subcommands
+│   ├── help.ts           # Shared printAuthSourcesHelp() — used by both bins
+│   ├── runtime.ts        # bootstrapForCli() + helpers used by all subcommands
 │   └── commands/
-│       ├── auth.ts       # gmail-cli auth: scope resolution + OAuth flow + (--print-json env capture)
-│       ├── health.ts     # gmail-cli health: local canary, no Gmail call, --json output
-│       └── serve.ts      # gmail-cli serve [--http]: runs the MCP (stdio default; --http for remote)
+│       ├── auth.ts       # auth: scope resolution + OAuth flow + (--print-json env capture)
+│       │                 #   runAuthCommand exported and reused by `gmail-mcp auth` shim
+│       ├── health.ts     # health: local canary, no Gmail call, --json output
+│       ├── search.ts     # search <query> — calls callMcpTool("search_emails", …)
+│       ├── read.ts       # read <messageId> — calls callMcpTool("read_email", …)
+│       ├── labels.ts     # labels list (more subcommands following same pattern pending)
+│       └── serve.ts      # serve [--http]: runs the MCP (stdio default; --http for remote)
+│
 └── robustness/           # Reusable robustness library — surface-agnostic
     ├── env.ts            # envNum / envBool / envStr helpers
     ├── shutdown.ts       # Cleanup registry + signal handlers + EOF/orphan
@@ -63,7 +92,35 @@ src/
     └── index.ts          # Barrel
 ```
 
-Anything outside `src/robustness/` and `src/core/` may import Gmail / Google libraries. Anything **inside** `src/robustness/` must NOT — it's library-eligible code that should drop into other local MCP servers without modification. `src/core/credentials.ts` and `src/core/config-paths.ts` are also Gmail-agnostic (they handle env vars and OAuth tokens by shape, not Gmail specifics); `src/core/auth-flow.ts` imports `google-auth-library` which is fine because OAuth-via-Google is intrinsic.
+### Module boundary rules
+
+- **`src/robustness/`** — must NOT import Gmail / Google libraries. Library-eligible drop-in code for any local MCP server.
+- **`src/core/credentials.ts`, `src/core/config-paths.ts`, `src/core/session.ts` (no runtime imports), `src/core/registry.ts`, `src/core/context.ts`, `src/core/batch.ts`, `src/core/email-helpers.ts`** — Gmail-agnostic shape handling. No `googleapis` / `google-auth-library` imports.
+- **`src/core/auth-flow.ts`** — imports `google-auth-library` because OAuth-via-Google is intrinsic.
+- **`src/core/ops/*.ts`** — uses `ctx.gmail` from OperationContext to make Gmail API calls. No top-level `googleapis` imports needed; the typed handle comes via the context.
+- **`src/server/*.ts`** — wires the MCP SDK Server to the registry. Consumes `core/session` to read OAuth state.
+- **`src/cli/*.ts`** — CLI surface. Calls `callMcpTool` from `src/index.ts` for everything except auth/help/serve.
+- **`src/index.ts`** — orchestrator only. Heavy lifting moved to `core/` and `server/`.
+
+### How a tool call flows
+
+```
+host → stdio JSON-RPC → StdioServerTransport
+                          ↓
+              server/build.ts dispatch(name, args, signal)
+                          ↓
+        scope gate → withTimeout(name, fn, ms) →
+                          ↓
+              registry.dispatch(name, args, ctx)
+                          ↓
+        schema.parse(args) → handler(input, ctx)
+                          ↓
+              ctx.gmail.users.* → Gmail API
+                          ↓
+              OperationResult { content, isError? }
+```
+
+Auth errors throw inside the handler; `wrapToolError` (in `auth-errors.ts`) catches at the dispatch boundary and returns the MCP error response. Timeouts throw `ToolTimeoutError`; the dispatcher converts to an `isError: true` MCP response with a clear message.
 
 ## Robustness harness
 
