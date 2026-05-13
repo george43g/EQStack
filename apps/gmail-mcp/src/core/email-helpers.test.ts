@@ -1,0 +1,156 @@
+import { describe, expect, it } from "vitest";
+import {
+  extractAttachments,
+  extractEmailContent,
+  extractHeaders,
+  type GmailMessagePart,
+} from "./email-helpers.js";
+
+describe("extractHeaders", () => {
+  it("returns empty strings for missing payload", () => {
+    expect(extractHeaders(undefined)).toEqual({
+      subject: "",
+      from: "",
+      to: "",
+      date: "",
+      rfcMessageId: "",
+    });
+    expect(extractHeaders(null)).toEqual({
+      subject: "",
+      from: "",
+      to: "",
+      date: "",
+      rfcMessageId: "",
+    });
+  });
+
+  it("extracts case-insensitively", () => {
+    const headers = [
+      { name: "SuBjEcT", value: "hi" },
+      { name: "FROM", value: "a@b" },
+      { name: "To", value: "c@d" },
+      { name: "Date", value: "2026-01-01" },
+      { name: "Message-ID", value: "<msg@example>" },
+    ];
+    expect(extractHeaders({ headers })).toEqual({
+      subject: "hi",
+      from: "a@b",
+      to: "c@d",
+      date: "2026-01-01",
+      rfcMessageId: "<msg@example>",
+    });
+  });
+
+  it("returns empty string for headers missing from the payload", () => {
+    expect(extractHeaders({ headers: [{ name: "Subject", value: "only-subject" }] })).toEqual({
+      subject: "only-subject",
+      from: "",
+      to: "",
+      date: "",
+      rfcMessageId: "",
+    });
+  });
+});
+
+describe("extractEmailContent", () => {
+  it("decodes base64 text/plain body", () => {
+    const result = extractEmailContent({
+      mimeType: "text/plain",
+      body: { data: Buffer.from("hello world", "utf8").toString("base64") },
+    });
+    expect(result.text).toBe("hello world");
+    expect(result.html).toBe("");
+  });
+
+  it("decodes base64 text/html body", () => {
+    const result = extractEmailContent({
+      mimeType: "text/html",
+      body: { data: Buffer.from("<p>hi</p>", "utf8").toString("base64") },
+    });
+    expect(result.text).toBe("");
+    expect(result.html).toBe("<p>hi</p>");
+  });
+
+  it("recurses into multipart parts and concatenates", () => {
+    const result = extractEmailContent({
+      mimeType: "multipart/alternative",
+      parts: [
+        { mimeType: "text/plain", body: { data: Buffer.from("plain", "utf8").toString("base64") } },
+        {
+          mimeType: "text/html",
+          body: { data: Buffer.from("<b>html</b>", "utf8").toString("base64") },
+        },
+      ],
+    });
+    expect(result.text).toBe("plain");
+    expect(result.html).toBe("<b>html</b>");
+  });
+
+  it("handles missing body data", () => {
+    expect(extractEmailContent({})).toEqual({ text: "", html: "" });
+  });
+});
+
+describe("extractAttachments", () => {
+  it("returns empty array when no attachments", () => {
+    expect(extractAttachments({ mimeType: "text/plain", body: { data: "x" } })).toEqual([]);
+  });
+
+  it("collects a single top-level attachment", () => {
+    const result = extractAttachments({
+      mimeType: "multipart/mixed",
+      filename: "doc.pdf",
+      body: { attachmentId: "att1", size: 1234 },
+    });
+    expect(result).toEqual([
+      {
+        id: "att1",
+        filename: "doc.pdf",
+        mimeType: "multipart/mixed",
+        size: 1234,
+      },
+    ]);
+  });
+
+  it("walks nested parts and dedupes per-leaf", () => {
+    const payload: GmailMessagePart = {
+      mimeType: "multipart/mixed",
+      parts: [
+        { mimeType: "text/plain", body: { data: "x" } },
+        {
+          mimeType: "application/pdf",
+          filename: "report.pdf",
+          body: { attachmentId: "a-1", size: 5 },
+        },
+        {
+          mimeType: "multipart/related",
+          parts: [
+            {
+              mimeType: "image/png",
+              filename: "logo.png",
+              body: { attachmentId: "a-2", size: 10 },
+            },
+          ],
+        },
+      ],
+    };
+    expect(extractAttachments(payload)).toEqual([
+      { id: "a-1", filename: "report.pdf", mimeType: "application/pdf", size: 5 },
+      { id: "a-2", filename: "logo.png", mimeType: "image/png", size: 10 },
+    ]);
+  });
+
+  it("substitutes default filename and mime type when missing", () => {
+    const payload: GmailMessagePart = {
+      body: { attachmentId: "anon", size: 0 },
+    };
+    expect(extractAttachments(payload)).toEqual([
+      {
+        id: "anon",
+        filename: "attachment-anon",
+        mimeType: "application/octet-stream",
+        size: 0,
+      },
+    ]);
+  });
+});

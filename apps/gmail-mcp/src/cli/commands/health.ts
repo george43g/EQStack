@@ -1,0 +1,33 @@
+// `gmail-cli health` — runs the health_check canary without touching Gmail.
+//
+// Same surface as the MCP `health_check` tool: never makes a network call,
+// answers instantly. Useful as a CI smoke test or for verifying the binary
+// works after install.
+
+import { Command } from "commander";
+import { formatHealthText, snapshotHealth } from "../../robustness/index.js";
+
+export interface HealthCommandOptions {
+  json?: boolean;
+}
+
+export function buildHealthCommand(): Command {
+  const cmd = new Command("health");
+  cmd
+    .description("Run the health_check canary (no Gmail API calls)")
+    .option("--json", "Output JSON instead of human-readable text")
+    .action((options: HealthCommandOptions) => {
+      const snapshot = snapshotHealth({
+        toolCalls: 0,
+        recentErrors: 0,
+      });
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify(snapshot, null, 2)}\n`);
+      } else {
+        process.stdout.write(`${formatHealthText(snapshot)}\n`);
+      }
+      const ok = snapshot.status === "healthy";
+      process.exit(ok ? 0 : 1);
+    });
+  return cmd;
+}

@@ -5,14 +5,26 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "gmail-mcp": "./dist/index.js"
+    "gmail-mcp": "./dist/index.js",
+    "gmail-cli": "./dist/cli/index.js",
+    "gmail-tui": "./dist/tui/index.js"
   },
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "auth": "node dist/index.js auth",
+    "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local dist/index.js",
+    "cli": "node --env-file-if-exists=.env --env-file-if-exists=.env.local dist/cli/index.js",
+    "tui": "node --env-file-if-exists=.env --env-file-if-exists=.env.local dist/tui/index.js",
+    "dev:mcp": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/index.ts",
+    "dev:cli": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/cli/index.ts",
+    "dev:tui": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/tui/index.tsx",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "stress": "tsx scripts/stress-mcp.ts",
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
@@ -45,23 +57,33 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=20.6.0"
   },
   "dependencies": {
+    "@inquirer/prompts": "^8.4.2",
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "cli-table3": "^0.6.5",
+    "commander": "^14.0.3",
     "email-addresses": "^5.0.0",
-    "google-auth-library": "^9.4.1",
-    "googleapis": "^129.0.0",
+    "fullscreen-ink": "^0.1.0",
+    "google-auth-library": "^10.6.2",
+    "googleapis": "^171.4.0",
+    "ink": "^7.0.2",
     "mime-types": "^3.0.1",
     "nodemailer": "^7.0.11",
     "open": "^10.0.0",
+    "picocolors": "^1.1.1",
+    "react": "^19.2.6",
     "zod": "^3.22.4",
     "zod-to-json-schema": "^3.22.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
     "@types/mime-types": "^2.1.4",
     "@types/node": "^20.10.5",
     "@types/nodemailer": "^6.4.17",
+    "@types/react": "^19.2.14",
+    "ink-testing-library": "^4.0.0",
     "mcp-evals": "^1.0.18",
     "typescript": "^5.3.3",
     "vitest": "^4.0.18"

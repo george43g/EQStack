@@ -24,7 +24,7 @@ export const SCOPE_MAP: Record<string, string> = {
 
 // Reverse map for converting full URLs back to shorthand
 export const SCOPE_REVERSE_MAP: Record<string, string> = Object.fromEntries(
-  Object.entries(SCOPE_MAP).map(([short, full]) => [full, short])
+  Object.entries(SCOPE_MAP).map(([short, full]) => [full, short]),
 );
 
 // Default scopes (original behavior)
@@ -48,24 +48,26 @@ export function scopeNamesToUrls(scopes: string[]): string[] {
 }
 
 // Check if the authorized scopes grant access to a tool
-// Returns true if ANY of the tool's required scopes are present in authorizedScopes
+// Returns true if the tool requires no scopes, or if ANY of the tool's
+// required scopes are present in authorizedScopes.
 export function hasScope(authorizedScopes: string[], requiredScopes: string[]): boolean {
+  if (requiredScopes.length === 0) return true; // tools that need no Gmail scope (e.g. health_check)
   // Normalize to shorthand names for comparison (handles both URL and shorthand input)
   const normalizedAuth = authorizedScopes.map(scopeUrlToName);
-  return requiredScopes.some(scope => normalizedAuth.includes(scope));
+  return requiredScopes.some((scope) => normalizedAuth.includes(scope));
 }
 
 // Parse scope input from CLI (comma-separated or space-separated)
 export function parseScopes(input: string): string[] {
   return input
     .split(/[,\s]+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 // Validate that all scopes are recognized
 export function validateScopes(scopes: string[]): { valid: boolean; invalid: string[] } {
-  const invalid = scopes.filter(s => !SCOPE_MAP[s]);
+  const invalid = scopes.filter((s) => !SCOPE_MAP[s]);
   return { valid: invalid.length === 0, invalid };
 }
 

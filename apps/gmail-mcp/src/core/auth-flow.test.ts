@@ -1,0 +1,172 @@
+// Tests for the env-driven OAuth keys path (Phase F).
+//
+// We don't exercise runOAuthFlow / saveCredentialsToFile here — those touch
+// the network and disk. Focus is the loadOAuthKeys precedence + parser.
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { loadOAuthKeys } from "./auth-flow.js";
+
+let tmpDir: string;
+
+beforeEach(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-auth-flow-test-"));
+});
+
+afterEach(() => {
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+describe("loadOAuthKeys precedence", () => {
+  it("env GMAIL_OAUTH_KEYS_JSON wins over disk", () => {
+    const onDisk = path.join(tmpDir, "keys.json");
+    fs.writeFileSync(
+      onDisk,
+      JSON.stringify({ installed: { client_id: "from-disk", client_secret: "disk-secret" } }),
+    );
+    const result = loadOAuthKeys({
+      oauthPath: onDisk,
+      env: {
+        GMAIL_OAUTH_KEYS_JSON: JSON.stringify({
+          installed: { client_id: "from-env", client_secret: "env-secret" },
+        }),
+      },
+    });
+    expect(result.client_id).toBe("from-env");
+    expect(result.client_secret).toBe("env-secret");
+  });
+
+  it("ignores empty/whitespace GMAIL_OAUTH_KEYS_JSON and falls through to disk", () => {
+    const onDisk = path.join(tmpDir, "keys.json");
+    fs.writeFileSync(
+      onDisk,
+      JSON.stringify({ installed: { client_id: "disk", client_secret: "secret" } }),
+    );
+    const result = loadOAuthKeys({
+      oauthPath: onDisk,
+      env: { GMAIL_OAUTH_KEYS_JSON: "   " },
+    });
+    expect(result.client_id).toBe("disk");
+  });
+
+  it("loads from disk when env unset", () => {
+    const onDisk = path.join(tmpDir, "keys.json");
+    fs.writeFileSync(
+      onDisk,
+      JSON.stringify({ web: { client_id: "web-id", client_secret: "web-secret" } }),
+    );
+    const result = loadOAuthKeys({ oauthPath: onDisk, env: {} });
+    expect(result.client_id).toBe("web-id");
+    expect(result.client_secret).toBe("web-secret");
+  });
+});
+
+describe("loadOAuthKeys env-JSON shapes", () => {
+  it("accepts {installed:{...}} shape", () => {
+    const result = loadOAuthKeys({
+      oauthPath: "/nonexistent",
+      env: {
+        GMAIL_OAUTH_KEYS_JSON: JSON.stringify({
+          installed: { client_id: "a", client_secret: "b" },
+        }),
+      },
+    });
+    expect(result).toEqual({ client_id: "a", client_secret: "b" });
+  });
+
+  it("accepts {web:{...}} shape", () => {
+    const result = loadOAuthKeys({
+      oauthPath: "/nonexistent",
+      env: {
+        GMAIL_OAUTH_KEYS_JSON: JSON.stringify({
+          web: { client_id: "a", client_secret: "b" },
+        }),
+      },
+    });
+    expect(result).toEqual({ client_id: "a", client_secret: "b" });
+  });
+
+  it("accepts bare {client_id, client_secret} shape", () => {
+    const result = loadOAuthKeys({
+      oauthPath: "/nonexistent",
+      env: {
+        GMAIL_OAUTH_KEYS_JSON: JSON.stringify({ client_id: "a", client_secret: "b" }),
+      },
+    });
+    expect(result).toEqual({ client_id: "a", client_secret: "b" });
+  });
+
+  it("rejects malformed JSON", () => {
+    expect(() =>
+      loadOAuthKeys({
+        oauthPath: "/nonexistent",
+        env: { GMAIL_OAUTH_KEYS_JSON: "{{{not-json" },
+      }),
+    ).toThrow(/Invalid GMAIL_OAUTH_KEYS_JSON/);
+  });
+
+  it("rejects JSON missing client_id/client_secret", () => {
+    expect(() =>
+      loadOAuthKeys({
+        oauthPath: "/nonexistent",
+        env: { GMAIL_OAUTH_KEYS_JSON: JSON.stringify({ installed: { client_id: "only-id" } }) },
+      }),
+    ).toThrow(/client_id and client_secret/);
+  });
+
+  it("rejects non-object JSON", () => {
+    expect(() =>
+      loadOAuthKeys({
+        oauthPath: "/nonexistent",
+        env: { GMAIL_OAUTH_KEYS_JSON: JSON.stringify("a string") },
+      }),
+    ).toThrow(/must be a JSON object/);
+  });
+});
+
+describe("loadOAuthKeys disk path", () => {
+  it("errors clearly when neither env nor disk has keys", () => {
+    expect(() =>
+      loadOAuthKeys({
+        oauthPath: path.join(tmpDir, "missing.json"),
+        env: {},
+      }),
+    ).toThrow(/OAuth keys not found.*GMAIL_OAUTH_KEYS_JSON/);
+  });
+
+  it("rejects malformed disk JSON", () => {
+    const onDisk = path.join(tmpDir, "bad.json");
+    fs.writeFileSync(onDisk, "not json");
+    expect(() => loadOAuthKeys({ oauthPath: onDisk, env: {} })).toThrow(/Invalid OAuth keys file/);
+  });
+
+  it("rejects disk JSON missing required fields", () => {
+    const onDisk = path.join(tmpDir, "incomplete.json");
+    fs.writeFileSync(onDisk, JSON.stringify({ installed: { client_id: "only" } }));
+    expect(() => loadOAuthKeys({ oauthPath: onDisk, env: {} })).toThrow(
+      /client_id and client_secret/,
+    );
+  });
+
+  it("copies gcp-oauth.keys.json from cwd to configDir if missing", () => {
+    const cwd = path.join(tmpDir, "cwd");
+    const configDir = path.join(tmpDir, "config");
+    fs.mkdirSync(cwd);
+    const localPath = path.join(cwd, "gcp-oauth.keys.json");
+    fs.writeFileSync(
+      localPath,
+      JSON.stringify({ installed: { client_id: "copied", client_secret: "ok" } }),
+    );
+    const targetPath = path.join(configDir, "gcp-oauth.keys.json");
+    const result = loadOAuthKeys({
+      oauthPath: targetPath,
+      cwd,
+      configDir,
+      env: {},
+    });
+    expect(result.client_id).toBe("copied");
+    expect(fs.existsSync(targetPath)).toBe(true);
+  });
+});
