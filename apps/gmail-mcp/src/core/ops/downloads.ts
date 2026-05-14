@@ -3,9 +3,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import type { z } from "zod";
 import { emailToHtml, emailToTxt, gmailMessageToJson } from "../../email-export.js";
 import { safeJoinWithinBase } from "../../safe-path.js";
-import { DownloadAttachmentSchema, DownloadEmailSchema } from "../../tools.js";
+import {
+  DownloadAttachmentOutputSchema,
+  DownloadAttachmentSchema,
+  DownloadEmailOutputSchema,
+  DownloadEmailSchema,
+} from "../../tools.js";
 import {
   extractAttachments,
   extractEmailContent,
@@ -14,9 +20,13 @@ import {
 } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
 
-const downloadEmail: Operation<unknown> = {
+type DownloadEmailOutput = z.infer<typeof DownloadEmailOutputSchema>;
+type DownloadAttachmentOutput = z.infer<typeof DownloadAttachmentOutputSchema>;
+
+const downloadEmail: Operation<unknown, DownloadEmailOutput> = {
   name: "download_email",
   schema: DownloadEmailSchema,
+  outputSchema: DownloadEmailOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as { messageId: string; savePath: string; format: string };
@@ -66,18 +76,20 @@ const downloadEmail: Operation<unknown> = {
       const stats = fs.statSync(fullPath);
 
       const result = {
-        status: "saved",
+        status: "saved" as const,
         path: fullPath,
         size: stats.size,
         messageId,
         subject,
         from,
         date,
+        format: format as "json" | "eml" | "txt" | "html",
         attachments,
       };
 
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result,
       };
     } catch (error: any) {
       return {
@@ -87,9 +99,10 @@ const downloadEmail: Operation<unknown> = {
   },
 };
 
-const downloadAttachment: Operation<unknown> = {
+const downloadAttachment: Operation<unknown, DownloadAttachmentOutput> = {
   name: "download_attachment",
   schema: DownloadAttachmentSchema,
+  outputSchema: DownloadAttachmentOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as {
@@ -156,6 +169,14 @@ const downloadAttachment: Operation<unknown> = {
             text: `Attachment downloaded successfully:\nFile: ${filename}\nSize: ${buffer.length} bytes\nSaved to: ${fullPath}`,
           },
         ],
+        structuredContent: {
+          status: "saved",
+          path: fullPath,
+          filename,
+          size: buffer.length,
+          messageId: args.messageId,
+          attachmentId: args.attachmentId,
+        },
       };
     } catch (error: any) {
       return {

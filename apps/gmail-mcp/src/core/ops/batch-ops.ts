@@ -1,13 +1,21 @@
 // Batch label modify + batch delete. Uses core/batch.ts::processBatches
 // for chunking, AbortSignal handling, and per-item-fallback on batch failure.
 
-import { BatchDeleteEmailsSchema, BatchModifyEmailsSchema } from "../../tools.js";
+import type { z } from "zod";
+import {
+  BatchDeleteEmailsSchema,
+  BatchModifyEmailsSchema,
+  BatchOpOutputSchema,
+} from "../../tools.js";
 import { processBatches } from "../batch.js";
 import { type Operation, registry } from "../registry.js";
 
-const batchModifyEmails: Operation<unknown> = {
+type BatchOpOutput = z.infer<typeof BatchOpOutputSchema>;
+
+const batchModifyEmails: Operation<unknown, BatchOpOutput> = {
   name: "batch_modify_emails",
   schema: BatchModifyEmailsSchema,
+  outputSchema: BatchOpOutputSchema,
   scopes: ["gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as {
@@ -52,13 +60,25 @@ const batchModifyEmails: Operation<unknown> = {
         .join("\n");
     }
 
-    return { content: [{ type: "text", text: resultText }] };
+    return {
+      content: [{ type: "text", text: resultText }],
+      structuredContent: {
+        action: "modify",
+        successCount,
+        failureCount,
+        failures: failures.map((f) => ({
+          messageId: f.item as string,
+          error: f.error.message,
+        })),
+      },
+    };
   },
 };
 
-const batchDeleteEmails: Operation<unknown> = {
+const batchDeleteEmails: Operation<unknown, BatchOpOutput> = {
   name: "batch_delete_emails",
   schema: BatchDeleteEmailsSchema,
+  outputSchema: BatchOpOutputSchema,
   scopes: ["gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as { messageIds: string[]; batchSize?: number };
@@ -94,7 +114,18 @@ const batchDeleteEmails: Operation<unknown> = {
         .join("\n");
     }
 
-    return { content: [{ type: "text", text: resultText }] };
+    return {
+      content: [{ type: "text", text: resultText }],
+      structuredContent: {
+        action: "delete",
+        successCount,
+        failureCount,
+        failures: failures.map((f) => ({
+          messageId: f.item as string,
+          error: f.error.message,
+        })),
+      },
+    };
   },
 };
 

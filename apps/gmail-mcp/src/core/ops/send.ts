@@ -2,15 +2,24 @@
 // used by both send and draft paths. Lifted from src/index.ts verbatim.
 
 import type { gmail_v1 } from "googleapis";
+import type { z } from "zod";
 import {
   addRePrefix,
   buildReferencesHeader,
   buildReplyAllRecipients,
 } from "../../reply-all-helpers.js";
-import { ReplyAllSchema, SendEmailSchema } from "../../tools.js";
+import {
+  ReplyAllOutputSchema,
+  ReplyAllSchema,
+  SendEmailSchema,
+  SendOrDraftOutputSchema,
+} from "../../tools.js";
 import { createEmailMessage, createEmailWithNodemailer } from "../../utl.js";
 import type { OperationContext } from "../context.js";
 import { type Operation, type OperationResult, registry } from "../registry.js";
+
+export type SendOrDraftOutput = z.infer<typeof SendOrDraftOutputSchema>;
+type ReplyAllOutput = z.infer<typeof ReplyAllOutputSchema>;
 
 /**
  * Shared send/draft worker. Auto-resolves threading headers when a threadId
@@ -24,7 +33,7 @@ export async function handleEmailAction(
   action: "send" | "draft",
   validatedArgs: any,
   gmail: gmail_v1.Gmail,
-): Promise<OperationResult> {
+): Promise<OperationResult<SendOrDraftOutput>> {
   let message: string;
 
   try {
@@ -89,6 +98,11 @@ export async function handleEmailAction(
         });
         return {
           content: [{ type: "text", text: `Email sent successfully with ID: ${result.data.id}` }],
+          structuredContent: {
+            messageId: result.data.id ?? "",
+            action: "sent",
+            threadId: validatedArgs.threadId,
+          },
         };
       }
       // draft branch
@@ -104,6 +118,11 @@ export async function handleEmailAction(
         content: [
           { type: "text", text: `Email draft created successfully with ID: ${response.data.id}` },
         ],
+        structuredContent: {
+          messageId: response.data.id ?? "",
+          action: "drafted",
+          threadId: validatedArgs.threadId,
+        },
       };
     }
 
@@ -129,6 +148,11 @@ export async function handleEmailAction(
       });
       return {
         content: [{ type: "text", text: `Email sent successfully with ID: ${response.data.id}` }],
+        structuredContent: {
+          messageId: response.data.id ?? "",
+          action: "sent",
+          threadId: validatedArgs.threadId,
+        },
       };
     }
     const response = await gmail.users.drafts.create({
@@ -139,6 +163,11 @@ export async function handleEmailAction(
       content: [
         { type: "text", text: `Email draft created successfully with ID: ${response.data.id}` },
       ],
+      structuredContent: {
+        messageId: response.data.id ?? "",
+        action: "drafted",
+        threadId: validatedArgs.threadId,
+      },
     };
   } catch (error: any) {
     if (validatedArgs.attachments && validatedArgs.attachments.length > 0) {
@@ -151,17 +180,19 @@ export async function handleEmailAction(
   }
 }
 
-const sendEmail: Operation<unknown> = {
+const sendEmail: Operation<unknown, SendOrDraftOutput> = {
   name: "send_email",
   schema: SendEmailSchema,
+  outputSchema: SendOrDraftOutputSchema,
   scopes: ["gmail.modify", "gmail.compose", "gmail.send"],
   handler: async (input, ctx: OperationContext) =>
     handleEmailAction("send", input as any, ctx.gmail),
 };
 
-const replyAll: Operation<unknown> = {
+const replyAll: Operation<unknown, ReplyAllOutput> = {
   name: "reply_all",
   schema: ReplyAllSchema,
+  outputSchema: ReplyAllOutputSchema,
   scopes: ["gmail.modify", "gmail.compose", "gmail.send"],
   handler: async (input, ctx: OperationContext) => {
     const args = input as any;
@@ -226,6 +257,13 @@ const replyAll: Operation<unknown> = {
           text: `Reply-all sent successfully!\nTo: ${replyTo.join(", ")}${replyCc.length > 0 ? `\nCC: ${replyCc.join(", ")}` : ""}\nSubject: ${replySubject}\nThread ID: ${threadId}`,
         },
       ],
+      structuredContent: {
+        to: replyTo,
+        cc: replyCc,
+        subject: replySubject,
+        threadId,
+        inReplyTo: originalMessageId,
+      },
     };
   },
 };

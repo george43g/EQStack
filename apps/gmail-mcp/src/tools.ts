@@ -317,6 +317,219 @@ export const HealthCheckSchema = z
     "Returns server health metrics (uptime, memory, event-loop p99, tool call count, recent errors). Does not call Gmail.",
   );
 
+// ----------------------------------------------------------------------------
+// Output schemas (Phase B2)
+//
+// Optional typed shapes for each op's structured output. The MCP wire protocol
+// keeps the legacy `content: [{type:"text", text:"..."}]` envelope; the typed
+// payload is mirrored into `structuredContent` so:
+//   - `gmail-cli ... --json` emits the structured JSON instead of wrapped text
+//   - the future TUI binds to typed `result.structuredContent` directly
+//   - MCP hosts that respect outputSchema get type info
+// Handlers that don't define one fall back to text-only — same behavior as today.
+// ----------------------------------------------------------------------------
+
+// Common attachment metadata shape used by message / thread / download outputs.
+const AttachmentMetaSchema = z.object({
+  id: z.string().optional(),
+  filename: z.string(),
+  mimeType: z.string(),
+  size: z.number(),
+});
+
+const SearchEmailResultSchema = z.object({
+  id: z.string().nullable(),
+  subject: z.string(),
+  from: z.string(),
+  date: z.string(),
+});
+
+export const SearchEmailsOutputSchema = z.object({
+  resultCount: z.number(),
+  results: z.array(SearchEmailResultSchema),
+});
+
+export const ReadEmailOutputSchema = z.object({
+  messageId: z.string(),
+  threadId: z.string(),
+  subject: z.string(),
+  from: z.string(),
+  to: z.string(),
+  date: z.string(),
+  rfcMessageId: z.string(),
+  body: z.string(),
+  bodyText: z.string(),
+  bodyHtml: z.string(),
+  attachments: z.array(AttachmentMetaSchema),
+});
+
+const ThreadMessageSummarySchema = z.object({
+  messageId: z.string(),
+  threadId: z.string(),
+  from: z.string(),
+  to: z.string(),
+  cc: z.string(),
+  bcc: z.string(),
+  subject: z.string(),
+  date: z.string(),
+  body: z.string(),
+  labelIds: z.array(z.string()),
+  attachments: z.array(z.object({ filename: z.string(), mimeType: z.string(), size: z.number() })),
+});
+
+export const GetThreadOutputSchema = z.object({
+  threadId: z.string(),
+  messageCount: z.number(),
+  messages: z.array(ThreadMessageSummarySchema),
+});
+
+const ThreadSummarySchema = z.object({
+  threadId: z.string(),
+  snippet: z.string(),
+  historyId: z.string(),
+  messageCount: z.number(),
+  latestMessage: z.object({
+    from: z.string(),
+    subject: z.string(),
+    date: z.string(),
+  }),
+});
+
+export const ListInboxThreadsOutputSchema = z.object({
+  resultCount: z.number(),
+  threads: z.array(ThreadSummarySchema),
+});
+
+export const GetInboxWithThreadsOutputSchema = z.object({
+  resultCount: z.number(),
+  threads: z.array(
+    z.union([
+      ThreadSummarySchema,
+      z.object({
+        threadId: z.string(),
+        messageCount: z.number(),
+        messages: z.array(ThreadMessageSummarySchema),
+      }),
+    ]),
+  ),
+});
+
+const LabelEntrySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.string().optional(),
+});
+
+export const ListEmailLabelsOutputSchema = z.object({
+  count: z.object({ total: z.number(), system: z.number(), user: z.number() }),
+  system: z.array(LabelEntrySchema),
+  user: z.array(LabelEntrySchema),
+});
+
+export const LabelMutationOutputSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.string(),
+});
+
+export const LabelDeleteOutputSchema = z.object({
+  id: z.string(),
+  status: z.literal("deleted"),
+  message: z.string(),
+});
+
+export const FilterEntrySchema = z.object({
+  id: z.string(),
+  criteria: z.record(z.string(), z.unknown()).optional(),
+  action: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const ListFiltersOutputSchema = z.object({
+  count: z.number(),
+  filters: z.array(FilterEntrySchema),
+});
+
+export const GetFilterOutputSchema = FilterEntrySchema;
+
+export const CreateFilterOutputSchema = z.object({
+  id: z.string(),
+  criteria: z.record(z.string(), z.unknown()),
+  action: z.record(z.string(), z.unknown()),
+});
+
+export const DeleteFilterOutputSchema = z.object({
+  id: z.string(),
+  status: z.literal("deleted"),
+  message: z.string(),
+});
+
+export const SendOrDraftOutputSchema = z.object({
+  messageId: z.string(),
+  action: z.enum(["sent", "drafted"]),
+  threadId: z.string().optional(),
+});
+
+export const ReplyAllOutputSchema = z.object({
+  to: z.array(z.string()),
+  cc: z.array(z.string()),
+  subject: z.string(),
+  threadId: z.string(),
+  inReplyTo: z.string(),
+});
+
+export const ModifyOrDeleteEmailOutputSchema = z.object({
+  messageId: z.string(),
+  status: z.enum(["modified", "deleted"]),
+});
+
+export const ModifyThreadOutputSchema = z.object({
+  threadId: z.string(),
+  status: z.literal("modified"),
+});
+
+export const BatchOpOutputSchema = z.object({
+  action: z.enum(["modify", "delete"]),
+  successCount: z.number(),
+  failureCount: z.number(),
+  failures: z.array(z.object({ messageId: z.string(), error: z.string() })),
+});
+
+export const DownloadEmailOutputSchema = z.object({
+  status: z.literal("saved"),
+  path: z.string(),
+  size: z.number(),
+  messageId: z.string(),
+  subject: z.string(),
+  from: z.string(),
+  date: z.string(),
+  format: z.enum(["json", "eml", "txt", "html"]),
+  attachments: z.array(AttachmentMetaSchema),
+});
+
+export const DownloadAttachmentOutputSchema = z.object({
+  status: z.literal("saved"),
+  path: z.string(),
+  filename: z.string(),
+  size: z.number(),
+  messageId: z.string(),
+  attachmentId: z.string(),
+});
+
+export const HealthCheckOutputSchema = z.object({
+  status: z.enum(["healthy", "degraded", "unhealthy"]),
+  issues: z.array(z.string()),
+  uptime_s: z.number(),
+  pid: z.number(),
+  node: z.string(),
+  heap_mb: z.number(),
+  rss_mb: z.number(),
+  event_loop_p99_ms: z.number(),
+  event_loop_max_ms: z.number(),
+  tool_calls: z.number(),
+  recent_errors: z.number(),
+  last_activity_age_s: z.number(),
+});
+
 // Tool definition type
 export interface ToolAnnotations {
   title: string;

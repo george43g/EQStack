@@ -1,15 +1,25 @@
 // Thread-level ops: get_thread, list_inbox_threads, get_inbox_with_threads,
 // modify_thread. Lifted verbatim from src/index.ts switch.
 
+import type { z } from "zod";
 import type { EmailAttachment } from "../../email-export.js";
 import {
+  GetInboxWithThreadsOutputSchema,
   GetInboxWithThreadsSchema,
+  GetThreadOutputSchema,
   GetThreadSchema,
+  ListInboxThreadsOutputSchema,
   ListInboxThreadsSchema,
+  ModifyThreadOutputSchema,
   ModifyThreadSchema,
 } from "../../tools.js";
 import { extractEmailContent, type GmailMessagePart } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
+
+type GetThreadOutput = z.infer<typeof GetThreadOutputSchema>;
+type ListInboxThreadsOutput = z.infer<typeof ListInboxThreadsOutputSchema>;
+type GetInboxWithThreadsOutput = z.infer<typeof GetInboxWithThreadsOutputSchema>;
+type ModifyThreadOutput = z.infer<typeof ModifyThreadOutputSchema>;
 
 /**
  * Walk a Gmail message payload and collect attachment metadata.
@@ -38,9 +48,10 @@ function collectAttachmentMeta(payload: GmailMessagePart | undefined): EmailAtta
   return attachments;
 }
 
-const getThread: Operation<unknown> = {
+const getThread: Operation<unknown, GetThreadOutput> = {
   name: "get_thread",
   schema: GetThreadSchema,
+  outputSchema: GetThreadOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as { threadId: string; format?: "full" | "metadata" | "minimal" };
@@ -87,28 +98,22 @@ const getThread: Operation<unknown> = {
       };
     });
 
+    const structured = {
+      threadId: args.threadId,
+      messageCount: messagesOutput.length,
+      messages: messagesOutput,
+    };
     return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              threadId: args.threadId,
-              messageCount: messagesOutput.length,
-              messages: messagesOutput,
-            },
-            null,
-            2,
-          ),
-        },
-      ],
+      content: [{ type: "text", text: JSON.stringify(structured, null, 2) }],
+      structuredContent: structured,
     };
   },
 };
 
-const listInboxThreads: Operation<unknown> = {
+const listInboxThreads: Operation<unknown, ListInboxThreadsOutput> = {
   name: "list_inbox_threads",
   schema: ListInboxThreadsSchema,
+  outputSchema: ListInboxThreadsOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as { query?: string; maxResults?: number };
@@ -147,27 +152,18 @@ const listInboxThreads: Operation<unknown> = {
       }),
     );
 
+    const structured = { resultCount: threadDetails.length, threads: threadDetails };
     return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              resultCount: threadDetails.length,
-              threads: threadDetails,
-            },
-            null,
-            2,
-          ),
-        },
-      ],
+      content: [{ type: "text", text: JSON.stringify(structured, null, 2) }],
+      structuredContent: structured,
     };
   },
 };
 
-const getInboxWithThreads: Operation<unknown> = {
+const getInboxWithThreads: Operation<unknown, GetInboxWithThreadsOutput> = {
   name: "get_inbox_with_threads",
   schema: GetInboxWithThreadsSchema,
+  outputSchema: GetInboxWithThreadsOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as { query?: string; maxResults?: number; expandThreads?: boolean };
@@ -208,20 +204,13 @@ const getInboxWithThreads: Operation<unknown> = {
         }),
       );
 
+      const summaryStructured = {
+        resultCount: threadSummaries.length,
+        threads: threadSummaries,
+      };
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                resultCount: threadSummaries.length,
-                threads: threadSummaries,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
+        content: [{ type: "text", text: JSON.stringify(summaryStructured, null, 2) }],
+        structuredContent: summaryStructured,
       };
     }
 
@@ -277,27 +266,21 @@ const getInboxWithThreads: Operation<unknown> = {
       }),
     );
 
+    const expandedStructured = {
+      resultCount: expandedThreads.length,
+      threads: expandedThreads,
+    };
     return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              resultCount: expandedThreads.length,
-              threads: expandedThreads,
-            },
-            null,
-            2,
-          ),
-        },
-      ],
+      content: [{ type: "text", text: JSON.stringify(expandedStructured, null, 2) }],
+      structuredContent: expandedStructured,
     };
   },
 };
 
-const modifyThread: Operation<unknown> = {
+const modifyThread: Operation<unknown, ModifyThreadOutput> = {
   name: "modify_thread",
   schema: ModifyThreadSchema,
+  outputSchema: ModifyThreadOutputSchema,
   scopes: ["gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as { threadId: string; addLabelIds?: string[]; removeLabelIds?: string[] };
@@ -319,6 +302,7 @@ const modifyThread: Operation<unknown> = {
           text: `Thread ${args.threadId} labels updated successfully (all messages in thread modified)`,
         },
       ],
+      structuredContent: { threadId: args.threadId, status: "modified" },
     };
   },
 };

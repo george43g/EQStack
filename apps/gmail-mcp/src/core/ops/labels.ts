@@ -1,6 +1,7 @@
 // Label-management ops: list_email_labels + 4 CRUD ops.
 // Wraps the existing low-level helpers in src/label-manager.ts.
 
+import type { z } from "zod";
 import {
   createLabel,
   deleteLabel,
@@ -13,39 +14,58 @@ import {
   CreateLabelSchema,
   DeleteLabelSchema,
   GetOrCreateLabelSchema,
+  LabelDeleteOutputSchema,
+  LabelMutationOutputSchema,
+  ListEmailLabelsOutputSchema,
   ListEmailLabelsSchema,
   UpdateLabelSchema,
 } from "../../tools.js";
 import { type Operation, registry } from "../registry.js";
 
-const listEmailLabels: Operation<unknown> = {
+type ListLabelsOutput = z.infer<typeof ListEmailLabelsOutputSchema>;
+type LabelMutationOutput = z.infer<typeof LabelMutationOutputSchema>;
+type LabelDeleteOutput = z.infer<typeof LabelDeleteOutputSchema>;
+
+const listEmailLabels: Operation<unknown, ListLabelsOutput> = {
   name: "list_email_labels",
   schema: ListEmailLabelsSchema,
+  outputSchema: ListEmailLabelsOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify", "gmail.labels"],
   handler: async (_input, ctx) => {
     const labelResults = await listLabels(ctx.gmail);
     const systemLabels = labelResults.system;
     const userLabels = labelResults.user;
 
+    const text =
+      `Found ${labelResults.count.total} labels (${labelResults.count.system} system, ${labelResults.count.user} user):\n\n` +
+      "System Labels:\n" +
+      systemLabels.map((l: GmailLabel) => `ID: ${l.id}\nName: ${l.name}\n`).join("\n") +
+      "\nUser Labels:\n" +
+      userLabels.map((l: GmailLabel) => `ID: ${l.id}\nName: ${l.name}\n`).join("\n");
+
     return {
-      content: [
-        {
-          type: "text",
-          text:
-            `Found ${labelResults.count.total} labels (${labelResults.count.system} system, ${labelResults.count.user} user):\n\n` +
-            "System Labels:\n" +
-            systemLabels.map((l: GmailLabel) => `ID: ${l.id}\nName: ${l.name}\n`).join("\n") +
-            "\nUser Labels:\n" +
-            userLabels.map((l: GmailLabel) => `ID: ${l.id}\nName: ${l.name}\n`).join("\n"),
-        },
-      ],
+      content: [{ type: "text", text }],
+      structuredContent: {
+        count: labelResults.count,
+        system: systemLabels.map((l: GmailLabel) => ({
+          id: l.id ?? "",
+          name: l.name ?? "",
+          type: l.type ?? undefined,
+        })),
+        user: userLabels.map((l: GmailLabel) => ({
+          id: l.id ?? "",
+          name: l.name ?? "",
+          type: l.type ?? undefined,
+        })),
+      },
     };
   },
 };
 
-const createLabelOp: Operation<unknown> = {
+const createLabelOp: Operation<unknown, LabelMutationOutput> = {
   name: "create_label",
   schema: CreateLabelSchema,
+  outputSchema: LabelMutationOutputSchema,
   scopes: ["gmail.modify", "gmail.labels"],
   handler: async (input, ctx) => {
     const args = input as {
@@ -64,13 +84,19 @@ const createLabelOp: Operation<unknown> = {
           text: `Label created successfully:\nID: ${result.id}\nName: ${result.name}\nType: ${result.type}`,
         },
       ],
+      structuredContent: {
+        id: result.id ?? "",
+        name: result.name ?? "",
+        type: result.type ?? "user",
+      },
     };
   },
 };
 
-const updateLabelOp: Operation<unknown> = {
+const updateLabelOp: Operation<unknown, LabelMutationOutput> = {
   name: "update_label",
   schema: UpdateLabelSchema,
+  outputSchema: LabelMutationOutputSchema,
   scopes: ["gmail.modify", "gmail.labels"],
   handler: async (input, ctx) => {
     const args = input as {
@@ -93,26 +119,34 @@ const updateLabelOp: Operation<unknown> = {
           text: `Label updated successfully:\nID: ${result.id}\nName: ${result.name}\nType: ${result.type}`,
         },
       ],
+      structuredContent: {
+        id: result.id ?? "",
+        name: result.name ?? "",
+        type: result.type ?? "user",
+      },
     };
   },
 };
 
-const deleteLabelOp: Operation<unknown> = {
+const deleteLabelOp: Operation<unknown, LabelDeleteOutput> = {
   name: "delete_label",
   schema: DeleteLabelSchema,
+  outputSchema: LabelDeleteOutputSchema,
   scopes: ["gmail.modify", "gmail.labels"],
   handler: async (input, ctx) => {
     const args = input as { id: string };
     const result = await deleteLabel(ctx.gmail, args.id);
     return {
       content: [{ type: "text", text: result.message }],
+      structuredContent: { id: args.id, status: "deleted", message: result.message },
     };
   },
 };
 
-const getOrCreateLabelOp: Operation<unknown> = {
+const getOrCreateLabelOp: Operation<unknown, LabelMutationOutput> = {
   name: "get_or_create_label",
   schema: GetOrCreateLabelSchema,
+  outputSchema: LabelMutationOutputSchema,
   scopes: ["gmail.modify", "gmail.labels"],
   handler: async (input, ctx) => {
     const args = input as {
@@ -135,6 +169,11 @@ const getOrCreateLabelOp: Operation<unknown> = {
           text: `Successfully ${action} label:\nID: ${result.id}\nName: ${result.name}\nType: ${result.type}`,
         },
       ],
+      structuredContent: {
+        id: result.id ?? "",
+        name: result.name ?? "",
+        type: result.type ?? "user",
+      },
     };
   },
 };

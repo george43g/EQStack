@@ -1,5 +1,6 @@
 // Filter management ops. Wraps src/filter-manager.ts low-level helpers.
 
+import type { z } from "zod";
 import {
   createFilter,
   deleteFilter,
@@ -9,16 +10,26 @@ import {
 } from "../../filter-manager.js";
 import {
   CreateFilterFromTemplateSchema,
+  CreateFilterOutputSchema,
   CreateFilterSchema,
+  DeleteFilterOutputSchema,
   DeleteFilterSchema,
+  GetFilterOutputSchema,
   GetFilterSchema,
   ListEmailLabelsSchema,
+  ListFiltersOutputSchema,
 } from "../../tools.js";
 import { type Operation, registry } from "../registry.js";
 
-const createFilterOp: Operation<unknown> = {
+type ListFiltersOutput = z.infer<typeof ListFiltersOutputSchema>;
+type GetFilterOutput = z.infer<typeof GetFilterOutputSchema>;
+type CreateFilterOutput = z.infer<typeof CreateFilterOutputSchema>;
+type DeleteFilterOutput = z.infer<typeof DeleteFilterOutputSchema>;
+
+const createFilterOp: Operation<unknown, CreateFilterOutput> = {
   name: "create_filter",
   schema: CreateFilterSchema,
+  outputSchema: CreateFilterOutputSchema,
   scopes: ["gmail.settings.basic"],
   handler: async (input, ctx) => {
     const args = input as { criteria: any; action: any };
@@ -43,22 +54,31 @@ const createFilterOp: Operation<unknown> = {
           text: `Filter created successfully:\nID: ${result.id}\nCriteria: ${criteriaText}\nActions: ${actionText}`,
         },
       ],
+      structuredContent: {
+        id: result.id ?? "",
+        criteria: args.criteria,
+        action: args.action,
+      },
     };
   },
 };
 
-const listFiltersOp: Operation<unknown> = {
+const listFiltersOp: Operation<unknown, ListFiltersOutput> = {
   name: "list_filters",
   // No dedicated schema in tools.ts — list_filters takes no args. Reuse the
   // empty schema used by list_email_labels for shape parity.
   schema: ListEmailLabelsSchema,
+  outputSchema: ListFiltersOutputSchema,
   scopes: ["gmail.settings.basic"],
   handler: async (_input, ctx) => {
     const result = await listFilters(ctx.gmail);
     const filters = result.filters;
 
     if (filters.length === 0) {
-      return { content: [{ type: "text", text: "No filters found." }] };
+      return {
+        content: [{ type: "text", text: "No filters found." }],
+        structuredContent: { count: 0, filters: [] },
+      };
     }
 
     const filtersText = filters
@@ -86,13 +106,22 @@ const listFiltersOp: Operation<unknown> = {
           text: `Found ${result.count} filters:\n\n${filtersText}`,
         },
       ],
+      structuredContent: {
+        count: result.count,
+        filters: filters.map((f: any) => ({
+          id: String(f.id ?? ""),
+          criteria: f.criteria,
+          action: f.action,
+        })),
+      },
     };
   },
 };
 
-const getFilterOp: Operation<unknown> = {
+const getFilterOp: Operation<unknown, GetFilterOutput> = {
   name: "get_filter",
   schema: GetFilterSchema,
+  outputSchema: GetFilterOutputSchema,
   scopes: ["gmail.settings.basic"],
   handler: async (input, ctx) => {
     const args = input as { filterId: string };
@@ -117,24 +146,34 @@ const getFilterOp: Operation<unknown> = {
           text: `Filter details:\nID: ${result.id}\nCriteria: ${criteriaText}\nActions: ${actionText}`,
         },
       ],
+      structuredContent: {
+        id: String(result.id ?? args.filterId),
+        criteria: result.criteria as Record<string, unknown> | undefined,
+        action: result.action as Record<string, unknown> | undefined,
+      },
     };
   },
 };
 
-const deleteFilterOp: Operation<unknown> = {
+const deleteFilterOp: Operation<unknown, DeleteFilterOutput> = {
   name: "delete_filter",
   schema: DeleteFilterSchema,
+  outputSchema: DeleteFilterOutputSchema,
   scopes: ["gmail.settings.basic"],
   handler: async (input, ctx) => {
     const args = input as { filterId: string };
     const result = await deleteFilter(ctx.gmail, args.filterId);
-    return { content: [{ type: "text", text: result.message }] };
+    return {
+      content: [{ type: "text", text: result.message }],
+      structuredContent: { id: args.filterId, status: "deleted", message: result.message },
+    };
   },
 };
 
-const createFilterFromTemplate: Operation<unknown> = {
+const createFilterFromTemplate: Operation<unknown, CreateFilterOutput> = {
   name: "create_filter_from_template",
   schema: CreateFilterFromTemplateSchema,
+  outputSchema: CreateFilterOutputSchema,
   scopes: ["gmail.settings.basic"],
   handler: async (input, ctx) => {
     const args = input as { template: string; parameters: any };
@@ -198,6 +237,11 @@ const createFilterFromTemplate: Operation<unknown> = {
           text: `Filter created from template '${template}':\nID: ${result.id}\nTemplate used: ${template}`,
         },
       ],
+      structuredContent: {
+        id: String(result.id ?? ""),
+        criteria: filterConfig.criteria,
+        action: filterConfig.action,
+      },
     };
   },
 };

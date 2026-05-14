@@ -11,22 +11,36 @@
 import type { z } from "zod";
 import type { OperationContext } from "./context.js";
 
-export interface OperationResult {
+/**
+ * MCP-compatible response envelope. `content` keeps the wire-protocol text/image
+ * payload; `structuredContent` carries the typed-output JSON when the op
+ * declares an `outputSchema`. CLI/TUI consumers use structuredContent when
+ * available; MCP hosts that respect outputSchema get type info.
+ */
+export interface OperationResult<TOutput = unknown> {
   content: Array<{ type: string; text: string }>;
   isError?: boolean;
-  structuredContent?: unknown;
+  structuredContent?: TOutput;
 }
 
-export interface Operation<TInput = unknown> {
+export interface Operation<TInput = unknown, TOutput = unknown> {
   /** Matches the tool name in src/tools.ts. */
   name: string;
   /** Zod schema used to parse `args` before the handler runs. */
   schema: z.ZodType<TInput>;
+  /**
+   * Optional typed-output schema. When set, the handler is expected to populate
+   * `structuredContent: z.infer<typeof outputSchema>` on its return; CLI's
+   * --json mode emits structuredContent directly. Ops without an outputSchema
+   * stay text-only (set `structuredContent` to whatever shape they like, or
+   * omit it entirely).
+   */
+  outputSchema?: z.ZodType<TOutput>;
   /** Scopes mirrored from tools.ts — for runtime auth gating sanity. */
   scopes: string[];
   /** Pure async function. Throws on Gmail/transport errors — the dispatcher
    *  wraps via auth-errors.wrapToolError. */
-  handler: (input: TInput, ctx: OperationContext) => Promise<OperationResult>;
+  handler: (input: TInput, ctx: OperationContext) => Promise<OperationResult<TOutput>>;
 }
 
 export class OperationRegistry {

@@ -4,11 +4,15 @@
 // modular refactor (Step 4). Zero behavior change — same Gmail calls, same
 // output text, same retry/rate-limit wrapping for the read paths.
 
+import type { z } from "zod";
 import { rateLimitAcquire, withRetry } from "../../robustness/index.js";
 import {
   DeleteEmailSchema,
   ModifyEmailSchema,
+  ModifyOrDeleteEmailOutputSchema,
+  ReadEmailOutputSchema,
   ReadEmailSchema,
+  SearchEmailsOutputSchema,
   SearchEmailsSchema,
 } from "../../tools.js";
 import {
@@ -19,9 +23,14 @@ import {
 } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
 
-const readEmail: Operation<unknown> = {
+type ReadEmailOutput = z.infer<typeof ReadEmailOutputSchema>;
+type SearchEmailsOutput = z.infer<typeof SearchEmailsOutputSchema>;
+type ModifyOrDeleteEmailOutput = z.infer<typeof ModifyOrDeleteEmailOutputSchema>;
+
+const readEmail: Operation<unknown, ReadEmailOutput> = {
   name: "read_email",
   schema: ReadEmailSchema,
+  outputSchema: ReadEmailOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as { messageId: string };
@@ -64,13 +73,27 @@ const readEmail: Operation<unknown> = {
           text: `Thread ID: ${threadId}\nMessage-ID: ${rfcMessageId}\nSubject: ${subject}\nFrom: ${from}\nTo: ${to}\nDate: ${date}\n\n${contentTypeNote}${body}${attachmentInfo}`,
         },
       ],
+      structuredContent: {
+        messageId: args.messageId,
+        threadId,
+        subject,
+        from,
+        to,
+        date,
+        rfcMessageId,
+        body,
+        bodyText: text,
+        bodyHtml: html,
+        attachments,
+      },
     };
   },
 };
 
-const searchEmails: Operation<unknown> = {
+const searchEmails: Operation<unknown, SearchEmailsOutput> = {
   name: "search_emails",
   schema: SearchEmailsSchema,
+  outputSchema: SearchEmailsOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as { query: string; maxResults?: number };
@@ -96,7 +119,7 @@ const searchEmails: Operation<unknown> = {
         });
         const headers = detail.data.payload?.headers || [];
         return {
-          id: msg.id,
+          id: msg.id ?? null,
           subject: headers.find((h) => h.name === "Subject")?.value || "",
           from: headers.find((h) => h.name === "From")?.value || "",
           date: headers.find((h) => h.name === "Date")?.value || "",
@@ -113,13 +136,18 @@ const searchEmails: Operation<unknown> = {
             .join("\n"),
         },
       ],
+      structuredContent: {
+        resultCount: results.length,
+        results,
+      },
     };
   },
 };
 
-const modifyEmail: Operation<unknown> = {
+const modifyEmail: Operation<unknown, ModifyOrDeleteEmailOutput> = {
   name: "modify_email",
   schema: ModifyEmailSchema,
+  outputSchema: ModifyOrDeleteEmailOutputSchema,
   scopes: ["gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as {
@@ -143,19 +171,16 @@ const modifyEmail: Operation<unknown> = {
     });
 
     return {
-      content: [
-        {
-          type: "text",
-          text: `Email ${args.messageId} labels updated successfully`,
-        },
-      ],
+      content: [{ type: "text", text: `Email ${args.messageId} labels updated successfully` }],
+      structuredContent: { messageId: args.messageId, status: "modified" },
     };
   },
 };
 
-const deleteEmail: Operation<unknown> = {
+const deleteEmail: Operation<unknown, ModifyOrDeleteEmailOutput> = {
   name: "delete_email",
   schema: DeleteEmailSchema,
+  outputSchema: ModifyOrDeleteEmailOutputSchema,
   scopes: ["gmail.modify"],
   handler: async (input, ctx) => {
     const args = input as { messageId: string };
@@ -164,12 +189,8 @@ const deleteEmail: Operation<unknown> = {
       id: args.messageId,
     });
     return {
-      content: [
-        {
-          type: "text",
-          text: `Email ${args.messageId} deleted successfully`,
-        },
-      ],
+      content: [{ type: "text", text: `Email ${args.messageId} deleted successfully` }],
+      structuredContent: { messageId: args.messageId, status: "deleted" },
     };
   },
 };
