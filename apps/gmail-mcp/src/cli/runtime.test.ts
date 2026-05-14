@@ -6,7 +6,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { exitCodeForError, formatToolResultText, printToolResult, resolveBodyInput } from "./runtime.js";
+import {
+  exitCodeForError,
+  formatToolResultText,
+  printToolResult,
+  resolveBodyInput,
+} from "./runtime.js";
 
 describe("formatToolResultText", () => {
   it("joins multiple text fragments", () => {
@@ -68,10 +73,7 @@ describe("printToolResult", () => {
       return true;
     };
     try {
-      printToolResult(
-        { content: [{ type: "text", text: "just text" }] },
-        { json: true },
-      );
+      printToolResult({ content: [{ type: "text", text: "just text" }] }, { json: true });
     } finally {
       process.stdout.write = orig;
     }
