@@ -17,11 +17,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { buildAuthCommand } from "./commands/auth.js";
+import { buildBatchDeleteCommand, buildBatchModifyCommand } from "./commands/batch.js";
+import { buildDownloadAttachmentCommand, buildDownloadEmailCommand } from "./commands/downloads.js";
+import { buildFiltersCommand } from "./commands/filters.js";
 import { buildHealthCommand } from "./commands/health.js";
 import { buildLabelsCommand } from "./commands/labels.js";
+import { buildDeleteCommand, buildModifyCommand } from "./commands/messages.js";
 import { buildReadCommand } from "./commands/read.js";
 import { buildSearchCommand } from "./commands/search.js";
+import { buildDraftCommand, buildReplyAllCommand, buildSendCommand } from "./commands/send.js";
 import { buildServeCommand } from "./commands/serve.js";
+import { buildInboxAliasCommand, buildThreadsCommand } from "./commands/threads.js";
 
 // Read version from package.json at runtime to avoid hand-syncing.
 function readVersion(): string {
@@ -47,7 +53,9 @@ export async function main(argv: readonly string[] = process.argv): Promise<void
         "but for humans and shell scripts. Run `gmail-cli auth` first to authenticate.",
     )
     .version(version, "-V, --version")
-    .option("--json", "Emit machine-readable JSON (where supported by the subcommand)")
+    // Note: --json lives on each subcommand individually. Defining it at the
+    // program level shadows the subcommand flag in Commander v14, so we keep
+    // it scoped.
     .option("-q, --quiet", "Suppress non-error output to stderr")
     .option("-v, --verbose", "Log debug-level information to stderr")
     .addHelpText(
@@ -74,9 +82,21 @@ Scopes (space=toggle, a=all, i=invert in interactive mode):
 
   program.addCommand(buildAuthCommand());
   program.addCommand(buildHealthCommand());
+  program.addCommand(buildInboxAliasCommand());
   program.addCommand(buildSearchCommand());
   program.addCommand(buildReadCommand());
+  program.addCommand(buildThreadsCommand());
+  program.addCommand(buildSendCommand());
+  program.addCommand(buildReplyAllCommand());
+  program.addCommand(buildDraftCommand());
+  program.addCommand(buildModifyCommand());
+  program.addCommand(buildDeleteCommand());
+  program.addCommand(buildBatchModifyCommand());
+  program.addCommand(buildBatchDeleteCommand());
   program.addCommand(buildLabelsCommand());
+  program.addCommand(buildFiltersCommand());
+  program.addCommand(buildDownloadEmailCommand());
+  program.addCommand(buildDownloadAttachmentCommand());
   program.addCommand(buildServeCommand());
 
   // Phase C continuation will add: inbox, read, search, threads, send,

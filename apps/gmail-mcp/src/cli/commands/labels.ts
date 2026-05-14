@@ -1,13 +1,7 @@
-// `gmail-cli labels list` — minimal sub-command demo for the labels namespace.
-// Other label ops (create / update / delete / get-or-create) follow the same
-// pattern.
+// `gmail-cli labels …` — list + CRUD.
 
 import { Command } from "commander";
-import { bootstrapForCli, callMcpTool, formatToolResultText } from "../runtime.js";
-
-export interface LabelsListOptions {
-  json?: boolean;
-}
+import { runCliOp } from "../runtime.js";
 
 export function buildLabelsCommand(): Command {
   const cmd = new Command("labels");
@@ -16,22 +10,79 @@ export function buildLabelsCommand(): Command {
   cmd
     .command("list")
     .description("List all available labels (system + user)")
-    .option("--json", "Emit raw MCP tool result as JSON")
-    .action(async (options: LabelsListOptions) => {
-      try {
-        await bootstrapForCli();
-        const result = await callMcpTool("list_email_labels", {});
-        if (options.json) {
-          process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-        } else {
-          process.stdout.write(`${formatToolResultText(result)}\n`);
-        }
-        process.exit(result.isError ? 1 : 0);
-      } catch (err) {
-        const e = err as Error;
-        process.stderr.write(`Error: ${e.message}\n`);
-        process.exit(/credentials|invalid_grant|gmail-cli auth/i.test(e.message) ? 2 : 1);
-      }
+    .option("--json", "Emit typed JSON")
+    .action(async (options: { json?: boolean }) => {
+      await runCliOp("list_email_labels", {}, options);
+    });
+
+  cmd
+    .command("create")
+    .description("Create a new user label")
+    .argument("<name>", "Label name")
+    .option("--show", "messageListVisibility=show (default: hide)")
+    .option("--label-list <vis>", "labelListVisibility (labelShow / labelShowIfUnread / labelHide)")
+    .option("--json", "Emit typed JSON")
+    .action(
+      async (name: string, options: { show?: boolean; labelList?: string; json?: boolean }) => {
+        await runCliOp(
+          "create_label",
+          {
+            name,
+            messageListVisibility: options.show ? "show" : undefined,
+            labelListVisibility: options.labelList,
+          },
+          { json: options.json },
+        );
+      },
+    );
+
+  cmd
+    .command("update <id>")
+    .description("Update an existing label")
+    .option("--name <name>", "New name")
+    .option("--show", "messageListVisibility=show")
+    .option("--hide", "messageListVisibility=hide")
+    .option("--label-list <vis>", "labelListVisibility")
+    .option("--json", "Emit typed JSON")
+    .action(
+      async (
+        id: string,
+        options: {
+          name?: string;
+          show?: boolean;
+          hide?: boolean;
+          labelList?: string;
+          json?: boolean;
+        },
+      ) => {
+        const messageListVisibility = options.show ? "show" : options.hide ? "hide" : undefined;
+        await runCliOp(
+          "update_label",
+          {
+            id,
+            name: options.name,
+            messageListVisibility,
+            labelListVisibility: options.labelList,
+          },
+          { json: options.json },
+        );
+      },
+    );
+
+  cmd
+    .command("delete <id>")
+    .description("Delete a label (irreversible)")
+    .option("--json", "Emit typed JSON")
+    .action(async (id: string, options: { json?: boolean }) => {
+      await runCliOp("delete_label", { id }, options);
+    });
+
+  cmd
+    .command("get-or-create <name>")
+    .description("Get an existing label by name, or create it")
+    .option("--json", "Emit typed JSON")
+    .action(async (name: string, options: { json?: boolean }) => {
+      await runCliOp("get_or_create_label", { name }, options);
     });
 
   return cmd;

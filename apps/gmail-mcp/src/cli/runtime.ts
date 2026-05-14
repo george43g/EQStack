@@ -5,6 +5,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { callMcpTool } from "../index.js";
 
 let bootstrapped = false;
 
@@ -58,4 +59,66 @@ export function formatToolResultText(result: {
     .filter((c) => c.type === "text")
     .map((c) => c.text)
     .join("\n");
+}
+
+/**
+ * Generic exit-code mapper for CLI command errors. Returns 2 for auth /
+ * credential issues (so scripts can branch on "needs re-auth"), 3 for usage
+ * errors, 1 otherwise.
+ */
+export function exitCodeForError(err: Error): number {
+  const msg = err.message ?? "";
+  if (/credentials|invalid_grant|gmail-cli auth/i.test(msg)) return 2;
+  if (/INVALID_SCOPE|invalid scope|usage/i.test(msg)) return 3;
+  return 1;
+}
+
+/**
+ * Print an MCP tool result to stdout in either JSON (typed structured
+ * content preferred) or human-readable text mode. Centralised so every
+ * subcommand emits consistent output and `--json` is always type-true JSON
+ * rather than the legacy wrapped text envelope.
+ */
+export function printToolResult(
+  result: {
+    content?: Array<{ type: string; text: string }>;
+    isError?: boolean;
+    structuredContent?: unknown;
+  },
+  options: { json?: boolean } = {},
+): void {
+  if (options.json) {
+    // Prefer the typed structured payload (Phase B2); fall back to the
+    // text envelope wrapped as { text } so the consumer always gets valid
+    // JSON to parse.
+    const payload =
+      result.structuredContent !== undefined
+        ? result.structuredContent
+        : { text: formatToolResultText(result) };
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+  } else {
+    process.stdout.write(`${formatToolResultText(result)}\n`);
+  }
+}
+
+/**
+ * Standard subcommand wrapper: bootstrap, run the supplied async fn, format
+ * the MCP result, exit with the right code. Eliminates the boilerplate every
+ * per-op command would otherwise repeat.
+ */
+export async function runCliOp(
+  toolName: string,
+  args: unknown,
+  options: { json?: boolean } = {},
+): Promise<never> {
+  try {
+    await bootstrapForCli();
+    const result = await callMcpTool(toolName, args);
+    printToolResult(result, options);
+    process.exit(result.isError ? 1 : 0);
+  } catch (err) {
+    const e = err as Error;
+    process.stderr.write(`Error: ${e.message}\n`);
+    process.exit(exitCodeForError(e));
+  }
 }
