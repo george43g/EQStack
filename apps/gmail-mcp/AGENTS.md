@@ -67,18 +67,24 @@ src/
 │   │                     #   wrapping + per-tool withTimeout + scope gating
 │   └── http.ts           # Streamable HTTP transport + bearer-token auth + /health endpoint
 │
-├── cli/                  # gmail-cli (commander)
-│   ├── index.ts          # bin entry; sets up commander program; lazy-loads subcommands
+├── cli/                  # gmail-cli (commander) — full parity with the MCP catalog
+│   ├── index.ts          # bin entry; sets up commander program; wires subcommands
 │   ├── help.ts           # Shared printAuthSourcesHelp() — used by both bins
-│   ├── runtime.ts        # bootstrapForCli() + helpers used by all subcommands
+│   ├── runtime.ts        # bootstrapForCli + runCliOp + printToolResult + helpers
 │   └── commands/
 │       ├── auth.ts       # auth: scope resolution + OAuth flow + (--print-json env capture)
-│       │                 #   runAuthCommand exported and reused by `gmail-mcp auth` shim
-│       ├── health.ts     # health: local canary, no Gmail call, --json output
-│       ├── search.ts     # search <query> — calls callMcpTool("search_emails", …)
-│       ├── read.ts       # read <messageId> — calls callMcpTool("read_email", …)
-│       ├── labels.ts     # labels list (more subcommands following same pattern pending)
-│       └── serve.ts      # serve [--http]: runs the MCP (stdio default; --http for remote)
+│       │                 #   runAuthCommand reused by `gmail-mcp auth` shim
+│       ├── health.ts     # health: local canary, --json returns typed HealthSnapshot
+│       ├── search.ts     # search <query>
+│       ├── read.ts       # read <messageId>
+│       ├── threads.ts    # threads {list, get, modify, inbox} + top-level inbox alias
+│       ├── send.ts       # send, draft, reply-all (shared body resolution; @file / stdin / literal)
+│       ├── messages.ts   # modify, delete (per-message)
+│       ├── batch.ts      # batch-modify, batch-delete (--ids comma | @file)
+│       ├── labels.ts     # labels {list, create, update, delete, get-or-create}
+│       ├── filters.ts    # filters {list, get, create, delete, template}
+│       ├── downloads.ts  # download-email, download-attachment
+│       └── serve.ts      # serve [--http]: stdio default; --http for remote-mode
 │
 └── robustness/           # Reusable robustness library — surface-agnostic
     ├── env.ts            # envNum / envBool / envStr helpers
@@ -236,6 +242,55 @@ Connect any MCP host:
 - Claude Code: `claude mcp add --transport http --url https://gmail.example.com/mcp --header "Authorization: Bearer $TOKEN" gmail-remote`
 - OpenCode: `opencode.json` → `{ type: "remote", url, headers: { Authorization: "Bearer ${GMAIL_HTTP_TOKEN}" } }`
 - Cursor / Warp: stdio-only currently — proxy locally with a thin stub if needed (deferred to Phase G2).
+
+## gmail-cli subcommand catalogue
+
+Every Gmail tool has a corresponding `gmail-cli` subcommand. All commands accept `--json` (emits the typed `OperationResult.structuredContent` payload — see B2 below) and exit with `0` on success, `1` general error, `2` auth error (credentials missing / `invalid_grant`), `3` schema / usage error.
+
+| Subcommand | Tool | Notes |
+|---|---|---|
+| `auth` | (OAuth flow) | Browser-based; `--headless` for remote servers; `--print-json` to capture creds + keys for env-driven deploys |
+| `health` | `health_check` | No Gmail call; local canary. `--json` returns typed `HealthSnapshot` |
+| `inbox` | `list_inbox_threads` | Shortcut for `threads list -q in:inbox` |
+| `search <query>` | `search_emails` | `--max N`. `--json` returns `{resultCount, results[]}` |
+| `read <messageId>` | `read_email` | `--json` returns full message body + attachments metadata |
+| `threads list` | `list_inbox_threads` | `--query`, `--max` |
+| `threads get <id>` | `get_thread` | `--format full|metadata|minimal` |
+| `threads modify <id>` | `modify_thread` | `--add ids`, `--remove ids` |
+| `threads inbox` | `get_inbox_with_threads` | `--expand` to fetch full message content per thread |
+| `send` | `send_email` | `-t`, `-s`, `-b` (literal / `'-'` for stdin / `'@file'`), `--cc`, `--bcc`, `--attach` (repeatable), `--thread-id`, `--in-reply-to`, `--from` (send-as alias), `--mime-type` |
+| `draft` | `draft_email` | Same flags as `send`; creates draft instead of sending |
+| `reply-all <messageId>` | `reply_all` | Auto-builds To/CC and threading headers from the original; `-b` body required |
+| `modify <messageId>` | `modify_email` | `--add ids`, `--remove ids` |
+| `delete <messageId>` | `delete_email` | Permanent (irreversible) |
+| `batch-modify` | `batch_modify_emails` | `--ids` comma-separated or `@file.txt`; `--add`, `--remove`, `--batch-size`; max 500 |
+| `batch-delete` | `batch_delete_emails` | `--ids` same syntax; `--batch-size`; max 500 |
+| `labels list` | `list_email_labels` | |
+| `labels create <name>` | `create_label` | `--show`, `--label-list` |
+| `labels update <id>` | `update_label` | `--name`, `--show`/`--hide`, `--label-list` |
+| `labels delete <id>` | `delete_label` | |
+| `labels get-or-create <name>` | `get_or_create_label` | Idempotent |
+| `filters list` | `list_filters` | |
+| `filters get <id>` | `get_filter` | |
+| `filters create` | `create_filter` | `--from`, `--to`, `--subject`, `--query`, `--has-attachment`, `--add-label`, `--remove-label`, `--forward` |
+| `filters delete <id>` | `delete_filter` | |
+| `filters template <name>` | `create_filter_from_template` | Templates: `fromSender`, `withSubject`, `withAttachments`, `largeEmails`, `containingText`, `mailingList` |
+| `download-email <id>` | `download_email` | `-o save-dir`, `-f json|eml|txt|html` |
+| `download-attachment <id> <attId>` | `download_attachment` | `-o save-dir`, `--filename` |
+| `serve [--http]` | (transport) | Starts the MCP; `--http` + `--port`, `--bind`, `--token-env` for Streamable HTTP mode |
+
+CLI commands are thin wrappers over `callMcpTool(name, args)` (in-process; no child-process spawn). The common boilerplate is `runCliOp(toolName, args, {json}) -> Promise<never>` in `src/cli/runtime.ts`.
+
+## Typed structured outputs (Phase B2)
+
+Every registered op declares an `outputSchema` (a zod schema in `src/tools.ts`) and populates `OperationResult.structuredContent: z.infer<typeof outputSchema>` on its return. The MCP wire protocol still ships the legacy `content: [{type:"text", text:"..."}]` envelope unchanged; the typed JSON rides alongside.
+
+Three consumers benefit:
+- **`gmail-cli --json`** — emits the typed structured payload directly. `gmail-cli search "in:inbox" --json` returns `{resultCount, results: [{id, subject, from, date}, ...]}` ready for `jq`, not the wrapped text envelope.
+- **TUI hooks (Phase D)** — bind to typed `result.structuredContent` fields without parsing text.
+- **MCP hosts that respect `outputSchema`** — get type info per tool, can validate responses.
+
+Op handlers without an `outputSchema` stay text-only (no breakage; just no `--json` benefit). To opt a new op in: add a `*OutputSchema` to `src/tools.ts`, set `outputSchema` on the registry entry, and populate `structuredContent` on the return.
 
 ## MCP best practices enforced in this codebase
 
