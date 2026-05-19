@@ -127,6 +127,15 @@ Scopes (space=toggle, a=all, i=invert in interactive mode):
 }
 
 export async function main(argv: readonly string[] = process.argv): Promise<void> {
+  // Hidden top-level flag: dump the usage(KDL) spec and exit. The `usage`
+  // binary consumes it for shell completions / manpages. See README →
+  // "Shell completions" for setup.
+  if (argv.includes("--usage-spec")) {
+    const { generateToStdout } = await import("@usage-spec/commander");
+    const program = buildProgram();
+    generateToStdout(program, "gmail");
+    process.exit(0);
+  }
   const program = buildProgram();
   await program.parseAsync(argv as string[]);
 }

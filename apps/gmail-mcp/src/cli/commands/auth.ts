@@ -56,11 +56,11 @@ export function buildAuthCommand(): Command {
     )
     .option(
       "--oauth-path <path>",
-      `Path to gcp-oauth.keys.json (default: ${DEFAULT_OAUTH_PATH}, or GMAIL_OAUTH_PATH env)`,
+      "Path to gcp-oauth.keys.json (default: ~/.gmail-mcp/gcp-oauth.keys.json, or GMAIL_OAUTH_PATH env)",
     )
     .option(
       "--credentials-path <path>",
-      `Where to save credentials (default: ${DEFAULT_CREDENTIALS_PATH}, or GMAIL_CREDENTIALS_PATH env)`,
+      "Where to save credentials (default: ~/.gmail-mcp/credentials.json, or GMAIL_CREDENTIALS_PATH env)",
     )
     .option(
       "--print-json",

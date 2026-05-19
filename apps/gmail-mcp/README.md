@@ -405,6 +405,36 @@ gmail send -t alice@example.com -s "Subject" -b "Body"
 
 The `tui` and `console` subcommands expose the terminal UI and an interactive REPL respectively (REPL: see `docs/` plan; TUI: Phase D).
 
+### Shell Completions / Manpages
+
+The `gmail` bin ships a [`usage`](https://usage.jdx.dev) spec (`usage.kdl`) that drives shell completions and manpages. Install the `usage` Rust binary once:
+
+```bash
+# Homebrew
+brew install jdx/tap/usage
+
+# mise
+mise use -g usage
+
+# cargo (any OS)
+cargo install usage-cli
+```
+
+Then eval the completion script for your shell — pick one of:
+
+```bash
+# zsh (in .zshrc)
+eval "$(usage complete-word --shell zsh -- gmail)"
+
+# bash (in .bashrc)
+eval "$(usage complete-word --shell bash -- gmail)"
+
+# fish
+usage complete-word --shell fish -- gmail | source
+```
+
+Now `gmail <TAB>` autocompletes subcommands and flags. The runtime spec is also available via `gmail --usage-spec` (prints the same KDL to stdout) — useful for one-off `usage` pipelines.
+
 ## Env-Driven Config (No `~/.gmail-mcp/` Files Needed)
 
 For deployments where you don't want filesystem state (Docker, Cloud Run, ephemeral CI runners, MCP hosts that spawn from arbitrary CWDs), pass everything via env vars in your host config's `env: {}` block.

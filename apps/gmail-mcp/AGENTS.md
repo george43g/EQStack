@@ -340,8 +340,8 @@ Add a case here when you ship anything that changes lifecycle, dispatch, error h
 
 ## Known follow-ups
 
-- **`gmail console` interactive REPL.** Step 2 of the current bin-consolidation work. Snappy aliased commands (`i`, `s`, `r`, `mod`, …), legend printed on startup, inline `@inquirer/prompts` widgets for destructive ops. Routes through the same commander tree as the CLI so the surfaces never drift. See `~/.claude/plans/steady-doodling-cloud.md` Step 2.
-- **`usage` spec generation.** Step 3 of the current bin-consolidation work. Adds `@usage-spec/commander` devDep, a `gen-usage` script, and a committed `usage.kdl` for shell completions / manpages via the [`usage`](https://usage.jdx.dev/) Rust binary.
+- **`gmail console` interactive REPL.** Snappy aliased commands (`i`, `s`, `r`, `mod`, …), legend printed on startup, inline `@inquirer/prompts` widgets for destructive ops. Routes through the same commander tree as the CLI so the surfaces never drift.
+- **`usage.kdl` spec for shell completions.** Generated from the commander tree by `scripts/gen-usage.ts` (run via `pnpm run gen-usage`). `pnpm verify` runs `gen-usage --check` so drift fails CI. The committed `usage.kdl` is consumed by the [`usage`](https://usage.jdx.dev/) Rust binary; `gmail --usage-spec` also prints it on demand.
 - **Phase D — TUI MVP.** Multi-pane Ink/React app with vim-modal keyboard UX, external-editor compose flow, in-memory LRU cache, themes (default ASCII / dracula / solarized / nord / nerd-font). Now wired as `gmail tui` subcommand (not its own bin). See `docs/phase-d-tui-plan.md`.
 - **Phase G2 — multi-tenant HTTP mode.** Defer until a real use case appears. Would add per-request OAuth introspection, per-tenant credential lookup, scope-isolated rate limiting.
 - **`zod` 3 → 4** (with `zod-to-json-schema` co-bump). zod 4 changes the discriminated-union surface, default-value semantics, and error format. The 27 schemas in `tools.ts` plus the test fixtures all need review. Defer until there's a concrete reason — currently no zod 3 bug is biting us.
