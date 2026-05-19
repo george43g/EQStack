@@ -4,18 +4,21 @@
 
 ## What this repo is
 
-Gmail integration exposed through 27 tools (read, search, send, draft, reply-all, labels, filters, threads, downloads, batch ops, plus a `health_check` canary). Authenticates via OAuth2 against a personal Google project. Three binaries ship in this package:
+Gmail integration exposed through 27 tools (read, search, send, draft, reply-all, labels, filters, threads, downloads, batch ops, plus a `health_check` canary). Authenticates via OAuth2 against a personal Google project. **One binary** ships in this package — `gmail` — with mode subcommands:
 
-| Bin | Purpose | Transport |
+| Subcommand | Purpose | Transport |
 |---|---|---|
-| `gmail-mcp` | MCP server (existing surface; default = stdio, `--http` enables Streamable HTTP) | stdio / HTTP |
-| `gmail-cli` | Commander-based CLI for humans + scripts (`auth`, `health`, `serve` so far; per-op subcommands pending) | n/a (in-process calls) |
-| `gmail-tui` | Ink/React TUI (placeholder bin; implementation in Phase D) | n/a |
+| `gmail mcp` | MCP server (default = stdio, `--http` enables Streamable HTTP) | stdio / HTTP |
+| `gmail tui` | Ink/React multi-pane TUI (Phase D — currently a stub) | n/a |
+| `gmail console` | Interactive REPL for ad-hoc Gmail operations | n/a (in-process calls) |
+| `gmail auth`, `gmail search`, … | Per-op CLI subcommands for humans + scripts | n/a (in-process calls) |
+
+Bare `gmail` prints help; the CLI is the default surface.
 
 - **Runtime**: Node.js ≥20.6 (uses native `--env-file`).
 - **Module system**: ESM only (`type: "module"`).
-- **Build**: `tsc` → `dist/`. Run via `npm start` or `node dist/index.js`.
-- **Auth flow** (canonical): `gmail-cli auth [--scopes=…] [--headless] [--print-json]`. Loads OAuth client keys from `GMAIL_OAUTH_KEYS_JSON` env or `~/.gmail-mcp/gcp-oauth.keys.json`, runs the loopback OAuth flow, writes credentials to `~/.gmail-mcp/credentials.json` (or prints them to stdout for env-driven deploys with `--print-json`). The legacy `node dist/index.js auth` invocation still works as an alias. See [Auth scope selection](#auth-scope-selection) and [Credential loader chain](#credential-loader-chain).
+- **Build**: `tsc` → `dist/`. Run via `npm start` or `node dist/cli/index.js`.
+- **Auth flow** (canonical): `gmail auth [--scopes=…] [--headless] [--print-json]`. Loads OAuth client keys from `GMAIL_OAUTH_KEYS_JSON` env or `~/.gmail-mcp/gcp-oauth.keys.json`, runs the loopback OAuth flow, writes credentials to `~/.gmail-mcp/credentials.json` (or prints them to stdout for env-driven deploys with `--print-json`). See [Auth scope selection](#auth-scope-selection) and [Credential loader chain](#credential-loader-chain).
 - **Test runner**: vitest (`pnpm test` / `npm test`).
 - **Quality scripts**: `pnpm lint` (biome), `pnpm typecheck` (`tsc --noEmit`), `pnpm format` (biome write), `pnpm verify` (lint+typecheck+test+build).
 - **Package manager**: both `npm` and `pnpm` are supported. `pnpm-lock.yaml` and `package-lock.json` both live in the repo. Locally, `pnpm` is preferred. **When adding a dep, run `pnpm add <pkg>` followed by `npm install --package-lock-only` to keep both lockfiles in sync without disturbing pnpm's `node_modules` layout.** CI/published-package consumers using `npm` or `bunx` are unaffected.
@@ -67,13 +70,13 @@ src/
 │   │                     #   wrapping + per-tool withTimeout + scope gating
 │   └── http.ts           # Streamable HTTP transport + bearer-token auth + /health endpoint
 │
-├── cli/                  # gmail-cli (commander) — full parity with the MCP catalog
-│   ├── index.ts          # bin entry; sets up commander program; wires subcommands
-│   ├── help.ts           # Shared printAuthSourcesHelp() — used by both bins
+├── cli/                  # `gmail` bin (commander) — full parity with the MCP catalog
+│   ├── index.ts          # bin entry; buildProgram() factory + main(); wires all subcommands
 │   ├── runtime.ts        # bootstrapForCli + runCliOp + printToolResult + helpers
 │   └── commands/
+│       ├── mcp.ts        # gmail mcp [--http]: run the MCP server (stdio default)
+│       ├── tui.ts        # gmail tui: lazy-loads src/tui/index.ts::runTui (Phase D)
 │       ├── auth.ts       # auth: scope resolution + OAuth flow + (--print-json env capture)
-│       │                 #   runAuthCommand reused by `gmail-mcp auth` shim
 │       ├── health.ts     # health: local canary, --json returns typed HealthSnapshot
 │       ├── search.ts     # search <query>
 │       ├── read.ts       # read <messageId>
@@ -83,8 +86,7 @@ src/
 │       ├── batch.ts      # batch-modify, batch-delete (--ids comma | @file)
 │       ├── labels.ts     # labels {list, create, update, delete, get-or-create}
 │       ├── filters.ts    # filters {list, get, create, delete, template}
-│       ├── downloads.ts  # download-email, download-attachment
-│       └── serve.ts      # serve [--http]: stdio default; --http for remote-mode
+│       └── downloads.ts  # download-email, download-attachment
 │
 └── robustness/           # Reusable robustness library — surface-agnostic
     ├── env.ts            # envNum / envBool / envStr helpers
@@ -105,8 +107,8 @@ src/
 - **`src/core/auth-flow.ts`** — imports `google-auth-library` because OAuth-via-Google is intrinsic.
 - **`src/core/ops/*.ts`** — uses `ctx.gmail` from OperationContext to make Gmail API calls. No top-level `googleapis` imports needed; the typed handle comes via the context.
 - **`src/server/*.ts`** — wires the MCP SDK Server to the registry. Consumes `core/session` to read OAuth state.
-- **`src/cli/*.ts`** — CLI surface. Calls `callMcpTool` from `src/index.ts` for everything except auth/help/serve.
-- **`src/index.ts`** — orchestrator only. Heavy lifting moved to `core/` and `server/`.
+- **`src/cli/*.ts`** — CLI surface (the `gmail` bin). Calls `callMcpTool` from `src/index.ts` for tool dispatch; `auth` runs the OAuth flow directly; `mcp` calls `main()` to start the server.
+- **`src/index.ts`** — MCP orchestrator (bootstrap → `buildMcpServer` → transport). No longer a bin entry; only imported by the `mcp` subcommand and the CLI runtime.
 
 ### How a tool call flows
 
@@ -165,7 +167,7 @@ The `src/robustness/` modules form a "robustness harness" that any local stdio M
 | `GMAIL_CREDENTIALS_PATH` | `<configDir>/credentials.json` | Stored access/refresh tokens file path (fallback). |
 | `GMAIL_CREDENTIALS_JSON` | unset | **Inline credentials** — JSON of `{tokens, scopes}`. Wins over 1Password and file. Designed for GH Actions secrets, Docker, k8s. |
 | `GMAIL_CREDENTIALS_OP` | unset | 1Password secret reference (`op://Vault/Item/field`). Shells out to `op read`. Wins over file. |
-| `GMAIL_SCOPES` | unset | Default scope set used by `gmail-cli auth` when `--scopes=` is not passed. Comma- or space-separated shorthand names. |
+| `GMAIL_SCOPES` | unset | Default scope set used by `gmail auth` when `--scopes=` is not passed. Comma- or space-separated shorthand names. |
 | `GMAIL_AUTH_NON_INTERACTIVE` | unset | `1` forces non-interactive auth (skip the checkbox prompt, fall back to defaults). Auto-detected when `CI=true` or stdin is not a TTY. |
 | `GMAIL_HTTP_TOKEN` | unset (required for `--http`) | Bearer token gating `/mcp` requests in HTTP mode. Server refuses to start if `--http` is set but this is empty. Generate with `openssl rand -hex 32`. |
 
@@ -191,7 +193,7 @@ The `src/robustness/` modules form a "robustness harness" that any local stdio M
 
 ## Auth scope selection
 
-`gmail-mcp auth` resolves OAuth scopes via this precedence (first match wins, implemented in `src/auth-scopes.ts`):
+`gmail auth` resolves OAuth scopes via this precedence (first match wins, implemented in `src/auth-scopes.ts`):
 
 1. **`--scopes=foo,bar`** CLI flag (comma- or space-separated shorthand names).
 2. **`GMAIL_SCOPES` env var** — same syntax as the flag. `pnpm run auth` / `npm run auth` auto-load `.env` and `.env.local`, so this is the easiest knob for repeat use.
@@ -217,12 +219,12 @@ OAuth keys (the Google Cloud Console JSON) and access tokens are loaded from ind
 1. `GMAIL_CREDENTIALS_JSON` env — full `{tokens, scopes}` JSON.
 2. `GMAIL_CREDENTIALS_OP` env — 1Password reference (`op://Vault/Item/field`); shells out to `op read`.
 3. File at `GMAIL_CREDENTIALS_PATH` (default `<configDir>/credentials.json`).
-4. Error with hint to run `gmail-cli auth`.
+4. Error with hint to run `gmail auth`.
 
 Together, env-inline keys + env-inline credentials let a deployment run with **zero filesystem state** — useful for Docker, Cloud Run, MCP hosts whose CWD/`.env` we don't control. Capture both in one shot:
 
 ```sh
-gmail-cli auth --print-json > deploy.env.json
+gmail auth --print-json > deploy.env.json
 # emits {GMAIL_OAUTH_KEYS_JSON: "...", GMAIL_CREDENTIALS_JSON: "..."}
 ```
 
@@ -230,7 +232,7 @@ Pipe that into a host's `.mcp.json` `env: {}` block, GH Actions repo secret, 1Pa
 
 ## HTTP transport mode (Phase G)
 
-`gmail-cli serve --http [--port 8080] [--bind 127.0.0.1] [--token-env GMAIL_HTTP_TOKEN]` (or equivalently `gmail-mcp --http …`) exposes the MCP via `StreamableHTTPServerTransport` instead of stdio. Single-tenant: one server process = one Gmail account.
+`gmail mcp --http [--port 8080] [--bind 127.0.0.1] [--token-env GMAIL_HTTP_TOKEN]` exposes the MCP via `StreamableHTTPServerTransport` instead of stdio. Single-tenant: one server process = one Gmail account.
 
 - **Endpoints**: `POST /mcp` (MCP protocol; bearer-token required) + `GET /health` (open; for reverse-proxy probes; returns 503 if `unhealthy`).
 - **Auth**: `Authorization: Bearer <token>` checked against `process.env[GMAIL_HTTP_TOKEN]` (constant-time compare). Server refuses to start if the env is unset.
@@ -243,9 +245,9 @@ Connect any MCP host:
 - OpenCode: `opencode.json` → `{ type: "remote", url, headers: { Authorization: "Bearer ${GMAIL_HTTP_TOKEN}" } }`
 - Cursor / Warp: stdio-only currently — proxy locally with a thin stub if needed (deferred to Phase G2).
 
-## gmail-cli subcommand catalogue
+## gmail subcommand catalogue
 
-Every Gmail tool has a corresponding `gmail-cli` subcommand. All commands accept `--json` (emits the typed `OperationResult.structuredContent` payload — see B2 below) and exit with `0` on success, `1` general error, `2` auth error (credentials missing / `invalid_grant`), `3` schema / usage error.
+Every Gmail tool has a corresponding `gmail` CLI subcommand. All commands accept `--json` (emits the typed `OperationResult.structuredContent` payload — see B2 below) and exit with `0` on success, `1` general error, `2` auth error (credentials missing / `invalid_grant`), `3` schema / usage error.
 
 | Subcommand | Tool | Notes |
 |---|---|---|
@@ -277,7 +279,9 @@ Every Gmail tool has a corresponding `gmail-cli` subcommand. All commands accept
 | `filters template <name>` | `create_filter_from_template` | Templates: `fromSender`, `withSubject`, `withAttachments`, `largeEmails`, `containingText`, `mailingList` |
 | `download-email <id>` | `download_email` | `-o save-dir`, `-f json|eml|txt|html` |
 | `download-attachment <id> <attId>` | `download_attachment` | `-o save-dir`, `--filename` |
-| `serve [--http]` | (transport) | Starts the MCP; `--http` + `--port`, `--bind`, `--token-env` for Streamable HTTP mode |
+| `mcp [--http]` | (transport) | Starts the MCP server; `--http` + `--port`, `--bind`, `--token-env` for Streamable HTTP mode |
+| `tui` | — | Multi-pane Ink/React TUI (Phase D; currently a stub) |
+| `console` | — | Interactive REPL (planned in Step 2 of the bin-consolidation work) |
 
 CLI commands are thin wrappers over `callMcpTool(name, args)` (in-process; no child-process spawn). The common boilerplate is `runCliOp(toolName, args, {json}) -> Promise<never>` in `src/cli/runtime.ts`.
 
@@ -286,7 +290,7 @@ CLI commands are thin wrappers over `callMcpTool(name, args)` (in-process; no ch
 Every registered op declares an `outputSchema` (a zod schema in `src/tools.ts`) and populates `OperationResult.structuredContent: z.infer<typeof outputSchema>` on its return. The MCP wire protocol still ships the legacy `content: [{type:"text", text:"..."}]` envelope unchanged; the typed JSON rides alongside.
 
 Three consumers benefit:
-- **`gmail-cli --json`** — emits the typed structured payload directly. `gmail-cli search "in:inbox" --json` returns `{resultCount, results: [{id, subject, from, date}, ...]}` ready for `jq`, not the wrapped text envelope.
+- **`gmail … --json`** — emits the typed structured payload directly. `gmail search "in:inbox" --json` returns `{resultCount, results: [{id, subject, from, date}, ...]}` ready for `jq`, not the wrapped text envelope.
 - **TUI hooks (Phase D)** — bind to typed `result.structuredContent` fields without parsing text.
 - **MCP hosts that respect `outputSchema`** — get type info per tool, can validate responses.
 
@@ -336,9 +340,9 @@ Add a case here when you ship anything that changes lifecycle, dispatch, error h
 
 ## Known follow-ups
 
-- **Phase B continuation — dispatcher → `core/ops/` registry refactor.** `src/index.ts` is still a ~1900-line file with a single switch/case dispatcher. Phase B's plan is to extract one file per category (`core/ops/messages.ts`, `core/ops/send.ts`, etc.) so each handler is `async (input, ctx) => OperationResult` and the dispatcher becomes a ~30-line lookup loop. Mechanical work; high upside (unblocks per-op CLI commands and TUI hooks). See `~/.claude/plans/steady-doodling-cloud.md` Phase B for the full plan.
-- **Phase C continuation — remaining ~24 CLI subcommands.** `gmail-cli` currently ships `auth`, `health`, `serve`. The remaining 24 (`read`, `search`, `inbox`, `threads`, `send`, `reply-all`, `draft`, `modify`, `delete`, `batch-*`, `labels …`, `filters …`, `download-*`) need their commander definitions + formatters. Easier once #29 lands.
-- **Phase D — TUI MVP.** Multi-pane Ink/React app with vim-modal keyboard UX, external-editor compose flow, in-memory LRU cache, themes (default ASCII / dracula / solarized / nord / nerd-font). See plan file Phase D.
+- **`gmail console` interactive REPL.** Step 2 of the current bin-consolidation work. Snappy aliased commands (`i`, `s`, `r`, `mod`, …), legend printed on startup, inline `@inquirer/prompts` widgets for destructive ops. Routes through the same commander tree as the CLI so the surfaces never drift. See `~/.claude/plans/steady-doodling-cloud.md` Step 2.
+- **`usage` spec generation.** Step 3 of the current bin-consolidation work. Adds `@usage-spec/commander` devDep, a `gen-usage` script, and a committed `usage.kdl` for shell completions / manpages via the [`usage`](https://usage.jdx.dev/) Rust binary.
+- **Phase D — TUI MVP.** Multi-pane Ink/React app with vim-modal keyboard UX, external-editor compose flow, in-memory LRU cache, themes (default ASCII / dracula / solarized / nord / nerd-font). Now wired as `gmail tui` subcommand (not its own bin). See `docs/phase-d-tui-plan.md`.
 - **Phase G2 — multi-tenant HTTP mode.** Defer until a real use case appears. Would add per-request OAuth introspection, per-tenant credential lookup, scope-isolated rate limiting.
 - **`zod` 3 → 4** (with `zod-to-json-schema` co-bump). zod 4 changes the discriminated-union surface, default-value semantics, and error format. The 27 schemas in `tools.ts` plus the test fixtures all need review. Defer until there's a concrete reason — currently no zod 3 bug is biting us.
 - **Wrap remaining Gmail call sites with `withRetry` / `rateLimitAcquire`**. The library is in place and is wired into `read_email` and `search_emails` as the canonical pattern. The other read paths (`list_inbox_threads`, `get_thread`, `download_*`, etc.) and the idempotent writes (`modify_*`, `delete_*`, `batch_*`) are progressive-adoption candidates. Send/draft creation must remain unwrapped (non-idempotent).

@@ -1,14 +1,14 @@
-// `gmail-cli auth` — interactive (or scoped) OAuth flow.
+// `gmail auth` — interactive (or scoped) OAuth flow.
 //
-// Combines the existing scope resolver (src/auth-scopes.ts) with the
-// extracted OAuth flow (src/core/auth-flow.ts). The legacy `gmail-mcp auth`
-// entry in src/index.ts also delegates here so behaviour stays identical.
+// Combines the scope resolver (src/auth-scopes.ts) with the OAuth flow
+// implementation (src/core/auth-flow.ts).
 
 import fs from "node:fs";
 import { Command } from "commander";
 import { resolveScopes } from "../../auth-scopes.js";
 import {
   createOAuthClient,
+  findAvailablePort,
   formatCredentialsForExport,
   loadOAuthKeys,
   runOAuthFlow,
@@ -78,55 +78,6 @@ export function buildAuthCommand(): Command {
   return cmd;
 }
 
-/**
- * Translate a legacy `gmail-mcp auth …` argv (post-`auth` slice) into the
- * Commander option shape `runAuthCommand` expects. Preserves two behaviors
- * the inline `src/index.ts` handler had that the new CLI never exposed:
- *   - URL as positional arg (`gmail-mcp auth https://my.callback/oauth2callback`)
- *     → mapped to `--callback`.
- *   - Bare invocation (no args after `auth`) → caller is expected to render the
- *     precedence-table help separately. This function just returns options.
- *
- * Used by the `gmail-mcp auth` shim in `src/index.ts` so both entry points
- * end up calling `runAuthCommand` with the same option shape.
- */
-export function parseLegacyAuthArgv(argv: readonly string[]): AuthCommandOptions {
-  const opts: AuthCommandOptions = {};
-  for (const arg of argv) {
-    if (arg.startsWith("--scopes=")) {
-      opts.scopes = arg.slice("--scopes=".length);
-    } else if (arg === "--non-interactive") {
-      opts.nonInteractive = true;
-    } else if (arg === "--headless") {
-      opts.headless = true;
-    } else if (arg === "--print-json") {
-      opts.printJson = true;
-    } else if (arg.startsWith("--callback=")) {
-      opts.callback = arg.slice("--callback=".length);
-    } else if (arg.startsWith("--port=")) {
-      const n = Number.parseInt(arg.slice("--port=".length), 10);
-      if (Number.isFinite(n)) opts.port = n;
-    } else if (arg.startsWith("--oauth-path=")) {
-      opts.oauthPath = arg.slice("--oauth-path=".length);
-    } else if (arg.startsWith("--credentials-path=")) {
-      opts.credentialsPath = arg.slice("--credentials-path=".length);
-    } else if (arg.startsWith("http://") || arg.startsWith("https://")) {
-      // Legacy: URL positional → --callback. Only override if no explicit
-      // --callback= was already provided.
-      if (!opts.callback) opts.callback = arg;
-    }
-  }
-  return opts;
-}
-
-/**
- * True when the post-`auth` argv slice contains no flags or URL — the bare
- * invocation case where we render the precedence-table help.
- */
-export function isBareAuthInvocation(argv: readonly string[]): boolean {
-  return argv.every((a) => a === "" || (!a.startsWith("--") && !a.startsWith("http")));
-}
-
 export async function runAuthCommand(options: AuthCommandOptions): Promise<void> {
   // Translate CLI flags into argv-shaped input the existing resolver expects.
   // (resolveScopes was originally written to read process.argv directly; we
@@ -152,11 +103,33 @@ export async function runAuthCommand(options: AuthCommandOptions): Promise<void>
     cwd: process.cwd(),
     configDir: CONFIG_DIR,
   });
-  const oauth2Client = createOAuthClient(keys, options.callback);
+
+  // Port resolution. If the user explicitly passed --port or --callback, we
+  // honour them as-is and let runOAuthFlow surface any EADDRINUSE error.
+  // Otherwise we probe :3000 and fall back to a neighbouring free port so a
+  // busy dev server (a frequent collision) doesn't crash the flow. Loopback-IP
+  // OAuth accepts any localhost:PORT redirect URI without re-registering it
+  // in the Google Cloud Console.
+  // (Headless mode listens but the user opens the URL on a different host, so
+  // port-finding still helps the local listener bind cleanly.)
+  let resolvedPort = options.port;
+  let resolvedCallback = options.callback;
+  if (options.port === undefined && options.callback === undefined) {
+    const chosen = await findAvailablePort(3000);
+    if (chosen !== 3000) {
+      process.stderr.write(
+        `Port 3000 is in use; using port ${chosen} instead for the OAuth callback.\n`,
+      );
+    }
+    resolvedPort = chosen;
+    resolvedCallback = `http://localhost:${chosen}/oauth2callback`;
+  }
+
+  const oauth2Client = createOAuthClient(keys, resolvedCallback);
 
   const result = await runOAuthFlow(oauth2Client, resolved.scopes, {
-    callback: options.callback,
-    port: options.port,
+    callback: resolvedCallback,
+    port: resolvedPort,
     headless: options.headless ?? false,
     log: (line) => process.stderr.write(`${line}\n`),
   });

@@ -1,11 +1,11 @@
-# Phase D — TUI MVP (gmail-tui)
+# Phase D — TUI MVP (`gmail tui`)
 
-> **Status**: planned, not started. Stub bin entry exists (`gmail-tui` → `dist/tui/index.js`); no implementation yet.
-> **Prerequisites met**: registry refactor (B1) ✅, typed structured outputs (B2) ✅, CLI fan-out ✅. The TUI is the last major piece on the master plan.
+> **Status**: planned, not started. Wired as the `gmail tui` subcommand (lazy-loads `src/tui/index.ts::runTui`); a placeholder export currently makes the subcommand print "not yet implemented" until this plan ships.
+> **Prerequisites met**: registry refactor (B1) ✅, typed structured outputs (B2) ✅, CLI fan-out ✅, bin consolidation ✅. The TUI is the last major piece on the master plan.
 
 ## Context
 
-`gmail-mcp` (stdio) and `gmail-cli` (commander) are done. The third bin, `gmail-tui`, is a full-screen Ink/React terminal client over the same `core/ops/` registry. It exists so power users who live in a terminal can read, search, and triage Gmail faster than the web UI — keyboard-driven, low memory, network-friendly enough to run over `tmux` + SSH/mosh on a remote server.
+The package now ships a single `gmail` bin with subcommands. `gmail mcp` and the per-op CLI (`gmail auth`, `gmail search`, `gmail send`, …) are done. The TUI mode (`gmail tui`) is a full-screen Ink/React terminal client over the same `core/ops/` registry — keyboard-driven, low memory, network-friendly enough to run over `tmux` + SSH/mosh on a remote server.
 
 **Positioning**: this is a Gmail TUI, not a generic email client. We lean on the server (Gmail does search, threading, filtering); the TUI is a thin, fast, keyboard-first viewer + composer. Lean memory, no local mailstore, no background polling. Power users get a vim-style modal interface they can fly around without touching the mouse.
 
@@ -188,7 +188,7 @@ src/tui/
 - `:help` → show help overlay
 - `:theme <name>` → switch theme live
 - `:editor <bin>` → override editor for this session
-- `:auth` → re-run `gmail-cli auth` (suspend, exec, resume — same pattern as editor)
+- `:auth` → re-run `gmail auth` (suspend, exec, resume — same pattern as editor)
 - `:health` → show health snapshot
 - `:stats` → toggle dev stats modal
 - `:search <query>` → run Gmail search; switches main pane to results

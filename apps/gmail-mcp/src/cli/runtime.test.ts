@@ -108,7 +108,7 @@ describe("exitCodeForError", () => {
   it("maps auth errors to 2", () => {
     expect(exitCodeForError(new Error("invalid_grant"))).toBe(2);
     expect(exitCodeForError(new Error("credentials missing"))).toBe(2);
-    expect(exitCodeForError(new Error("Run gmail-cli auth"))).toBe(2);
+    expect(exitCodeForError(new Error("Run gmail auth"))).toBe(2);
   });
 
   it("maps schema errors to 3", () => {

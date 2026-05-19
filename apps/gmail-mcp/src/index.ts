@@ -1,25 +1,19 @@
-#!/usr/bin/env node
+// MCP server orchestrator.
 //
-// gmail-mcp — stdio MCP server entry point.
+// `gmail mcp` (and `gmail mcp --http`) routes here via the commander tree in
+// src/cli/index.ts. The CLI commands also reach `callMcpTool` in-process via
+// the runtime helper in src/cli/runtime.ts.
 //
-// Three surfaces consume this package:
-//   - `gmail-mcp` (this bin)   — stdio MCP; --http enables Streamable HTTP
-//   - `gmail-cli` (src/cli)    — Commander CLI; calls callMcpTool in-process
-//   - `gmail-tui` (placeholder)— Phase D, pending
-//
-// This file is a thin orchestrator. Heavy lifting lives in:
+// Heavy lifting lives in:
 //   - src/core/                — credentials, config paths, session state,
 //                                registry, per-tool op handlers
 //   - src/server/build.ts      — MCP Server factory + dispatcher closure
 //   - src/server/http.ts       — Streamable HTTP transport (Phase G)
-//   - src/cli/commands/auth.ts — OAuth flow (shared by gmail-mcp auth and
-//                                gmail-cli auth)
+//   - src/cli/commands/auth.ts — OAuth flow
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { OAuth2Client } from "google-auth-library";
 import { google } from "googleapis";
-import { isBareAuthInvocation, parseLegacyAuthArgv, runAuthCommand } from "./cli/commands/auth.js";
-import { printAuthSourcesHelp } from "./cli/help.js";
 import { loadOAuthKeys } from "./core/auth-flow.js";
 import { getConfigDir, getCredentialsPath, getOAuthPath } from "./core/config-paths.js";
 import { loadCredentials as coreLoadCredentials } from "./core/credentials.js";
@@ -33,7 +27,6 @@ import {
   enableStdinEofDetection,
   installShutdownHandlers,
   installWatchdog,
-  error as logError,
   info as logInfo,
   logShutdown,
   logStartup,
@@ -105,7 +98,7 @@ async function loadCredentials(): Promise<LoadedCredentials | null> {
     } catch (err) {
       const e = err as { source?: string; name?: string; message?: string };
       if (e.name === "CredentialLoadError" && e.source === "file") {
-        // No file yet — user will run `gmail-cli auth` to create it.
+        // No file yet — user will run `gmail auth` to create it.
       } else {
         console.error(`Error loading credentials: ${e.message ?? err}`);
         await shutdown(1);
@@ -124,8 +117,8 @@ async function loadCredentials(): Promise<LoadedCredentials | null> {
 /**
  * Main entry. `skipTransport: true` runs the full bootstrap (credentials +
  * Gmail client + dispatcher) but does NOT install stdio or HTTP transport —
- * used by `gmail-cli` and the TUI to reach callMcpTool in-process without
- * becoming an MCP server.
+ * used by the CLI runtime to reach callMcpTool in-process without becoming
+ * an MCP server.
  */
 export async function main(opts: { skipTransport?: boolean } = {}) {
   installShutdownHandlers();
@@ -133,24 +126,6 @@ export async function main(opts: { skipTransport?: boolean } = {}) {
   startHeapMonitor();
   installWatchdog();
   logStartup("gmail-mcp");
-
-  // Legacy `gmail-mcp auth` shim — delegates to runAuthCommand, the same
-  // implementation gmail-cli uses. Preserves the URL-positional shorthand
-  // and the bare-invocation precedence-table help.
-  if (process.argv[2] === "auth") {
-    const authArgv = process.argv.slice(3);
-    const authOpts = parseLegacyAuthArgv(authArgv);
-    if (isBareAuthInvocation(authArgv)) printAuthSourcesHelp();
-    try {
-      await runAuthCommand(authOpts);
-      await shutdown(0);
-    } catch (err) {
-      const e = err as Error & { code?: string };
-      process.stderr.write(`Error: ${e.message}\n`);
-      await shutdown(e.code === "INVALID_SCOPE" ? 3 : 2);
-    }
-    return;
-  }
 
   // Normal MCP path: load credentials, publish session, build server.
   const loaded = await loadCredentials();
@@ -216,24 +191,4 @@ function parseStringFlag(flag: string, fallback: string): string {
     return process.argv[idx + 1] ?? fallback;
   }
   return arg.slice(flag.length + 1) || fallback;
-}
-
-// Auto-run main() only when this file is the process entry point (e.g.
-// `node dist/index.js` or `gmail-mcp` bin). When imported by another
-// module (CLI subcommands, tests), main() is invoked explicitly via
-// `main({ skipTransport: true })`.
-const _entryPoint = process.argv[1] ?? "";
-const _isMain =
-  _entryPoint.endsWith("/dist/index.js") ||
-  _entryPoint.endsWith("/src/index.ts") ||
-  _entryPoint.endsWith("\\dist\\index.js") ||
-  _entryPoint.endsWith("\\src\\index.ts") ||
-  _entryPoint.endsWith("/gmail-mcp");
-
-if (_isMain) {
-  main().catch((error) => {
-    logError("server error", { message: error?.message, stack: error?.stack });
-    console.error("Server error:", error);
-    void shutdown(1);
-  });
 }

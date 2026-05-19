@@ -15,7 +15,7 @@
  *   - `nodemon` would add a dev dependency. fs.watch is built into Node.
  *
  * Env:
- *   MCP_DEV_CMD       — child command (default: "tsx src/index.ts" relative to cwd)
+ *   MCP_DEV_CMD       — child command (default: "tsx src/cli/index.ts mcp" relative to cwd)
  *   MCP_DEV_WATCH_DIR — dir to watch recursively (default: "src")
  */
 
@@ -23,7 +23,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { watch } from "node:fs";
 import { resolve } from "node:path";
 
-const MCP_DEV_CMD = process.env.MCP_DEV_CMD || "tsx src/index.ts";
+const MCP_DEV_CMD = process.env.MCP_DEV_CMD || "tsx src/cli/index.ts mcp";
 const WATCH_DIR = resolve(process.cwd(), process.env.MCP_DEV_WATCH_DIR || "src");
 const RESTART_DELAY_MS = 100;
 const RESPAWN_TIMEOUT_MS = 10_000;

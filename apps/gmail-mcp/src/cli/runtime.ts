@@ -14,7 +14,7 @@ let bootstrapped = false;
  * and exposes the dispatcher via callMcpTool. Subsequent calls are no-ops.
  *
  * Throws with a clear message if credentials are missing — callers should
- * surface that to the user with a hint to run `gmail-cli auth`.
+ * surface that to the user with a hint to run `gmail auth`.
  */
 export async function bootstrapForCli(): Promise<void> {
   if (bootstrapped) return;
@@ -68,7 +68,7 @@ export function formatToolResultText(result: {
  */
 export function exitCodeForError(err: Error): number {
   const msg = err.message ?? "";
-  if (/credentials|invalid_grant|gmail-cli auth/i.test(msg)) return 2;
+  if (/credentials|invalid_grant|gmail auth/i.test(msg)) return 2;
   if (/INVALID_SCOPE|invalid scope|usage/i.test(msg)) return 3;
   return 1;
 }
@@ -101,24 +101,68 @@ export function printToolResult(
   }
 }
 
+export interface ToolResult {
+  content?: Array<{ type: string; text: string }>;
+  isError?: boolean;
+  structuredContent?: unknown;
+}
+
+export interface CliOpOutcome {
+  /** Raw MCP result when the dispatch completed (may still be isError). */
+  result?: ToolResult;
+  /** True when either the dispatcher returned isError or bootstrap threw. */
+  isError: boolean;
+  /** Set when bootstrap or dispatch threw (NOT for tool-level isError). */
+  errorMessage?: string;
+}
+
 /**
- * Standard subcommand wrapper: bootstrap, run the supplied async fn, format
- * the MCP result, exit with the right code. Eliminates the boilerplate every
- * per-op command would otherwise repeat.
+ * REPL-safe op execution. Bootstraps the dispatcher (idempotent), runs the
+ * tool, prints the formatted result, and returns the outcome. Never calls
+ * process.exit — that's `runCliOp`'s job for CLI mode.
+ *
+ * Used directly by `src/cli/console.ts` so the interactive REPL doesn't
+ * tear down the process after each command.
+ */
+export async function executeCliOp(
+  toolName: string,
+  args: unknown,
+  options: { json?: boolean } = {},
+): Promise<CliOpOutcome> {
+  try {
+    await bootstrapForCli();
+    const result = (await callMcpTool(toolName, args)) as ToolResult;
+    printToolResult(result, options);
+    return { result, isError: result.isError === true };
+  } catch (err) {
+    const e = err as Error;
+    process.stderr.write(`Error: ${e.message}\n`);
+    return { isError: true, errorMessage: e.message };
+  }
+}
+
+/**
+ * Standard subcommand wrapper: bootstrap → run tool → print → exit with the
+ * right code. Eliminates the boilerplate every per-op command would otherwise
+ * repeat.
+ *
+ * In REPL mode (`process.env.GMAIL_CLI_REPL === "1"`), the exit is suppressed
+ * so the interactive console loop continues. The console code is expected to
+ * set + clear that env around each `program.parseAsync` call.
  */
 export async function runCliOp(
   toolName: string,
   args: unknown,
   options: { json?: boolean } = {},
-): Promise<never> {
-  try {
-    await bootstrapForCli();
-    const result = await callMcpTool(toolName, args);
-    printToolResult(result, options);
-    process.exit(result.isError ? 1 : 0);
-  } catch (err) {
-    const e = err as Error;
-    process.stderr.write(`Error: ${e.message}\n`);
-    process.exit(exitCodeForError(e));
+): Promise<void> {
+  const outcome = await executeCliOp(toolName, args, options);
+  if (process.env.GMAIL_CLI_REPL === "1") {
+    // REPL mode — return control to the console loop. The console renders
+    // its own prompt cue; we deliberately do not exit.
+    return;
   }
+  if (outcome.errorMessage) {
+    process.exit(exitCodeForError(new Error(outcome.errorMessage)));
+  }
+  process.exit(outcome.isError ? 1 : 0);
 }

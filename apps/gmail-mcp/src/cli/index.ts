@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 //
-// gmail-cli — Commander-based CLI surface for Gmail-MCP-Server.
+// gmail — single bin for the Gmail MCP Server package.
 //
-// Three bins ship in this package:
-//   gmail-mcp  — stdio MCP server (the original surface)
-//   gmail-cli  — this binary; subcommands per Gmail operation
-//   gmail-tui  — Ink/React TUI (Phase D)
+// One binary, multiple modes (subcommands):
+//   gmail mcp [--http]      — run the MCP server
+//   gmail tui               — multi-pane terminal UI (Phase D)
+//   gmail console           — interactive REPL for ad-hoc Gmail operations
+//   gmail auth, search, …   — direct CLI for humans + shell scripts
+//
+// Bare `gmail` prints help and exits 0. The CLI is the default surface; the
+// MCP / TUI / console modes are reachable via their explicit subcommands.
 //
 // The CLI is *not* a thin client over the MCP server — it imports the same
 // core modules in-process, so it shares OAuth state and produces richer
@@ -18,16 +22,18 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { buildAuthCommand } from "./commands/auth.js";
 import { buildBatchDeleteCommand, buildBatchModifyCommand } from "./commands/batch.js";
+import { buildConsoleCommand } from "./commands/console.js";
 import { buildDownloadAttachmentCommand, buildDownloadEmailCommand } from "./commands/downloads.js";
 import { buildFiltersCommand } from "./commands/filters.js";
 import { buildHealthCommand } from "./commands/health.js";
 import { buildLabelsCommand } from "./commands/labels.js";
+import { buildMcpCommand } from "./commands/mcp.js";
 import { buildDeleteCommand, buildModifyCommand } from "./commands/messages.js";
 import { buildReadCommand } from "./commands/read.js";
 import { buildSearchCommand } from "./commands/search.js";
 import { buildDraftCommand, buildReplyAllCommand, buildSendCommand } from "./commands/send.js";
-import { buildServeCommand } from "./commands/serve.js";
 import { buildInboxAliasCommand, buildThreadsCommand } from "./commands/threads.js";
+import { buildTuiCommand } from "./commands/tui.js";
 
 // Read version from package.json at runtime to avoid hand-syncing.
 function readVersion(): string {
@@ -42,15 +48,22 @@ function readVersion(): string {
   }
 }
 
-export async function main(argv: readonly string[] = process.argv): Promise<void> {
+/**
+ * Build the commander tree. Exported so the interactive console and the
+ * `usage` spec generator can reuse the exact same subcommand structure
+ * without duplicating it.
+ */
+export function buildProgram(): Command {
   const program = new Command();
   const version = readVersion();
 
   program
-    .name("gmail-cli")
+    .name("gmail")
     .description(
-      "Gmail CLI — runs the same operations as the gmail-mcp MCP server, " +
-        "but for humans and shell scripts. Run `gmail-cli auth` first to authenticate.",
+      "Gmail — single bin for the Gmail MCP Server package. " +
+        "CLI is the default; subcommands `mcp`, `tui`, `console` expose " +
+        "the server, terminal UI, and interactive REPL respectively. " +
+        "Run `gmail auth` first to authenticate.",
     )
     .version(version, "-V, --version")
     // Note: --json lives on each subcommand individually. Defining it at the
@@ -62,12 +75,18 @@ export async function main(argv: readonly string[] = process.argv): Promise<void
       "after",
       `
 Examples:
-  gmail-cli auth                          # interactive scope-picker, opens browser
-  gmail-cli auth --scopes=gmail.readonly  # specific scopes, no prompt
-  gmail-cli auth --headless               # remote-server flow (prints URL only)
-  gmail-cli auth --print-json             # auth, then print credentials JSON to stdout
+  gmail                                   # show this help
+  gmail mcp                               # run the MCP server (stdio)
+  gmail mcp --http --port 8080            # run the MCP server (Streamable HTTP)
+  gmail tui                               # multi-pane terminal UI (Phase D)
+  gmail console                           # interactive REPL
+  gmail auth                              # interactive scope-picker, opens browser
+  gmail auth --scopes=gmail.readonly      # specific scopes, no prompt
+  gmail auth --headless                   # remote-server flow (prints URL only)
+  gmail auth --print-json                 # auth, then print credentials JSON to stdout
                                           # (pipe to GMAIL_CREDENTIALS_JSON / GH secret / 1Password)
-  gmail-cli health                        # local canary; no Gmail API call
+  gmail health                            # local canary; no Gmail API call
+  gmail search "from:noreply" --json      # typed structured payload (jq-friendly)
 
 Credentials sources (first match wins):
   1. GMAIL_CREDENTIALS_JSON   raw JSON  (CI / Docker / k8s secrets)
@@ -80,6 +99,12 @@ Scopes (space=toggle, a=all, i=invert in interactive mode):
 `,
     );
 
+  // Mode subcommands.
+  program.addCommand(buildMcpCommand());
+  program.addCommand(buildTuiCommand());
+  program.addCommand(buildConsoleCommand());
+
+  // CLI operations.
   program.addCommand(buildAuthCommand());
   program.addCommand(buildHealthCommand());
   program.addCommand(buildInboxAliasCommand());
@@ -97,12 +122,12 @@ Scopes (space=toggle, a=all, i=invert in interactive mode):
   program.addCommand(buildFiltersCommand());
   program.addCommand(buildDownloadEmailCommand());
   program.addCommand(buildDownloadAttachmentCommand());
-  program.addCommand(buildServeCommand());
 
-  // Phase C continuation will add: inbox, read, search, threads, send,
-  // reply-all, draft, modify, delete, batch-modify, batch-delete, labels,
-  // filters, download-email, download-attachment, serve, tui.
+  return program;
+}
 
+export async function main(argv: readonly string[] = process.argv): Promise<void> {
+  const program = buildProgram();
   await program.parseAsync(argv as string[]);
 }
 
@@ -114,7 +139,8 @@ const isMain = (() => {
       arg1.endsWith("/cli/index.js") ||
       arg1.endsWith("/cli/index.ts") ||
       arg1.endsWith("\\cli\\index.js") ||
-      arg1.endsWith("\\cli\\index.ts")
+      arg1.endsWith("\\cli\\index.ts") ||
+      arg1.endsWith("/gmail")
     );
   } catch {
     return false;
@@ -123,7 +149,7 @@ const isMain = (() => {
 
 if (isMain) {
   main().catch((err) => {
-    process.stderr.write(`gmail-cli: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(`gmail: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
   });
 }

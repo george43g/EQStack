@@ -1,6 +1,6 @@
 // OAuth2 authentication flow for Gmail-MCP-Server.
 //
-// Shared by `gmail-mcp auth` (legacy entry) and `gmail-cli auth` (new entry).
+// Drives the `gmail auth` CLI subcommand.
 // Implements the loopback-IP redirect pattern that's the only flow Google
 // supports for installed/desktop clients today (OOB was deprecated in 2022).
 //
@@ -13,6 +13,7 @@
 
 import fs from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 import { OAuth2Client } from "google-auth-library";
 import open from "open";
@@ -20,6 +21,57 @@ import { scopeNamesToUrls } from "../scopes.js";
 
 const DEFAULT_CALLBACK = "http://localhost:3000/oauth2callback";
 const DEFAULT_PORT = 3000;
+
+/**
+ * Check whether a TCP port is free on `host`. Resolves true on success,
+ * false on EADDRINUSE / EACCES. Closes the probe socket immediately.
+ */
+function probePort(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", (err) => {
+      const code = (err as NodeJS.ErrnoException).code;
+      resolve(!(code === "EADDRINUSE" || code === "EACCES"));
+    });
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, host);
+  });
+}
+
+/**
+ * Try `preferredPort` first; on conflict, walk the next few ports; if all
+ * are taken, let the OS pick an ephemeral one. Used by `gmail auth` so a
+ * busy port 3000 (a common collision with dev servers) doesn't crash the
+ * flow.
+ */
+export async function findAvailablePort(
+  preferredPort: number,
+  host: string = "127.0.0.1",
+): Promise<number> {
+  if (await probePort(preferredPort, host)) return preferredPort;
+  for (let i = 1; i <= 10; i++) {
+    if (await probePort(preferredPort + i, host)) return preferredPort + i;
+  }
+  // Ephemeral fallback — OS picks any free port.
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", reject);
+    server.once("listening", () => {
+      const addr = server.address();
+      if (typeof addr === "object" && addr && typeof addr.port === "number") {
+        const p = addr.port;
+        server.close(() => resolve(p));
+      } else {
+        reject(new Error("Could not determine ephemeral port"));
+      }
+    });
+    server.listen(0, host);
+  });
+}
 
 export interface OAuthKeys {
   client_id: string;
@@ -44,7 +96,7 @@ export interface OAuthFlowResult {
 
 export interface LoadKeysOptions {
   // Path to gcp-oauth.keys.json on disk. Used as the fallback when env-driven
-  // keys aren't set. Required for the `gmail-cli auth` flow's first run.
+  // keys aren't set. Required for the `gmail auth` flow's first run.
   oauthPath: string;
   cwd?: string; // for the "found in current directory" copy convenience
   configDir?: string; // where to copy local keys to
@@ -195,29 +247,29 @@ export async function runOAuthFlow(
         const code = url.searchParams.get("code");
         const errParam = url.searchParams.get("error");
         if (errParam) {
-          res.writeHead(400);
-          res.end(`OAuth error: ${errParam}. You can close this window.`);
+          res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+          res.end(renderErrorPage(`OAuth consent denied: ${errParam}`));
           cleanup();
           reject(new Error(`OAuth consent denied: ${errParam}`));
           return;
         }
         if (!code) {
-          res.writeHead(400);
-          res.end("Missing authorization code.");
+          res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+          res.end(renderErrorPage("Missing authorization code in callback URL."));
           cleanup();
           reject(new Error("Missing authorization code in callback URL"));
           return;
         }
         const { tokens } = await oauth2Client.getToken(code);
         oauth2Client.setCredentials(tokens);
-        res.writeHead(200);
-        res.end("Authentication successful! You can close this window.");
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(renderSuccessPage(scopes));
         cleanup();
         resolve({ tokens: tokens as unknown as Record<string, unknown>, scopes });
       } catch (err) {
         try {
-          res.writeHead(500);
-          res.end("Authentication failed.");
+          res.writeHead(500, { "content-type": "text/html; charset=utf-8" });
+          res.end(renderErrorPage((err as Error)?.message ?? "Authentication failed."));
         } catch {
           /* ignore */
         }
@@ -264,6 +316,69 @@ export function formatCredentialsForExport(
 ): string {
   return JSON.stringify({ tokens, scopes });
 }
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+const PAGE_STYLES = `
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+         background: #0f1115; color: #e6edf3; margin: 0; min-height: 100vh;
+         display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .card { max-width: 460px; width: 100%; background: #161b22; border: 1px solid #30363d;
+          border-radius: 12px; padding: 36px 32px; text-align: center;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.45); }
+  .icon { font-size: 56px; line-height: 1; margin-bottom: 16px; }
+  h1 { margin: 0 0 8px; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  p { margin: 6px 0; color: #9da7b3; font-size: 14px; line-height: 1.5; }
+  .scopes { margin: 18px 0 6px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .scope { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+           background: #21262d; color: #d2a8ff; padding: 4px 10px; border-radius: 999px; }
+  .footnote { margin-top: 22px; font-size: 12px; color: #6e7681; }
+  .ok h1 { color: #3fb950; }
+  .err .icon { color: #f85149; }
+  .err h1 { color: #f85149; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+         background: #21262d; padding: 2px 6px; border-radius: 4px; color: #e6edf3; }
+`;
+
+function renderSuccessPage(scopes: string[]): string {
+  const chips = scopes.map((s) => `<span class="scope">${escapeHtml(s)}</span>`).join("");
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Authentication successful · gmail</title>
+<style>${PAGE_STYLES}</style></head>
+<body><div class="card ok">
+  <div class="icon">✓</div>
+  <h1>Authentication successful</h1>
+  <p>Credentials have been saved. You can return to the terminal.</p>
+  <div class="scopes">${chips}</div>
+  <p class="footnote">This tab will close automatically in a moment.</p>
+</div>
+<script>setTimeout(function(){ try { window.close(); } catch (_) { /* ignore */ } }, 1500);</script>
+</body></html>`;
+}
+
+function renderErrorPage(message: string): string {
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Authentication failed · gmail</title>
+<style>${PAGE_STYLES}</style></head>
+<body><div class="card err">
+  <div class="icon">✗</div>
+  <h1>Authentication failed</h1>
+  <p>${escapeHtml(message)}</p>
+  <p class="footnote">You can close this tab and re-run <code>gmail auth</code>.</p>
+</div></body></html>`;
+}
+
+// Exported for unit tests; not part of the public auth-flow surface.
+export const _testing = { renderSuccessPage, renderErrorPage };
 
 function portFromCallback(callback: string): number | null {
   try {

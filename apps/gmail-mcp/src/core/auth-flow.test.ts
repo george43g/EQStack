@@ -4,10 +4,11 @@
 // the network and disk. Focus is the loadOAuthKeys precedence + parser.
 
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadOAuthKeys } from "./auth-flow.js";
+import { _testing, findAvailablePort, loadOAuthKeys } from "./auth-flow.js";
 
 let tmpDir: string;
 
@@ -168,5 +169,43 @@ describe("loadOAuthKeys disk path", () => {
     });
     expect(result.client_id).toBe("copied");
     expect(fs.existsSync(targetPath)).toBe(true);
+  });
+});
+
+describe("findAvailablePort", () => {
+  it("returns the preferred port when free", async () => {
+    const port = await findAvailablePort(45123);
+    expect(port).toBe(45123);
+  });
+
+  it("falls back to a neighbouring port when the preferred is in use", async () => {
+    // Hold port :45200 so the probe finds it busy.
+    const blocker = net.createServer();
+    await new Promise<void>((resolve) => blocker.listen(45200, "127.0.0.1", resolve));
+    try {
+      const port = await findAvailablePort(45200);
+      expect(port).not.toBe(45200);
+      expect(port).toBeGreaterThan(45200);
+      expect(port).toBeLessThan(45211);
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    }
+  });
+});
+
+describe("OAuth callback HTML pages", () => {
+  it("renders the success page with scope chips + auto-close script", () => {
+    const html = _testing.renderSuccessPage(["gmail.modify", "gmail.send"]);
+    expect(html).toContain("Authentication successful");
+    expect(html).toContain("gmail.modify");
+    expect(html).toContain("gmail.send");
+    expect(html).toContain("window.close()");
+  });
+
+  it("renders the error page with the supplied message, escaped", () => {
+    const html = _testing.renderErrorPage("OAuth consent denied: <script>alert(1)</script>");
+    expect(html).toContain("Authentication failed");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).not.toContain("<script>alert(1)");
   });
 });

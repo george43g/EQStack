@@ -305,7 +305,9 @@ This enables all 20 tools including sending emails, managing labels, creating fi
 
 ## Other MCP Hosts
 
-This server speaks the standard MCP stdio protocol — any host that supports MCP can talk to it. All examples below assume you've already run `gmail-cli auth` (or `npx @gongrzhe/server-gmail-autoauth-mcp auth`) once on a machine with a browser. The credentials end up in `~/.gmail-mcp/credentials.json`.
+This server speaks the standard MCP stdio protocol — any host that supports MCP can talk to it. All examples below assume you've already run `gmail auth` (or `npx @gongrzhe/server-gmail-autoauth-mcp auth`) once on a machine with a browser. The credentials end up in `~/.gmail-mcp/credentials.json`.
+
+> **Bin layout change (May 2026):** the package now ships a single `gmail` binary. Subcommands `mcp` / `tui` / `console` expose the MCP server, terminal UI, and interactive REPL. Bare `gmail` prints help. **Update existing host configs** that say `args: ["@gongrzhe/server-gmail-autoauth-mcp"]` to `args: ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]` — the trailing `mcp` is required, since the CLI is now the default surface.
 
 If you want to skip the file entirely (CI, Docker, remote server), see [Env-Driven Config](#env-driven-config-no-gmail-mcp-files-needed).
 
@@ -317,7 +319,7 @@ If you want to skip the file entirely (CI, Docker, remote server), see [Env-Driv
     "gmail": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp"]
+      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]
     }
   }
 }
@@ -335,7 +337,7 @@ Same shape as Claude Code's `.mcp.json` — drop the snippet above into project 
     "gmail": {
       "type": "local",
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp"]
+      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]
     }
   }
 }
@@ -349,7 +351,7 @@ Same shape as Claude Code's `.mcp.json` — drop the snippet above into project 
     {
       "name": "gmail",
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp"]
+      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]
     }
   ]
 }
@@ -364,37 +366,44 @@ Open Cline's MCP-server settings (gear icon → "Configure MCP Servers") and pas
 If you have [Bun](https://bun.sh/) installed, swap `npx` for `bunx` in any of the snippets above. Cold-start is ~2–5× faster for first-run downloads, and ~100× faster for subsequent runs from Bun's global cache. Our shebang (`#!/usr/bin/env node`) is preserved, so Bun runs the server under Node.js.
 
 ```json
-{ "mcpServers": { "gmail": { "command": "bunx", "args": ["@gongrzhe/server-gmail-autoauth-mcp"] } } }
+{ "mcpServers": { "gmail": { "command": "bunx", "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"] } } }
 ```
 
 ## CLI Usage
 
-This package ships a `gmail-cli` binary in addition to the MCP server. Use it for scripting, CI, and one-shot terminal operations.
+The `gmail` bin is also a full CLI — same set of operations as the MCP, but typed for humans + scripts. Bare `gmail` prints help.
 
 ```bash
 # Authenticate (interactive scope picker on TTY; opens browser)
-gmail-cli auth
+gmail auth
 
 # Specific scopes, no prompt
-gmail-cli auth --scopes=gmail.readonly
+gmail auth --scopes=gmail.readonly
 
 # Remote-server flow (prints URL only — pair with SSH port-forward)
-gmail-cli auth --headless
+gmail auth --headless
 
 # Capture credentials as env vars (for CI / Docker / 1Password / GH secrets)
-gmail-cli auth --print-json
+gmail auth --print-json
 # Outputs: {"GMAIL_OAUTH_KEYS_JSON": "...", "GMAIL_CREDENTIALS_JSON": "..."}
 
 # Health check (local canary, no Gmail API call)
-gmail-cli health
-gmail-cli health --json
+gmail health
+gmail health --json
 
-# Run the MCP server explicitly
-gmail-cli serve              # stdio (same as gmail-mcp bin)
-gmail-cli serve --http       # HTTP transport on 127.0.0.1:8080
+# Run the MCP server
+gmail mcp                    # stdio
+gmail mcp --http             # HTTP transport on 127.0.0.1:8080
+
+# Per-op operations (full list: `gmail --help`)
+gmail inbox -n 10
+gmail search "from:noreply" --json
+gmail read <messageId>
+gmail labels list
+gmail send -t alice@example.com -s "Subject" -b "Body"
 ```
 
-Per-operation subcommands (`read`, `search`, `inbox`, `send`, `reply-all`, `labels …`, `filters …`, etc.) are pending in upcoming releases.
+The `tui` and `console` subcommands expose the terminal UI and an interactive REPL respectively (REPL: see `docs/` plan; TUI: Phase D).
 
 ## Env-Driven Config (No `~/.gmail-mcp/` Files Needed)
 
@@ -418,7 +427,7 @@ For deployments where you don't want filesystem state (Docker, Cloud Run, epheme
 To capture both env vars in one shot:
 
 ```bash
-gmail-cli auth --print-json > deploy.env.json
+gmail auth --print-json > deploy.env.json
 # pipe into a host config, GH Actions repo secret, 1Password item, etc.
 ```
 
@@ -434,7 +443,7 @@ Same pattern for OAuth client keys: `GMAIL_OAUTH_KEYS_JSON` (env) > `GMAIL_OAUTH
 
 ## Self-Hosting on a Remote Server
 
-You can run this MCP on a Cloud Run / Fly.io / Pi / VPS and have any MCP host connect over HTTPS. The `gmail-cli serve --http` mode wraps the MCP in `StreamableHTTPServerTransport` with bearer-token auth.
+You can run this MCP on a Cloud Run / Fly.io / Pi / VPS and have any MCP host connect over HTTPS. The `gmail mcp --http` mode wraps the MCP in `StreamableHTTPServerTransport` with bearer-token auth.
 
 ### 1. Authenticate locally, then ship credentials to the server
 
@@ -442,7 +451,7 @@ Personal Gmail OAuth requires a browser-based flow — there's no headless way t
 
 ```bash
 # On laptop (with browser):
-gmail-cli auth --scopes=gmail.modify,gmail.compose --print-json > deploy.json
+gmail auth --scopes=gmail.modify,gmail.compose --print-json > deploy.json
 
 # Ship deploy.json to the server (rsync, GH Actions secret, 1Password, etc.)
 ```
@@ -454,7 +463,7 @@ gmail-cli auth --scopes=gmail.modify,gmail.compose --print-json > deploy.json
 export GMAIL_HTTP_TOKEN=$(openssl rand -hex 32)
 export GMAIL_OAUTH_KEYS_JSON='...'        # from deploy.json
 export GMAIL_CREDENTIALS_JSON='...'       # from deploy.json
-gmail-cli serve --http --bind 127.0.0.1 --port 8080
+gmail mcp --http --bind 127.0.0.1 --port 8080
 ```
 
 Endpoints:
@@ -509,7 +518,7 @@ If you'd rather not expose anything publicly, run the auth locally over an SSH t
 ```bash
 ssh -L 3000:localhost:3000 your-server
 # Then on the server:
-gmail-cli auth --headless
+gmail auth --headless
 # Open the printed URL on your laptop browser — the callback tunnels back.
 ```
 
@@ -529,18 +538,18 @@ jobs:
           GMAIL_OAUTH_KEYS_JSON: ${{ secrets.GMAIL_OAUTH_KEYS_JSON }}
           GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
         run: |
-          # CLI send subcommand is pending; for now, drive the MCP via JSON-RPC
-          # or run `gmail-cli serve --http` and curl /mcp. Full per-op CLI commands
-          # are landing in upcoming releases.
-          gmail-cli health
+          gmail send \
+            -t alerts@example.com \
+            -s "Build $GITHUB_RUN_ID succeeded" \
+            -b "See $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 ```
 
 To populate the secrets:
 
 ```bash
-gmail-cli auth --scopes=gmail.send --print-json | jq -r .GMAIL_OAUTH_KEYS_JSON \
+gmail auth --scopes=gmail.send --print-json | jq -r .GMAIL_OAUTH_KEYS_JSON \
   | gh secret set GMAIL_OAUTH_KEYS_JSON
-gmail-cli auth --scopes=gmail.send --print-json | jq -r .GMAIL_CREDENTIALS_JSON \
+gmail auth --scopes=gmail.send --print-json | jq -r .GMAIL_CREDENTIALS_JSON \
   | gh secret set GMAIL_CREDENTIALS_JSON
 ```
 

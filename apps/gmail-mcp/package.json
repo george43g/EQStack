@@ -3,20 +3,18 @@
   "version": "1.1.11",
   "description": "Gmail MCP server with auto authentication support",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/cli/index.js",
   "bin": {
-    "gmail-mcp": "./dist/index.js",
-    "gmail-cli": "./dist/cli/index.js",
-    "gmail-tui": "./dist/tui/index.js"
+    "gmail": "./dist/cli/index.js"
   },
   "scripts": {
+    "preinstall": "pnpm add -g .",
     "build": "tsc",
-    "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local dist/index.js",
-    "cli": "node --env-file-if-exists=.env --env-file-if-exists=.env.local dist/cli/index.js",
-    "tui": "node --env-file-if-exists=.env --env-file-if-exists=.env.local dist/tui/index.js",
-    "dev:mcp": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/index.ts",
-    "dev:cli": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/cli/index.ts",
-    "dev:tui": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/tui/index.tsx",
+    "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local dist/cli/index.js",
+    "dev": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/cli/index.ts",
+    "dev:mcp": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/cli/index.ts mcp",
+    "dev:tui": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/cli/index.ts tui",
+    "dev:console": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/cli/index.ts console",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
@@ -30,13 +28,17 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md"
   ],
   "keywords": [
     "gmail",
+    "email",
     "mcp",
     "cursor",
     "ai",
+    "tui",
+    "cli",
     "oauth",
     "model-context-protocol",
     "google-gmail",
@@ -57,7 +59,9 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=20.6.0"
+    "node": ">=20.6.0",
+    "npm": "not in use",
+    "pnpm": ">=11"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.4.2",

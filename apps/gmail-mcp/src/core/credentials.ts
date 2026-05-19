@@ -155,13 +155,13 @@ export async function loadCredentials(opts: LoadOptions = {}): Promise<LoadedCre
   if (!path) {
     throw new CredentialLoadError(
       "file",
-      "No credentials source configured. Set GMAIL_CREDENTIALS_JSON / GMAIL_CREDENTIALS_OP / GMAIL_CREDENTIALS_PATH, or run `gmail-cli auth`.",
+      "No credentials source configured. Set GMAIL_CREDENTIALS_JSON / GMAIL_CREDENTIALS_OP / GMAIL_CREDENTIALS_PATH, or run `gmail auth`.",
     );
   }
   if (!fileExists(path)) {
     throw new CredentialLoadError(
       "file",
-      `Credentials file not found: ${path}. Run \`gmail-cli auth\` to create it.`,
+      `Credentials file not found: ${path}. Run \`gmail auth\` to create it.`,
     );
   }
   const raw = readFile(path, "utf8");

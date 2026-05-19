@@ -1,4 +1,4 @@
-// `gmail-cli read <messageId> [--json]`
+// `gmail read <messageId> [--json]`
 
 import { Command } from "commander";
 import { runCliOp } from "../runtime.js";

@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const TSX = resolve(ROOT, "node_modules/.bin/tsx");
-const ENTRY = resolve(ROOT, "src/index.ts");
+const ENTRY = resolve(ROOT, "src/cli/index.ts");
 
 interface RpcRequest {
   jsonrpc: "2.0";
@@ -43,7 +43,7 @@ class McpClient {
   public stderr = "";
 
   constructor(env: Record<string, string> = {}) {
-    this.child = spawn(TSX, [ENTRY], {
+    this.child = spawn(TSX, [ENTRY, "mcp"], {
       env: { ...process.env, ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -293,7 +293,7 @@ async function caseHttpTransport(): Promise<void> {
   const token = `stress-token-${Date.now()}`;
   const child = spawn(
     TSX,
-    [ENTRY, "--http", `--port=${port}`, "--bind=127.0.0.1", "--token-env=GMAIL_HTTP_TOKEN"],
+    [ENTRY, "mcp", "--http", `--port=${port}`, "--bind=127.0.0.1", "--token-env=GMAIL_HTTP_TOKEN"],
     {
       cwd: ROOT,
       env: {
