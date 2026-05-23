@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TokenBucket } from "./rate-limit.js";
+import { acquire, defaultLimiterAvailable, TokenBucket } from "./rate-limit.js";
 
 function makeFakeClock(start = 0) {
   let now = start;
@@ -80,5 +80,32 @@ describe("TokenBucket", () => {
   it("rejects negative capacity / rps", () => {
     expect(() => new TokenBucket(-1, 1)).toThrow();
     expect(() => new TokenBucket(1, -1)).toThrow();
+  });
+});
+
+describe("defaultLimiterAvailable singleton", () => {
+  it("exposes a numeric token count from the process-wide bucket", () => {
+    const n = defaultLimiterAvailable();
+    expect(typeof n).toBe("number");
+    expect(Number.isFinite(n)).toBe(true);
+    expect(n).toBeGreaterThanOrEqual(0);
+  });
+
+  it("burst is bounded by MCP_RATE_LIMIT_BURST (default 30) on initial read", () => {
+    // The singleton is created at module load with capacity = burst env value
+    // (default 30). It can never report more tokens than that capacity.
+    const n = defaultLimiterAvailable();
+    expect(n).toBeLessThanOrEqual(30);
+  });
+
+  it("acquire() draws tokens from the same singleton observed by defaultLimiterAvailable", async () => {
+    const before = defaultLimiterAvailable();
+    // If the singleton is rate-limited (DEFAULT_RPS > 0 and tokens available),
+    // a single acquire deducts exactly 1 token before refill can catch up.
+    // We can't assume a clean room (other tests may have pre-drained), so we
+    // only assert non-increase relative to `before`, and that no error throws.
+    await acquire(1);
+    const after = defaultLimiterAvailable();
+    expect(after).toBeLessThanOrEqual(before);
   });
 });

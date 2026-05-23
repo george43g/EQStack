@@ -85,3 +85,92 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("withRetry backoff schedule (jitter + cap)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function makeCapturingTimer() {
+    const delays: number[] = [];
+    const timer = (cb: () => void, ms: number) => {
+      delays.push(ms);
+      setImmediate(cb);
+    };
+    return { delays, timer };
+  }
+
+  it("emits exponential backoff with no jitter when jitter=false", async () => {
+    const { delays, timer } = makeCapturingTimer();
+    const transient = () => Object.assign(new Error("503"), { code: 503 });
+    const fn = vi.fn(async () => {
+      throw transient();
+    });
+
+    await expect(
+      withRetry(fn, {
+        maxAttempts: 4,
+        baseMs: 100,
+        capMs: 10_000,
+        jitter: false,
+        timer,
+      }),
+    ).rejects.toBeDefined();
+
+    // Attempts 1..3 trigger a delay (last attempt re-throws without scheduling).
+    // base * 2^(attempt-1) → 100, 200, 400.
+    expect(delays).toEqual([100, 200, 400]);
+  });
+
+  it("with deterministic Math.random=0, jitter contributes 0 — pure exponential", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { delays, timer } = makeCapturingTimer();
+    const transient = () => Object.assign(new Error("503"), { code: 503 });
+    const fn = vi.fn(async () => {
+      throw transient();
+    });
+
+    await expect(
+      withRetry(fn, {
+        maxAttempts: 4,
+        baseMs: 50,
+        capMs: 10_000,
+        jitter: true,
+        timer,
+      }),
+    ).rejects.toBeDefined();
+    // Math.random()*baseMs = 0 → equals no-jitter path.
+    expect(delays).toEqual([50, 100, 200]);
+  });
+
+  it("with Math.random=0.999, jitter adds ~baseMs — still capped at capMs", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.999);
+    const { delays, timer } = makeCapturingTimer();
+    const transient = () => Object.assign(new Error("503"), { code: 503 });
+    const fn = vi.fn(async () => {
+      throw transient();
+    });
+
+    // baseMs=1000, capMs=2500. exp = min(cap, base*2^(n-1)).
+    // attempt 1: exp=1000, +999.x jitter, capped at 2500 → ~1999.x
+    // attempt 2: exp=2000, +999.x jitter, capped at 2500 → 2500
+    // attempt 3: exp=min(2500, 4000)=2500, +999.x jitter → capped at 2500
+    await expect(
+      withRetry(fn, {
+        maxAttempts: 4,
+        baseMs: 1000,
+        capMs: 2500,
+        jitter: true,
+        timer,
+      }),
+    ).rejects.toBeDefined();
+
+    expect(delays.length).toBe(3);
+    expect(delays[0]).toBeGreaterThan(1000);
+    expect(delays[0]).toBeLessThanOrEqual(2500);
+    expect(delays[1]).toBe(2500);
+    expect(delays[2]).toBe(2500);
+    // Hard cap invariant: nothing ever exceeds capMs.
+    for (const d of delays) expect(d).toBeLessThanOrEqual(2500);
+  });
+});
