@@ -20,6 +20,7 @@ import {
   HealthCheckOutputSchema,
   LabelDeleteOutputSchema,
   LabelMutationOutputSchema,
+  ListAccountsOutputSchema,
   ListEmailLabelsOutputSchema,
   ListFiltersOutputSchema,
   ListInboxThreadsOutputSchema,
@@ -29,6 +30,7 @@ import {
   ReplyAllOutputSchema,
   SearchEmailsOutputSchema,
   SendOrDraftOutputSchema,
+  SwitchAccountOutputSchema,
 } from "./tools.js";
 
 type SchemaCase = {
@@ -325,6 +327,47 @@ const cases: SchemaCase[] = [
       tool_calls: 0,
       recent_errors: 0,
       last_activity_age_s: 0,
+    },
+  },
+  {
+    name: "ListAccountsOutputSchema",
+    schema: ListAccountsOutputSchema,
+    valid: {
+      active: { id: "work", source: "manifest-default", isLegacyImplicit: false },
+      count: 1,
+      accounts: [
+        {
+          id: "work",
+          emailAddress: "w@example.com",
+          scopes: ["gmail.modify"],
+          isDefault: true,
+          isActive: true,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    },
+    // source enum mismatch
+    invalid: {
+      active: { id: "work", source: "bogus", isLegacyImplicit: false },
+      count: 0,
+      accounts: [],
+    },
+  },
+  {
+    name: "SwitchAccountOutputSchema",
+    schema: SwitchAccountOutputSchema,
+    valid: {
+      previousAccountId: "work",
+      newAccountId: "personal",
+      emailAddress: "p@example.com",
+      scopes: ["gmail.readonly"],
+      note: "swapped",
+    },
+    // newAccountId required
+    invalid: {
+      previousAccountId: "work",
+      emailAddress: null,
+      scopes: [],
     },
   },
 ];

@@ -317,6 +317,26 @@ export const HealthCheckSchema = z
     "Returns server health metrics (uptime, memory, event-loop p99, tool call count, recent errors). Does not call Gmail.",
   );
 
+// Multi-account management — does NOT touch the Gmail API.
+export const ListAccountsSchema = z
+  .object({})
+  .describe(
+    "Lists configured Gmail accounts from the local manifest and identifies the currently active account. Read-only; does not call Gmail.",
+  );
+
+export const SwitchAccountSchema = z
+  .object({
+    accountId: z
+      .string()
+      .min(1)
+      .describe(
+        "Account id to make active. Must already exist on disk — see `list_accounts` for available ids, or run `gmail auth --account <id>` from the shell first.",
+      ),
+  })
+  .describe(
+    "Switches the active Gmail account for subsequent tool calls. State change, not destructive.",
+  );
+
 // ----------------------------------------------------------------------------
 // Output schemas (Phase B2)
 //
@@ -528,6 +548,33 @@ export const HealthCheckOutputSchema = z.object({
   tool_calls: z.number(),
   recent_errors: z.number(),
   last_activity_age_s: z.number(),
+});
+
+const AccountListEntrySchema = z.object({
+  id: z.string(),
+  emailAddress: z.string().nullable(),
+  scopes: z.array(z.string()).nullable(),
+  isDefault: z.boolean(),
+  isActive: z.boolean(),
+  createdAt: z.string().nullable(),
+});
+
+export const ListAccountsOutputSchema = z.object({
+  active: z.object({
+    id: z.string().nullable(),
+    source: z.enum(["flag", "env", "manifest-default", "manifest-sole", "legacy-implicit", "none"]),
+    isLegacyImplicit: z.boolean(),
+  }),
+  count: z.number(),
+  accounts: z.array(AccountListEntrySchema),
+});
+
+export const SwitchAccountOutputSchema = z.object({
+  previousAccountId: z.string().nullable(),
+  newAccountId: z.string(),
+  emailAddress: z.string().nullable(),
+  scopes: z.array(z.string()),
+  note: z.string().optional(),
 });
 
 // Tool definition type
@@ -750,6 +797,25 @@ export const toolDefinitions: ToolDefinition[] = [
     schema: HealthCheckSchema,
     scopes: [], // empty = always available (see hasScope)
     annotations: { title: "Health Check", readOnlyHint: true },
+  },
+
+  // Multi-account meta-tools — read + write. Permission-gateable by the host
+  // (switch_account is the write). Neither calls the Gmail API.
+  {
+    name: "list_accounts",
+    description:
+      "Lists Gmail accounts available on this server (from the local manifest) and identifies which one is currently active. Read-only; does not call Gmail. Use this before `switch_account` to discover valid ids.",
+    schema: ListAccountsSchema,
+    scopes: [],
+    annotations: { title: "List Gmail Accounts", readOnlyHint: true },
+  },
+  {
+    name: "switch_account",
+    description:
+      "Switches the active Gmail account for subsequent tool calls. The new account's credentials must already exist on disk — run `gmail auth --account <id>` from the shell first, or call `list_accounts` to find an existing one. Note: the tool catalogue advertised via tools/list does NOT refresh automatically; if the new account has narrower scopes than the previous one, some tool calls may reject at call-time with a re-auth hint. Treat as a write/state-change operation that hosts can permission-gate.",
+    schema: SwitchAccountSchema,
+    scopes: [],
+    annotations: { title: "Switch Gmail Account", destructiveHint: false, idempotentHint: false },
   },
 ];
 

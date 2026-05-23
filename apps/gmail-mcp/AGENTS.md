@@ -4,7 +4,7 @@
 
 ## What this repo is
 
-Gmail integration exposed through 27 tools (read, search, send, draft, reply-all, labels, filters, threads, downloads, batch ops, plus a `health_check` canary). Authenticates via OAuth2 against a personal Google project. **One binary** ships in this package — `gmail` — with mode subcommands:
+Gmail integration exposed through 28 tools (read, search, send, draft, reply-all, labels, filters, threads, downloads, batch ops, plus a `health_check` canary and the M2-light `list_accounts` / `switch_account` meta-tools). Authenticates via OAuth2 against a personal Google project. **One binary** ships in this package — `gmail` — with mode subcommands:
 
 | Subcommand | Purpose | Transport |
 |---|---|---|
@@ -269,6 +269,15 @@ Pipe that into a host's `.mcp.json` `env: {}` block, GH Actions repo secret, 1Pa
 **Env-driven mode is single-account by design.** `GMAIL_CREDENTIALS_JSON` / `GMAIL_CREDENTIALS_OP` always win over the file loader regardless of `accountId`. If you set them alongside `GMAIL_ACCOUNT`, the credentials still come from env; the account id is used only for the OAuth-keys override fallback and for log tagging. Pure-env multi-account would require per-account env vars (`GMAIL_CREDENTIALS_<ID>_JSON`) and is deferred to Phase M3.
 
 **Subcommands:** `gmail account {list, current, use <id>, rm <id>, add <id>}`. `add` delegates to `runAuthCommand({account: id})`; `rm` deletes both the manifest entry and (unless `--keep-files`) the on-disk directory.
+
+**MCP tools (M2-light):** Two meta-tools expose the same surface to MCP hosts, split for permission-gating:
+
+- `list_accounts` — read-only. Returns `{active: {id, source, isLegacyImplicit}, count, accounts: [{id, emailAddress, scopes, isDefault, isActive, createdAt}]}`. No Gmail API call; `readOnlyHint: true`. Annotated so hosts allow it freely.
+- `switch_account` — write/state-change. Input `{accountId}`. Validates the id exists in the manifest, loads its OAuth keys + credentials, builds a fresh `OAuth2Client` + `gmail` handle, and calls `setSession()` to swap atomically. Returns `{previousAccountId, newAccountId, emailAddress, scopes, note}`. Idempotent when switching to the already-active id. Annotated `destructiveHint: false, idempotentHint: false` so hosts can permission-gate it as a write.
+
+Both tools live in `src/core/ops/accounts.ts` and require no Gmail scope (`scopes: []`). The session module (`src/core/session.ts`) tracks `_currentAccountId` and exposes `getCurrentAccountId()` for the list output's `isActive` flag.
+
+**Caveat — stale tool catalog after switch:** the host's cached `tools/list` does NOT auto-refresh when the active account changes. If the new account has narrower scopes than the previous one, affected tools will reject at call-time with the usual re-auth hint. The `switch_account` response includes a `note` field documenting this. Sending `notifications/tools/list_changed` after the swap is a Phase M2-full polish item; deferred.
 
 **Non-goals (Phase M1):**
 - No runtime account switching inside a long-lived process (deferred to Phase M2).

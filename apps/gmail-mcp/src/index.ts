@@ -66,6 +66,7 @@ export async function callMcpTool(
 interface LoadedCredentials {
   oauth2Client: OAuth2Client;
   authorizedScopes: string[];
+  accountId: string | null;
 }
 
 async function loadCredentials(): Promise<LoadedCredentials | null> {
@@ -123,7 +124,7 @@ async function loadCredentials(): Promise<LoadedCredentials | null> {
       }
     }
 
-    return { oauth2Client, authorizedScopes };
+    return { oauth2Client, authorizedScopes, accountId: accountId ?? null };
   } catch (error) {
     console.error("Error loading credentials:", error);
     await shutdown(1);
@@ -150,7 +151,12 @@ export async function main(opts: { skipTransport?: boolean } = {}) {
   const { oauth2Client, authorizedScopes } = loaded;
 
   const gmail = google.gmail({ version: "v1", auth: oauth2Client });
-  setSession({ oauth2Client, gmail, authorizedScopes });
+  setSession({
+    oauth2Client,
+    gmail,
+    authorizedScopes,
+    accountId: loaded.accountId ?? null,
+  });
 
   const { server, dispatch } = buildMcpServer();
   _dispatcherFn = dispatch;

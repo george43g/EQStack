@@ -531,6 +531,25 @@ OAuth client keys are resolved per-account first (if `accounts/<id>/gcp-oauth.ke
 
 Both processes share `~/.gmail-mcp/` and read different per-account directories. Alternative: use distinct `GMAIL_CONFIG_DIR`s if you want fully isolated config trees.
 
+### Switching accounts from inside an MCP session
+
+Two meta-tools let an MCP host (or the model it drives) work with multiple authenticated accounts in a single server process. The MCP only ever operates on **one account at a time** — these tools just let you change which one.
+
+| Tool | Role | Permission |
+|---|---|---|
+| `list_accounts` | Read. Returns the configured accounts (id, email, scopes, default flag) and which one is currently active. No Gmail API call. | `readOnlyHint: true` — hosts allow freely. |
+| `switch_account` | Write. Input `{accountId}`. Loads that account's credentials and swaps the active session for subsequent tool calls. | `destructiveHint: false, idempotentHint: false` — hosts can permission-gate as a state-change. |
+
+Workflow from the model's perspective:
+
+1. Call `list_accounts` to see what's available.
+2. Call `switch_account` with the desired `accountId`.
+3. All subsequent tool calls (`read_email`, `send_email`, …) hit the new account.
+
+**Important caveat:** the host's cached `tools/list` does NOT auto-refresh on switch. If the new account has narrower scopes than the previous one (e.g. `gmail.readonly` instead of `gmail.modify`), tools that need the missing scope will reject at call-time with the usual re-auth hint. The `switch_account` response surfaces this in its `note` field.
+
+Add a new account from the shell first (`gmail auth --account work`) — then it's pickable via `switch_account`. The MCP tools never run the OAuth flow; that always stays a CLI affordance.
+
 ## Self-Hosting on a Remote Server
 
 You can run this MCP on a Cloud Run / Fly.io / Pi / VPS and have any MCP host connect over HTTPS. The `gmail mcp --http` mode wraps the MCP in `StreamableHTTPServerTransport` with bearer-token auth.
