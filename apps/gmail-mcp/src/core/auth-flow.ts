@@ -18,6 +18,7 @@ import path from "node:path";
 import { OAuth2Client } from "google-auth-library";
 import open from "open";
 import { scopeNamesToUrls } from "../scopes.js";
+import { getAccountOAuthPath, validateAccountId } from "./accounts.js";
 
 const DEFAULT_CALLBACK = "http://localhost:3000/oauth2callback";
 const DEFAULT_PORT = 3000;
@@ -102,6 +103,14 @@ export interface LoadKeysOptions {
   configDir?: string; // where to copy local keys to
   // Inject env for tests; defaults to process.env.
   env?: NodeJS.ProcessEnv;
+  /**
+   * Account id. When supplied AND <configDir>/accounts/<id>/gcp-oauth.keys.json
+   * exists, that file wins over the shared `oauthPath`. Enables per-account
+   * OAuth client keys for users who don't share a single Google Cloud project
+   * across their Gmail accounts (e.g. CI / multi-tenant). When omitted, only
+   * the shared `oauthPath` is consulted.
+   */
+  accountId?: string;
 }
 
 /**
@@ -143,7 +152,7 @@ function parseOAuthKeysJson(raw: string, sourceLabel: string): OAuthKeys {
  *      convenience for first-time users.
  */
 export function loadOAuthKeys(opts: LoadKeysOptions): OAuthKeys {
-  const { oauthPath, cwd, configDir } = opts;
+  const { oauthPath, cwd, configDir, accountId } = opts;
   const env = opts.env ?? process.env;
 
   // 1. Env-inline keys
@@ -152,7 +161,21 @@ export function loadOAuthKeys(opts: LoadKeysOptions): OAuthKeys {
     return parseOAuthKeysJson(envJson, "GMAIL_OAUTH_KEYS_JSON");
   }
 
-  // 2. Copy from cwd if found there and we have a target (legacy convenience).
+  // 2. Per-account override: <configDir>/accounts/<id>/gcp-oauth.keys.json,
+  //    if it exists, beats the shared file. Lets CI/multi-tenant deployments
+  //    bind a distinct OAuth client per account.
+  if (accountId) {
+    validateAccountId(accountId);
+    const perAccount = getAccountOAuthPath(accountId, env);
+    if (fs.existsSync(perAccount)) {
+      return parseOAuthKeysJson(
+        fs.readFileSync(perAccount, "utf8"),
+        `OAuth keys file ${perAccount}`,
+      );
+    }
+  }
+
+  // 3. Copy from cwd if found there and we have a target (legacy convenience).
   if (cwd && configDir) {
     const localPath = path.join(cwd, "gcp-oauth.keys.json");
     if (fs.existsSync(localPath) && !fs.existsSync(oauthPath)) {
@@ -163,7 +186,7 @@ export function loadOAuthKeys(opts: LoadKeysOptions): OAuthKeys {
     }
   }
 
-  // 3. Disk
+  // 4. Shared disk path
   if (!fs.existsSync(oauthPath)) {
     throw new Error(
       `OAuth keys not found. Set GMAIL_OAUTH_KEYS_JSON env var with the JSON contents, or place gcp-oauth.keys.json at ${oauthPath} (or in the current directory).`,

@@ -170,6 +170,7 @@ The `src/robustness/` modules form a "robustness harness" that any local stdio M
 | `GMAIL_SCOPES` | unset | Default scope set used by `gmail auth` when `--scopes=` is not passed. Comma- or space-separated shorthand names. |
 | `GMAIL_AUTH_NON_INTERACTIVE` | unset | `1` forces non-interactive auth (skip the checkbox prompt, fall back to defaults). Auto-detected when `CI=true` or stdin is not a TTY. |
 | `GMAIL_HTTP_TOKEN` | unset (required for `--http`) | Bearer token gating `/mcp` requests in HTTP mode. Server refuses to start if `--http` is set but this is empty. Generate with `openssl rand -hex 32`. |
+| `GMAIL_ACCOUNT` | unset | Active account id (Phase M1). Selects which entry in `<configDir>/accounts/` to load. CLI flag `-a/--account` overrides. Falls back to `accounts.json` `defaultAccount`, then to the sole-account / legacy-implicit branches. See [Multi-account layout](#multi-account-layout-phase-m1). |
 
 ### Robustness (`MCP_*`) — library knobs
 | Name | Default | Purpose |
@@ -230,6 +231,50 @@ gmail auth --print-json > deploy.env.json
 
 Pipe that into a host's `.mcp.json` `env: {}` block, GH Actions repo secret, 1Password item, etc.
 
+## Multi-account layout (Phase M1)
+
+`<configDir>/accounts.json` is the manifest, and `<configDir>/accounts/<id>/credentials.json` is the per-account token file. Implementation in `src/core/accounts.ts`. The active account is resolved at bootstrap (in `src/index.ts::loadCredentials`) and passed to both `loadOAuthKeys({accountId})` and `coreLoadCredentials({accountId})`.
+
+**Active-account precedence (first hit wins, in `resolveActiveAccount`):**
+1. `-a, --account <id>` global CLI flag (stamped into `process.env.GMAIL_ACCOUNT` by the root commander preAction hook).
+2. `GMAIL_ACCOUNT` env var.
+3. `accounts.json` `defaultAccount`.
+4. Sole account in `accounts.json`, if there's exactly one.
+5. Legacy-implicit `"default"` — only when no manifest exists AND a legacy `<configDir>/credentials.json` exists AND no env-driven credential source is configured. Triggers the M1 migration shim (copy, not move) on first read.
+6. `null` — no account configured.
+
+**File layout (after migration):**
+
+```
+<configDir>/
+├── accounts.json                       # manifest: {defaultAccount, accounts: {…}}
+├── gcp-oauth.keys.json                 # shared OAuth client keys (fallback)
+├── credentials.json                    # legacy file, kept for one minor release
+└── accounts/
+    ├── default/credentials.json        # promoted from legacy file on first read
+    ├── work/credentials.json
+    └── personal/
+        ├── credentials.json
+        └── gcp-oauth.keys.json         # per-account OAuth keys override (optional)
+```
+
+**OAuth keys resolution** (in `loadOAuthKeys` when `accountId` is supplied):
+1. `GMAIL_OAUTH_KEYS_JSON` env (always wins).
+2. `<configDir>/accounts/<id>/gcp-oauth.keys.json` — per-account override, if present.
+3. `GMAIL_OAUTH_PATH` env / `<configDir>/gcp-oauth.keys.json` — the shared file.
+4. Error.
+
+**Migration trigger:** the first `loadCredentials({accountId: "default"})` call where `accounts/default/credentials.json` is missing but `<configDir>/credentials.json` exists copies the legacy file and stamps the manifest with a single `default` entry. Idempotent; no-op once the new file is in place. The legacy file is intentionally not deleted — a downgrade still works.
+
+**Env-driven mode is single-account by design.** `GMAIL_CREDENTIALS_JSON` / `GMAIL_CREDENTIALS_OP` always win over the file loader regardless of `accountId`. If you set them alongside `GMAIL_ACCOUNT`, the credentials still come from env; the account id is used only for the OAuth-keys override fallback and for log tagging. Pure-env multi-account would require per-account env vars (`GMAIL_CREDENTIALS_<ID>_JSON`) and is deferred to Phase M3.
+
+**Subcommands:** `gmail account {list, current, use <id>, rm <id>, add <id>}`. `add` delegates to `runAuthCommand({account: id})`; `rm` deletes both the manifest entry and (unless `--keep-files`) the on-disk directory.
+
+**Non-goals (Phase M1):**
+- No runtime account switching inside a long-lived process (deferred to Phase M2).
+- No per-tool `account` argument on MCP tools (deferred to Phase M3).
+- Every `gmail mcp` process is still bound to **one** account for its lifetime — multi-account is operator-time, not request-time. Hosts that want both accounts at once run two `gmail mcp` processes with different `GMAIL_ACCOUNT` envs.
+
 ## HTTP transport mode (Phase G)
 
 `gmail mcp --http [--port 8080] [--bind 127.0.0.1] [--token-env GMAIL_HTTP_TOKEN]` exposes the MCP via `StreamableHTTPServerTransport` instead of stdio. Single-tenant: one server process = one Gmail account.
@@ -251,7 +296,8 @@ Every Gmail tool has a corresponding `gmail` CLI subcommand. All commands accept
 
 | Subcommand | Tool | Notes |
 |---|---|---|
-| `auth` | (OAuth flow) | Browser-based; `--headless` for remote servers; `--print-json` to capture creds + keys for env-driven deploys |
+| `auth` | (OAuth flow) | Browser-based; `--headless` for remote servers; `--print-json` to capture creds + keys for env-driven deploys; `-a/--account <id>` to mint creds for a named account (Phase M1) |
+| `account` | (manifest CRUD) | Multi-account ops: `list`, `current`, `use <id>`, `rm <id>`, `add <id>` (Phase M1). `add` delegates to `runAuthCommand({account: id})`. |
 | `health` | `health_check` | No Gmail call; local canary. `--json` returns typed `HealthSnapshot` |
 | `inbox` | `list_inbox_threads` | Shortcut for `threads list -q in:inbox` |
 | `search <query>` | `search_emails` | `--max N`. `--json` returns `{resultCount, results[]}` |

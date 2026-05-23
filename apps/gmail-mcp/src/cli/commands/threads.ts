@@ -85,12 +85,16 @@ export function buildInboxAliasCommand(): Command {
   const cmd = new Command("inbox");
   cmd
     .description("Shortcut: list recent inbox threads (alias for `threads list -q in:inbox`)")
-    .option("-n, --max <n>", "Max threads (default: 10)", (v) => Number.parseInt(v, 10), 10)
+    .argument("[max]", "Max threads (positional shortcut; e.g. `inbox 5`)", (v) =>
+      Number.parseInt(v, 10),
+    )
+    .option("-n, --max <n>", "Max threads (default: 10)", (v) => Number.parseInt(v, 10))
     .option("--json", "Emit typed JSON")
-    .action(async (options: { max?: number; json?: boolean }) => {
+    .action(async (maxArg: number | undefined, options: { max?: number; json?: boolean }) => {
+      const maxResults = maxArg ?? options.max ?? 10;
       await runCliOp(
         "list_inbox_threads",
-        { query: "in:inbox", maxResults: options.max },
+        { query: "in:inbox", maxResults },
         { json: options.json },
       );
     });

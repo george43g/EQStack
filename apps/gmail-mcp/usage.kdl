@@ -9,6 +9,9 @@ about "Gmail — single bin for the Gmail MCP Server package. CLI is the default
 usage "[options] [command]"
 flag "-q --quiet" help="Suppress non-error output to stderr"
 flag "-v --verbose" help="Log debug-level information to stderr"
+flag "-a --account" help="Gmail account id to use for this command (Phase M1). Overrides GMAIL_ACCOUNT env. See `gmail account list`." {
+	arg <ACCOUNT>
+}
 cmd mcp help="Run the MCP server (stdio by default; --http for remote-mode)" {
 	flag --http help="Expose the MCP via Streamable HTTP instead of stdio"
 	flag --port help="HTTP port (default: 8080)" default="8080" {
@@ -23,6 +26,37 @@ cmd mcp help="Run the MCP server (stdio by default; --http for remote-mode)" {
 }
 cmd tui help="Launch the multi-pane terminal UI (Phase D)"
 cmd console help="Launch an interactive REPL for ad-hoc Gmail operations"
+cmd account subcommand_required=#true help="Manage Gmail accounts (multi-account, Phase M1)" {
+	cmd list help="List configured accounts in the manifest" {
+		flag --json help="Emit JSON instead of the table"
+	}
+	cmd current help="Print the active account and how it was resolved" {
+		flag --json help="Emit JSON"
+	}
+	cmd use help="Set the default account used when --account / GMAIL_ACCOUNT is not supplied" {
+		arg <id> help="Account id to make default"
+	}
+	cmd rm help="Remove an account: deletes its credentials directory and manifest entry" {
+		flag --force help="Skip the confirmation prompt"
+		flag --keep-files help="Remove from manifest only; leave the on-disk directory in place"
+		arg <id> help="Account id to remove"
+	}
+	cmd add help="Authenticate a new account and add it to the manifest" {
+		flag "-s --scopes" help="Comma- or space-separated scopes (see `gmail auth --help`)" {
+			arg <SCOPES>
+		}
+		flag --non-interactive help="Skip the scope-selection prompt"
+		flag --headless help="Don't launch a browser; print the consent URL only"
+		flag --callback help="OAuth callback URL" {
+			arg <CALLBACK>
+		}
+		flag --port help="Port for the local OAuth callback server" {
+			arg <PORT>
+		}
+		flag --print-json help="Emit credentials JSON to stdout instead of writing files"
+		arg <id> help="Account id to create (e.g. 'work', 'personal')"
+	}
+}
 cmd auth help="Authenticate with Google OAuth and save credentials" {
 	flag "-s --scopes" help="Comma- or space-separated scopes (gmail.readonly, gmail.modify, gmail.compose, gmail.send, gmail.labels, gmail.settings.basic, gmail.settings.sharing). Overrides GMAIL_SCOPES env." {
 		arg <SCOPES>
@@ -42,15 +76,19 @@ cmd auth help="Authenticate with Google OAuth and save credentials" {
 		arg <CREDENTIALS_PATH>
 	}
 	flag --print-json help="Print credentials JSON to stdout instead of writing to disk. Useful for piping into a 1Password item or GH Actions secret."
+	flag "-a --account" help="Name the account being authenticated (Phase M1). Credentials are stored at ~/.gmail-mcp/accounts/<id>/credentials.json and the account is added to the manifest. Defaults to env GMAIL_ACCOUNT, or to single-account legacy layout if neither is set." {
+		arg <ACCOUNT>
+	}
 }
 cmd health help="Run the health_check canary (no Gmail API calls)" {
 	flag --json help="Output JSON instead of human-readable text"
 }
 cmd inbox help="Shortcut: list recent inbox threads (alias for `threads list -q in:inbox`)" {
-	flag "-n --max" help="Max threads (default: 10)" default="10" {
+	flag "-n --max" help="Max threads (default: 10)" {
 		arg <MAX>
 	}
 	flag --json help="Emit typed JSON"
+	arg "[max]" help="Max threads (positional shortcut; e.g. `inbox 5`)" required=#false
 }
 cmd search help="Search emails (Gmail query syntax — e.g. 'from:foo newer_than:7d')" {
 	flag "-n --max" help="Max results (default: 25)" default="25" {

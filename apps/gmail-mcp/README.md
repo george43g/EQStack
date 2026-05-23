@@ -471,6 +471,66 @@ Three credential sources, first match wins:
 
 Same pattern for OAuth client keys: `GMAIL_OAUTH_KEYS_JSON` (env) > `GMAIL_OAUTH_PATH` (file).
 
+## Multi-Account (Phase M1)
+
+`gmail` supports multiple Gmail accounts per `<configDir>`. Each named account has its own credentials directory; a manifest at `<configDir>/accounts.json` tracks them.
+
+```sh
+gmail auth --account work             # authenticate a new account "work"
+gmail auth --account personal         # …and another
+gmail account list                    # tabular view (id, email, scopes, default?)
+gmail account use work                # set defaultAccount in the manifest
+gmail account current                 # print resolved active account + source
+gmail account rm personal             # remove (prompts to confirm; --force to skip)
+```
+
+Per-command override (no state mutation):
+
+```sh
+gmail --account work search "in:inbox"
+gmail -a personal read <messageId>
+GMAIL_ACCOUNT=work gmail search "in:inbox"     # env equivalent of -a
+```
+
+**Resolution chain (first hit wins):**
+
+1. `--account <id>` CLI flag (per-command)
+2. `GMAIL_ACCOUNT` env var
+3. `defaultAccount` in `<configDir>/accounts.json`
+4. The sole account in the manifest, if there's exactly one
+5. Legacy `<configDir>/credentials.json` (auto-migrated to `accounts/default/` on first read)
+
+**File layout:**
+
+```
+~/.gmail-mcp/
+├── accounts.json                   # manifest
+├── gcp-oauth.keys.json             # shared OAuth keys (default)
+└── accounts/
+    ├── default/credentials.json    # migrated from legacy file on first run
+    ├── work/credentials.json
+    └── personal/
+        ├── credentials.json
+        └── gcp-oauth.keys.json     # per-account override (optional)
+```
+
+OAuth client keys are resolved per-account first (if `accounts/<id>/gcp-oauth.keys.json` exists), then fall back to the shared `<configDir>/gcp-oauth.keys.json`. Most users keep one Google Cloud project across all Gmail addresses; the per-account override is for CI/multi-tenant deployments that want fully isolated OAuth clients.
+
+**Migration:** on first read for accountId `default`, if the legacy `credentials.json` exists but `accounts/default/credentials.json` does not, the loader copies (not moves) the file — your existing single-account setup keeps working, and a downgrade still finds the legacy file.
+
+**Operator-time account selection in `.mcp.json`:** point separate MCP entries at separate accounts via per-entry env. Each process is bound to one account (Phase M1 is operator-time, not runtime-switching):
+
+```jsonc
+{
+  "mcpServers": {
+    "gmail-work":     { "command": "gmail", "args": ["mcp"], "env": { "GMAIL_ACCOUNT": "work" } },
+    "gmail-personal": { "command": "gmail", "args": ["mcp"], "env": { "GMAIL_ACCOUNT": "personal" } }
+  }
+}
+```
+
+Both processes share `~/.gmail-mcp/` and read different per-account directories. Alternative: use distinct `GMAIL_CONFIG_DIR`s if you want fully isolated config trees.
+
 ## Self-Hosting on a Remote Server
 
 You can run this MCP on a Cloud Run / Fly.io / Pi / VPS and have any MCP host connect over HTTPS. The `gmail mcp --http` mode wraps the MCP in `StreamableHTTPServerTransport` with bearer-token auth.

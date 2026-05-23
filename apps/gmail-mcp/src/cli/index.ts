@@ -20,6 +20,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+import { validateAccountId } from "../core/accounts.js";
+import { buildAccountCommand } from "./commands/account.js";
 import { buildAuthCommand } from "./commands/auth.js";
 import { buildBatchDeleteCommand, buildBatchModifyCommand } from "./commands/batch.js";
 import { buildConsoleCommand } from "./commands/console.js";
@@ -71,6 +73,10 @@ export function buildProgram(): Command {
     // it scoped.
     .option("-q, --quiet", "Suppress non-error output to stderr")
     .option("-v, --verbose", "Log debug-level information to stderr")
+    .option(
+      "-a, --account <id>",
+      "Gmail account id to use for this command (Phase M1). Overrides GMAIL_ACCOUNT env. See `gmail account list`.",
+    )
     .addHelpText(
       "after",
       `
@@ -99,12 +105,28 @@ Scopes (space=toggle, a=all, i=invert in interactive mode):
 `,
     );
 
+  // Global pre-action hook: when -a/--account is passed at the root, stamp
+  // GMAIL_ACCOUNT in the env so every downstream resolver (resolveActiveAccount,
+  // runAuthCommand, bootstrapForCli, …) picks it up via the same env-driven
+  // path that operator-set env vars use. This keeps the resolution chain
+  // single-source and means subcommand actions don't need to know about the
+  // flag at all.
+  program.hook("preAction", (thisCommand) => {
+    const opts = thisCommand.opts<{ account?: string }>();
+    if (opts.account && opts.account.trim().length > 0) {
+      const id = opts.account.trim();
+      validateAccountId(id);
+      process.env.GMAIL_ACCOUNT = id;
+    }
+  });
+
   // Mode subcommands.
   program.addCommand(buildMcpCommand());
   program.addCommand(buildTuiCommand());
   program.addCommand(buildConsoleCommand());
 
   // CLI operations.
+  program.addCommand(buildAccountCommand());
   program.addCommand(buildAuthCommand());
   program.addCommand(buildHealthCommand());
   program.addCommand(buildInboxAliasCommand());

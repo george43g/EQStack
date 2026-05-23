@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import { Command } from "commander";
 import { resolveScopes } from "../../auth-scopes.js";
+import { addAccount, getAccountCredentialsPath, validateAccountId } from "../../core/accounts.js";
 import {
   createOAuthClient,
   findAvailablePort,
@@ -16,10 +17,6 @@ import {
 } from "../../core/auth-flow.js";
 import { getConfigDir, getCredentialsPath, getOAuthPath } from "../../core/config-paths.js";
 
-const CONFIG_DIR = getConfigDir();
-const DEFAULT_OAUTH_PATH = getOAuthPath();
-const DEFAULT_CREDENTIALS_PATH = getCredentialsPath();
-
 export interface AuthCommandOptions {
   scopes?: string;
   nonInteractive?: boolean;
@@ -29,6 +26,15 @@ export interface AuthCommandOptions {
   oauthPath?: string;
   credentialsPath?: string;
   printJson?: boolean; // emit credentials JSON on stdout instead of writing to disk
+  /**
+   * Named account id (Phase M1). When supplied:
+   *   - Credentials are written to <configDir>/accounts/<id>/credentials.json
+   *     (unless --credentials-path overrides explicitly).
+   *   - On success the manifest is updated (account added if new, scopes mirrored).
+   *   - OAuth keys honour a per-account override at <configDir>/accounts/<id>/gcp-oauth.keys.json.
+   * When omitted, the legacy single-account path applies.
+   */
+  account?: string;
 }
 
 export function buildAuthCommand(): Command {
@@ -66,6 +72,10 @@ export function buildAuthCommand(): Command {
       "--print-json",
       "Print credentials JSON to stdout instead of writing to disk. Useful for piping into a 1Password item or GH Actions secret.",
     )
+    .option(
+      "-a, --account <id>",
+      "Name the account being authenticated (Phase M1). Credentials are stored at ~/.gmail-mcp/accounts/<id>/credentials.json and the account is added to the manifest. Defaults to env GMAIL_ACCOUNT, or to single-account legacy layout if neither is set.",
+    )
     .action(async (options: AuthCommandOptions) => {
       try {
         await runAuthCommand(options);
@@ -94,14 +104,43 @@ export async function runAuthCommand(options: AuthCommandOptions): Promise<void>
     `Using scopes (source: ${resolved.source}): ${resolved.scopes.join(", ")}\n`,
   );
 
-  const oauthPath = options.oauthPath ?? process.env.GMAIL_OAUTH_PATH ?? DEFAULT_OAUTH_PATH;
+  // Resolve config paths against the current env so tests / overrides take
+  // effect at call time (rather than at module-load time as before).
+  const env = process.env;
+  const configDir = getConfigDir(env);
+  const defaultOAuthPath = getOAuthPath(env);
+  const defaultCredentialsPath = getCredentialsPath(env);
+
+  // Multi-account: --account (or GMAIL_ACCOUNT) selects which account's files
+  // we read/write. The legacy single-account layout still applies when neither
+  // is set.
+  const accountId =
+    options.account ??
+    (env.GMAIL_ACCOUNT && env.GMAIL_ACCOUNT.trim().length > 0
+      ? env.GMAIL_ACCOUNT.trim()
+      : undefined);
+  if (accountId) validateAccountId(accountId);
+
+  const oauthPath = options.oauthPath ?? env.GMAIL_OAUTH_PATH ?? defaultOAuthPath;
+  // Credentials path resolution:
+  //   1. --credentials-path explicit override → use it verbatim.
+  //   2. GMAIL_CREDENTIALS_PATH env → use it verbatim.
+  //   3. If account id is set → per-account directory.
+  //   4. Legacy single-account file.
   const credentialsPath =
-    options.credentialsPath ?? process.env.GMAIL_CREDENTIALS_PATH ?? DEFAULT_CREDENTIALS_PATH;
+    options.credentialsPath ??
+    env.GMAIL_CREDENTIALS_PATH ??
+    (accountId ? getAccountCredentialsPath(accountId, env) : defaultCredentialsPath);
+
+  if (accountId) {
+    process.stderr.write(`Authenticating account: ${accountId}\n`);
+  }
 
   const keys = loadOAuthKeys({
     oauthPath,
     cwd: process.cwd(),
-    configDir: CONFIG_DIR,
+    configDir,
+    accountId,
   });
 
   // Port resolution. If the user explicitly passed --port or --callback, we
@@ -176,8 +215,15 @@ export async function runAuthCommand(options: AuthCommandOptions): Promise<void>
       path: credentialsPath,
       tokens: result.tokens,
       scopes: result.scopes,
-      configDir: CONFIG_DIR,
+      configDir,
     });
     process.stderr.write(`\nCredentials saved to ${credentialsPath}\n`);
+
+    // Stamp the manifest when an account was named, so `gmail account list`
+    // sees it immediately.
+    if (accountId) {
+      addAccount(accountId, { scopes: result.scopes }, env);
+      process.stderr.write(`Account "${accountId}" added to the manifest.\n`);
+    }
   }
 }

@@ -14,6 +14,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { OAuth2Client } from "google-auth-library";
 import { google } from "googleapis";
+import { resolveActiveAccount } from "./core/accounts.js";
 import { loadOAuthKeys } from "./core/auth-flow.js";
 import { getConfigDir, getCredentialsPath, getOAuthPath } from "./core/config-paths.js";
 import { loadCredentials as coreLoadCredentials } from "./core/credentials.js";
@@ -69,12 +70,25 @@ interface LoadedCredentials {
 
 async function loadCredentials(): Promise<LoadedCredentials | null> {
   try {
+    // Resolve the active account using the M1 precedence chain. Returns
+    // legacy-implicit "default" for unmigrated single-account users (which
+    // triggers the credentials.json → accounts/default/ copy on first read).
+    // Env-driven credentials (GMAIL_CREDENTIALS_JSON / _OP) keep working
+    // because the loader chain short-circuits on env before consulting the
+    // account id.
+    const active = resolveActiveAccount();
+    const accountId = active.id ?? undefined;
+    // Tag every subsequent log entry with the resolved account so post-mortem
+    // grep of MCP_LOG_DIR/*.ndjson can answer "which account triggered this?".
+    logInfo("active account", { account: accountId ?? null, source: active.source });
+
     let keys;
     try {
       keys = loadOAuthKeys({
         oauthPath: OAUTH_PATH,
         cwd: process.cwd(),
         configDir: CONFIG_DIR,
+        accountId,
       });
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
@@ -92,7 +106,10 @@ async function loadCredentials(): Promise<LoadedCredentials | null> {
     // Missing tokens are NOT fatal — required for `auth` subcommand bootstrap.
     let authorizedScopes: string[] = DEFAULT_SCOPES;
     try {
-      const loaded = await coreLoadCredentials({ fallbackPath: CREDENTIALS_PATH });
+      const loaded = await coreLoadCredentials({
+        fallbackPath: CREDENTIALS_PATH,
+        accountId,
+      });
       oauth2Client.setCredentials(loaded.credentials.tokens);
       if (loaded.credentials.scopes) authorizedScopes = loaded.credentials.scopes;
     } catch (err) {

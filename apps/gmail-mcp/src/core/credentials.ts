@@ -18,7 +18,10 @@
 
 import { execFile } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
+import { addAccount, getAccountCredentialsPath, loadManifest } from "./accounts.js";
+import { getConfigDir, getCredentialsPath } from "./config-paths.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -53,6 +56,18 @@ export class CredentialLoadError extends Error {
 
 export interface LoadOptions {
   env?: NodeJS.ProcessEnv;
+  /**
+   * Account id whose credentials to load. When supplied:
+   *   - Env-driven sources (GMAIL_CREDENTIALS_JSON / _OP / _PATH) still take
+   *     precedence and ignore the id (env mode is single-account by design).
+   *   - File mode resolves <configDir>/accounts/<id>/credentials.json
+   *     instead of the legacy <configDir>/credentials.json.
+   *   - When id is "default" and the per-account file doesn't yet exist but
+   *     the legacy file does, runs the M1 migration shim (copy + manifest).
+   * When omitted: legacy single-account behaviour (back-compat for callers
+   * that haven't been threaded through yet).
+   */
+  accountId?: string;
   // Override file path when GMAIL_CREDENTIALS_PATH isn't set.
   fallbackPath?: string;
   // Injectable for tests.
@@ -150,24 +165,69 @@ export async function loadCredentials(opts: LoadOptions = {}): Promise<LoadedCre
     };
   }
 
-  // 3. File
-  const path = env.GMAIL_CREDENTIALS_PATH ?? opts.fallbackPath;
-  if (!path) {
+  // 3. File. Account-aware path resolution:
+  //    - GMAIL_CREDENTIALS_PATH override always wins (operator opt-in).
+  //    - Otherwise, if an accountId is supplied, resolve the per-account file
+  //      (and run the migration shim from the legacy path if needed).
+  //    - Otherwise, fall back to the legacy single-account file.
+  let credPath: string | undefined = env.GMAIL_CREDENTIALS_PATH ?? opts.fallbackPath;
+  if (!credPath) {
+    if (opts.accountId) {
+      credPath = getAccountCredentialsPath(opts.accountId, env);
+      if (
+        !fileExists(credPath) &&
+        opts.accountId === "default" &&
+        fileExists(getCredentialsPath(env))
+      ) {
+        // M1 migration: promote legacy <configDir>/credentials.json into
+        // <configDir>/accounts/default/credentials.json. Copy (not move) so
+        // that a downgrade to a single-account release still works.
+        runDefaultAccountMigration(env, credPath);
+      }
+    } else {
+      credPath = getCredentialsPath(env);
+    }
+  }
+  if (!fileExists(credPath)) {
     throw new CredentialLoadError(
       "file",
-      "No credentials source configured. Set GMAIL_CREDENTIALS_JSON / GMAIL_CREDENTIALS_OP / GMAIL_CREDENTIALS_PATH, or run `gmail auth`.",
+      `Credentials file not found: ${credPath}. Run \`gmail auth\` to create it.`,
     );
   }
-  if (!fileExists(path)) {
-    throw new CredentialLoadError(
-      "file",
-      `Credentials file not found: ${path}. Run \`gmail auth\` to create it.`,
-    );
-  }
-  const raw = readFile(path, "utf8");
+  const raw = readFile(credPath, "utf8");
   return {
     credentials: parseStoredCredentials(raw, "file"),
     source: "file",
-    locator: path,
+    locator: credPath,
   };
+}
+
+/**
+ * Copy <configDir>/credentials.json → <configDir>/accounts/default/credentials.json
+ * and stamp a manifest entry for "default" if no manifest exists yet. Idempotent.
+ * Errors here are non-fatal: if we can't migrate (permissions, race), fall
+ * through and let the missing-file error surface a clear message.
+ */
+function runDefaultAccountMigration(env: NodeJS.ProcessEnv, targetPath: string): void {
+  try {
+    const legacyPath = getCredentialsPath(env);
+    const targetDir = path.dirname(targetPath);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true, mode: 0o700 });
+    }
+    fs.copyFileSync(legacyPath, targetPath);
+    if (process.platform !== "win32") {
+      try {
+        fs.chmodSync(targetPath, 0o600);
+      } catch {
+        /* mode is best-effort on filesystems without POSIX semantics */
+      }
+    }
+    if (!loadManifest({ env })) {
+      addAccount("default", { createdAt: new Date().toISOString() }, env);
+    }
+  } catch {
+    // Swallow migration errors; the subsequent fileExists check will throw
+    // a clear "not found" error if we couldn't put the file in place.
+  }
 }
