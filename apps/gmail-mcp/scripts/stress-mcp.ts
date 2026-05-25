@@ -13,7 +13,9 @@
  */
 
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { dirname, resolve } from "node:path";
+import fs from "node:fs";
+import os from "node:os";
+import path, { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -247,6 +249,40 @@ async function caseForcedTimeout(): Promise<void> {
   }
 }
 
+async function caseMcpSelfHealsAfterTimeout(): Promise<void> {
+  // Force a 1ms tool timeout. First call must return isError:true with a clean
+  // "timed out" envelope. The server must REMAIN ALIVE and serve a second call
+  // (we issue an "unknown tool" which intentionally fails fast — proves the
+  // dispatcher is responsive after a timeout). Self-healing contract: one
+  // misbehaving tool doesn't kill the MCP.
+  const c = new McpClient({ MCP_TOOL_TIMEOUT_FORCE_MS: "1" });
+  try {
+    await c.initialize();
+
+    const r1 = await c.request("tools/call", {
+      name: "list_email_labels",
+      arguments: {},
+    });
+    const r1Text = r1.result?.content?.[0]?.text ?? "";
+    const firstTimedOut = r1.result?.isError === true && r1Text.includes("timed out");
+
+    // Server is still alive — issue a second request. We use `tools/list` so
+    // we don't need credentials; just want to prove the dispatcher responds.
+    const r2 = await c.request("tools/list", {});
+    const secondResponded = Array.isArray(r2.result?.tools) && r2.result.tools.length >= 26;
+
+    const ok = firstTimedOut && secondResponded;
+    record(
+      "MCP self-heals: serves the next call after a timed-out one",
+      ok,
+      `firstTimedOut=${firstTimedOut} secondResponded=${secondResponded}`,
+    );
+  } finally {
+    c.kill();
+    await c.waitExit();
+  }
+}
+
 async function caseSigTermClean(): Promise<void> {
   const c = new McpClient();
   try {
@@ -265,23 +301,43 @@ async function caseSigTermClean(): Promise<void> {
 }
 
 async function caseRssWatchdogKill(): Promise<void> {
+  // Point the watchdog at a dedicated log dir we can inspect afterwards.
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "stress-rss-kill-"));
   const c = new McpClient({
     MCP_MAX_RSS_MB: "50",
     MCP_MEMORY_SAMPLE_MS: "500",
+    MCP_LOG_DIR: logDir,
   });
   try {
     await c.initialize();
-    // Watchdog will kill within ~1s based on baseline RSS already > 50MB
     const exit = await c.waitExit(5_000);
-    const _stderrIncludesKill = c.stderr === c.stderr; // structural — actual kill log is in NDJSON
-    const ok = exit.signal !== "TIMEOUT";
+    const killed = exit.signal !== "TIMEOUT";
+
+    // Self-healing audit: the kill must be recorded in NDJSON so post-mortem
+    // grep ("which account / tool / time triggered the kill?") works. Without
+    // this assertion the operator can't reason about what just died.
+    let killLogged = false;
+    try {
+      const files = fs.readdirSync(logDir).filter((f) => f.endsWith(".ndjson"));
+      for (const f of files) {
+        const txt = fs.readFileSync(path.join(logDir, f), "utf8");
+        if (txt.includes("watchdog_kill") && txt.includes("rss_exceeded")) {
+          killLogged = true;
+          break;
+        }
+      }
+    } catch {
+      /* fall through; killLogged stays false */
+    }
+
+    const ok = killed && killLogged;
     record(
-      "MCP_MAX_RSS_MB=50 triggers watchdog kill",
+      "MCP_MAX_RSS_MB=50 triggers watchdog kill + records reason in NDJSON",
       ok,
-      `code=${exit.code} signal=${exit.signal}`,
+      `code=${exit.code} signal=${exit.signal} killLogged=${killLogged}`,
     );
   } finally {
-    // already exited
+    fs.rmSync(logDir, { recursive: true, force: true });
   }
 }
 
@@ -414,6 +470,7 @@ async function main(): Promise<void> {
     caseUnknownTool,
     caseMalformedSchema,
     caseForcedTimeout,
+    caseMcpSelfHealsAfterTimeout,
     caseSigTermClean,
     caseRssWatchdogKill,
     caseHttpTransport,

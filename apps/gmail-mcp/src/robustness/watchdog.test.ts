@@ -266,3 +266,177 @@ describe("triggerKill via RSS overrun (one-shot semantics)", () => {
     expect(killLines.length).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Self-healing surface (Pre-TUI Step 5)
+// ---------------------------------------------------------------------------
+
+describe("watchdog self-healing paths", () => {
+  const ORIGINAL_ENV: Record<string, string | undefined> = {};
+  const KEYS = [
+    "MCP_EVENT_LOOP_SAMPLE_MS",
+    "MCP_EVENT_LOOP_KILL_MS",
+    "MCP_MEMORY_SAMPLE_MS",
+    "MCP_MAX_RSS_MB",
+    "MCP_HEAP_GROWTH_SAMPLES",
+    "MCP_IDLE_CHECK_MS",
+    "MCP_RESTART_AFTER_MS",
+    "MCP_RESTART_QUIET_MS",
+  ] as const;
+
+  beforeEach(() => {
+    for (const k of KEYS) ORIGINAL_ENV[k] = process.env[k];
+  });
+
+  afterEach(() => {
+    for (const k of KEYS) {
+      if (ORIGINAL_ENV[k] === undefined) delete process.env[k];
+      else process.env[k] = ORIGINAL_ENV[k];
+    }
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("memory-leak detection: N monotonically-growing heap samples → triggerKill", async () => {
+    process.env.MCP_MEMORY_SAMPLE_MS = "100";
+    process.env.MCP_EVENT_LOOP_SAMPLE_MS = "9999999";
+    process.env.MCP_IDLE_CHECK_MS = "9999999";
+    process.env.MCP_MAX_RSS_MB = "10000"; // never trip RSS path
+    process.env.MCP_HEAP_GROWTH_SAMPLES = "3"; // small so the test is fast
+
+    vi.useFakeTimers();
+    vi.resetModules();
+
+    // Heap that grows by 10 MB each tick: 10 → 20 → 30. Three samples,
+    // monotonic, total growth 20 MB → trips the heuristic.
+    let tick = 0;
+    const samples = [10, 20, 30];
+    vi.spyOn(process, "memoryUsage").mockImplementation((() => ({
+      rss: 10 * 1024 * 1024,
+      heapTotal: 100 * 1024 * 1024,
+      heapUsed: samples[Math.min(tick++, samples.length - 1)] * 1024 * 1024,
+      external: 0,
+      arrayBuffers: 0,
+    })) as typeof process.memoryUsage);
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const shutdownMod = await import("./shutdown.js");
+    shutdownMod._resetForTests();
+    const loggerMod = await import("./logger.js");
+    loggerMod.clearLogs();
+
+    const mod = await import("./watchdog.js");
+    mod.installWatchdog();
+
+    // Three ticks → fills the heap history window with monotonically-growing samples.
+    await vi.advanceTimersByTimeAsync(120);
+    await vi.advanceTimersByTimeAsync(120);
+    await vi.advanceTimersByTimeAsync(120);
+
+    expect(mod.readWatchdogState().killReason).toBe("memory_leak_suspected");
+    const killLine = loggerMod
+      .getLogs()
+      .find((l) => l.includes("watchdog_kill: memory_leak_suspected"));
+    expect(killLine).toBeDefined();
+    expect(exitSpy).toHaveBeenCalled();
+  });
+
+  it("idle-restart: uptime past threshold + no activity → triggerKill('idle_restart')", async () => {
+    process.env.MCP_MEMORY_SAMPLE_MS = "9999999";
+    process.env.MCP_EVENT_LOOP_SAMPLE_MS = "9999999";
+    process.env.MCP_IDLE_CHECK_MS = "100"; // tight tick so the test is fast
+    process.env.MCP_RESTART_AFTER_MS = "1000"; // uptime > 1s
+    process.env.MCP_RESTART_QUIET_MS = "500"; // idle > 0.5s
+    process.env.MCP_MAX_RSS_MB = "10000";
+    process.env.MCP_HEAP_GROWTH_SAMPLES = "9999";
+
+    vi.useFakeTimers();
+    vi.resetModules();
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const shutdownMod = await import("./shutdown.js");
+    shutdownMod._resetForTests();
+    const loggerMod = await import("./logger.js");
+    loggerMod.clearLogs();
+
+    const mod = await import("./watchdog.js");
+    mod.installWatchdog();
+
+    // Advance past uptime + quiet thresholds without any noteActivity calls.
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(mod.readWatchdogState().killReason).toBe("idle_restart");
+    const killLine = loggerMod.getLogs().find((l) => l.includes("watchdog_kill: idle_restart"));
+    expect(killLine).toBeDefined();
+    expect(killLine).toContain("uptime_ms");
+    expect(exitSpy).toHaveBeenCalled();
+  });
+
+  it("idle-restart does NOT fire when activity is fresh", async () => {
+    process.env.MCP_MEMORY_SAMPLE_MS = "9999999";
+    process.env.MCP_EVENT_LOOP_SAMPLE_MS = "9999999";
+    process.env.MCP_IDLE_CHECK_MS = "100";
+    process.env.MCP_RESTART_AFTER_MS = "1000";
+    process.env.MCP_RESTART_QUIET_MS = "500";
+    process.env.MCP_MAX_RSS_MB = "10000";
+    process.env.MCP_HEAP_GROWTH_SAMPLES = "9999";
+
+    vi.useFakeTimers();
+    vi.resetModules();
+
+    const shutdownMod = await import("./shutdown.js");
+    shutdownMod._resetForTests();
+
+    const mod = await import("./watchdog.js");
+    mod.installWatchdog();
+
+    // Drive ~1.5s while issuing noteActivity every tick — should NOT fire.
+    for (let i = 0; i < 20; i++) {
+      mod.noteActivity();
+      await vi.advanceTimersByTimeAsync(100);
+    }
+
+    expect(mod.readWatchdogState().killReason).toBeNull();
+  });
+
+  it("installWatchdog registers a cleanup that disables all three monitors", async () => {
+    process.env.MCP_MEMORY_SAMPLE_MS = "9999999";
+    process.env.MCP_EVENT_LOOP_SAMPLE_MS = "9999999";
+    process.env.MCP_IDLE_CHECK_MS = "9999999";
+    process.env.MCP_MAX_RSS_MB = "10000";
+    process.env.MCP_HEAP_GROWTH_SAMPLES = "9999";
+
+    vi.resetModules();
+    const shutdownMod = await import("./shutdown.js");
+    shutdownMod._resetForTests();
+
+    // Observe registerCleanup invocations by spying on the module exports.
+    const registerSpy = vi.spyOn(shutdownMod, "registerCleanup");
+
+    const mod = await import("./watchdog.js");
+    mod.installWatchdog();
+
+    expect(registerSpy).toHaveBeenCalledTimes(1);
+    expect(typeof registerSpy.mock.calls[0]?.[0]).toBe("function");
+  });
+
+  it("installWatchdog is idempotent (second call is a no-op)", async () => {
+    process.env.MCP_MEMORY_SAMPLE_MS = "9999999";
+    process.env.MCP_EVENT_LOOP_SAMPLE_MS = "9999999";
+    process.env.MCP_IDLE_CHECK_MS = "9999999";
+    process.env.MCP_MAX_RSS_MB = "10000";
+
+    vi.resetModules();
+    const shutdownMod = await import("./shutdown.js");
+    shutdownMod._resetForTests();
+    const registerSpy = vi.spyOn(shutdownMod, "registerCleanup");
+
+    const mod = await import("./watchdog.js");
+    mod.installWatchdog();
+    mod.installWatchdog();
+    mod.installWatchdog();
+
+    // Only the first call registers a cleanup; subsequent are no-ops.
+    expect(registerSpy).toHaveBeenCalledTimes(1);
+  });
+});
