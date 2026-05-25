@@ -1,0 +1,25 @@
+{
+  "id": "w_msg_003",
+  "threadId": "w_thr_001",
+  "labelIds": ["INBOX", "Label_1"],
+  "snippet": "Re: Release 1.2.3 deployed — minor rollback question",
+  "historyId": "1000004",
+  "internalDate": "1730172800000",
+  "payload": {
+    "mimeType": "text/plain",
+    "headers": [
+      { "name": "From", "value": "reviewer@fixture.test" },
+      { "name": "To", "value": "releases@fixture.test, user-work@fixture.test" },
+      { "name": "Subject", "value": "Re: [fixture] Release 1.2.3 deployed" },
+      { "name": "Date", "value": "Wed, 29 Oct 2025 09:30:00 +0000" },
+      { "name": "Message-Id", "value": "<reply-release@fixture.test>" },
+      { "name": "In-Reply-To", "value": "<release-1.2.3@fixture.test>" },
+      { "name": "References", "value": "<release-1.2.3@fixture.test>" }
+    ],
+    "body": {
+      "size": 78,
+      "data": "Q2FuIHdlIHJvbGwgYmFjayB0aGUgY29sb3IgY2hhbmdlPyBVc2VycyBhcmUgY29tcGxhaW5pbmcu"
+    }
+  },
+  "sizeEstimate": 612
+}

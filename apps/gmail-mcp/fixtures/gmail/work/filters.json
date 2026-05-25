@@ -1,0 +1,12 @@
+[
+  {
+    "id": "FilterWorkReleases",
+    "criteria": { "from": "releases@fixture.test" },
+    "action": { "addLabelIds": ["Label_1"] }
+  },
+  {
+    "id": "FilterWorkIncidents",
+    "criteria": { "subject": "INCIDENT" },
+    "action": { "addLabelIds": ["Label_2", "STARRED"] }
+  }
+]

@@ -13,14 +13,13 @@ const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), 
 const USAGE_FILE = path.join(REPO_ROOT, "usage.kdl");
 
 function runCheck(): { status: number | null; stderr: string } {
-  // Use the project's local tsx so the script's TS imports resolve. We spawn
-  // through pnpm exec to inherit the local node_modules/.bin without
-  // depending on the developer's PATH.
-  const result = spawnSync(
-    "pnpm",
-    ["exec", "tsx", path.join(REPO_ROOT, "scripts/gen-usage.ts"), "--check"],
-    { cwd: REPO_ROOT, encoding: "utf8" },
-  );
+  // Invoke the local tsx bin directly. Avoids depending on `pnpm` being on
+  // PATH (CI / contributors may use npm or run from a stripped environment).
+  const tsxBin = path.join(REPO_ROOT, "node_modules/.bin/tsx");
+  const result = spawnSync(tsxBin, [path.join(REPO_ROOT, "scripts/gen-usage.ts"), "--check"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
   return { status: result.status, stderr: `${result.stderr ?? ""}${result.stdout ?? ""}` };
 }
 

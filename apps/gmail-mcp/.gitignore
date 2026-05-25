@@ -35,3 +35,8 @@ credentials.json
 
 # Local MCP host config — contains machine-specific absolute paths
 .mcp.json
+
+# Fixture-mode runtime state (per-test config dir + raw capture output)
+.test-config/
+fixtures/raw/
+test.md

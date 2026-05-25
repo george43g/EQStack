@@ -1,0 +1,23 @@
+{
+  "id": "p_msg_001",
+  "threadId": "p_thr_001",
+  "labelIds": ["INBOX", "Label_P1"],
+  "snippet": "Weekly fixture-test newsletter — what we learned this week",
+  "historyId": "2000002",
+  "internalDate": "1730259200000",
+  "payload": {
+    "mimeType": "text/plain",
+    "headers": [
+      { "name": "From", "value": "newsletter@fixture.test" },
+      { "name": "To", "value": "user-personal@fixture.test" },
+      { "name": "Subject", "value": "Fixture newsletter: this week's roundup" },
+      { "name": "Date", "value": "Thu, 30 Oct 2025 12:00:00 +0000" },
+      { "name": "Message-Id", "value": "<newsletter-week@fixture.test>" }
+    ],
+    "body": {
+      "size": 88,
+      "data": "VGhpcyB3ZWVrJ3MgcGVyc29uYWwgZml4dHVyZSByb3VuZHVwLiBOb3RoaW5nIHJlYWwgaW4gaGVyZS4="
+    }
+  },
+  "sizeEstimate": 512
+}

@@ -1,0 +1,21 @@
+{
+  "id": "p_thr_002",
+  "historyId": "2000003",
+  "snippet": "Dinner tomorrow at 7pm",
+  "messages": [
+    {
+      "id": "p_msg_002",
+      "threadId": "p_thr_002",
+      "labelIds": ["INBOX", "STARRED"],
+      "snippet": "Dinner tomorrow at 7pm",
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          { "name": "From", "value": "family@fixture.test" },
+          { "name": "Subject", "value": "Dinner tomorrow at 7pm" }
+        ],
+        "body": { "size": 60 }
+      }
+    }
+  ]
+}

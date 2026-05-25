@@ -1,0 +1,6 @@
+[
+  { "id": "INBOX", "name": "INBOX", "type": "system", "messageListVisibility": "show", "labelListVisibility": "labelShow" },
+  { "id": "STARRED", "name": "STARRED", "type": "system", "messageListVisibility": "show" },
+  { "id": "UNREAD", "name": "UNREAD", "type": "system" },
+  { "id": "Label_P1", "name": "Newsletters", "type": "user", "messageListVisibility": "show" }
+]

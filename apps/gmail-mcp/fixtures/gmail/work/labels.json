@@ -1,0 +1,9 @@
+[
+  { "id": "INBOX", "name": "INBOX", "type": "system", "messageListVisibility": "show", "labelListVisibility": "labelShow" },
+  { "id": "SENT", "name": "SENT", "type": "system", "messageListVisibility": "hide" },
+  { "id": "DRAFT", "name": "DRAFT", "type": "system", "messageListVisibility": "hide" },
+  { "id": "STARRED", "name": "STARRED", "type": "system", "messageListVisibility": "show" },
+  { "id": "UNREAD", "name": "UNREAD", "type": "system" },
+  { "id": "Label_1", "name": "Releases", "type": "user", "messageListVisibility": "show", "labelListVisibility": "labelShow" },
+  { "id": "Label_2", "name": "Incidents", "type": "user", "messageListVisibility": "show", "labelListVisibility": "labelShow" }
+]

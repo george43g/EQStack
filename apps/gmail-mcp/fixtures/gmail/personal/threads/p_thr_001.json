@@ -1,0 +1,21 @@
+{
+  "id": "p_thr_001",
+  "historyId": "2000002",
+  "snippet": "Weekly fixture-test newsletter",
+  "messages": [
+    {
+      "id": "p_msg_001",
+      "threadId": "p_thr_001",
+      "labelIds": ["INBOX", "Label_P1"],
+      "snippet": "Weekly fixture-test newsletter",
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          { "name": "From", "value": "newsletter@fixture.test" },
+          { "name": "Subject", "value": "Fixture newsletter: this week's roundup" }
+        ],
+        "body": { "size": 88 }
+      }
+    }
+  ]
+}

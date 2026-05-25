@@ -1,0 +1,35 @@
+{
+  "id": "w_thr_001",
+  "historyId": "1000004",
+  "snippet": "Release 1.2.3 deployed to production successfully",
+  "messages": [
+    {
+      "id": "w_msg_001",
+      "threadId": "w_thr_001",
+      "labelIds": ["INBOX", "UNREAD", "Label_1"],
+      "snippet": "Release 1.2.3 deployed to production successfully",
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          { "name": "From", "value": "releases@fixture.test" },
+          { "name": "Subject", "value": "[fixture] Release 1.2.3 deployed" }
+        ],
+        "body": { "size": 142 }
+      }
+    },
+    {
+      "id": "w_msg_003",
+      "threadId": "w_thr_001",
+      "labelIds": ["INBOX", "Label_1"],
+      "snippet": "Re: Release 1.2.3 deployed — minor rollback question",
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          { "name": "From", "value": "reviewer@fixture.test" },
+          { "name": "Subject", "value": "Re: [fixture] Release 1.2.3 deployed" }
+        ],
+        "body": { "size": 78 }
+      }
+    }
+  ]
+}

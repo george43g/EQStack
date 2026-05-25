@@ -1,0 +1,21 @@
+{
+  "id": "w_thr_002",
+  "historyId": "1000003",
+  "snippet": "INCIDENT-204 — checkout latency spike resolved",
+  "messages": [
+    {
+      "id": "w_msg_002",
+      "threadId": "w_thr_002",
+      "labelIds": ["INBOX", "Label_2", "STARRED"],
+      "snippet": "INCIDENT-204 — checkout latency spike resolved",
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          { "name": "From", "value": "oncall@fixture.test" },
+          { "name": "Subject", "value": "INCIDENT-204 resolved" }
+        ],
+        "body": { "size": 96 }
+      }
+    }
+  ]
+}

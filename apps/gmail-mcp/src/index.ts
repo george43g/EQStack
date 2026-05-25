@@ -125,6 +125,49 @@ export interface SessionBundle {
 export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<SessionBundle> {
   const env = opts.env ?? process.env;
 
+  // Fixture-mode short-circuit: skip OAuth entirely and back the session
+  // with a JSON-driven fake gmail client. Used by `pnpm test:e2e` and by
+  // `GMAIL_FIXTURE_MODE=1 pnpm dev:tui` for iterating on UI without real
+  // credentials. The oauth2Client is stubbed to throw if any of its methods
+  // are invoked — production code paths must NOT depend on it under fixture
+  // mode (the fake gmail client serves every read; mutating calls return
+  // canned success envelopes).
+  if (env.GMAIL_FIXTURE_MODE === "1") {
+    const fixtureDir = env.GMAIL_FIXTURE_DIR ?? "./fixtures/gmail";
+    const accountIdFromEnv = env.GMAIL_ACCOUNT?.trim() || null;
+    const { loadFixtureGmail } = await import("./fixtures/loader.js");
+    const bundle = loadFixtureGmail(fixtureDir, accountIdFromEnv);
+    logInfo("fixture mode", { accountDir: bundle.accountDir, scopes: bundle.scopes });
+
+    const stubOAuth = new Proxy({} as OAuth2Client, {
+      get: () => {
+        throw new Error(
+          "OAuth2Client is stubbed in fixture mode — production code MUST NOT depend on it.",
+        );
+      },
+    });
+
+    setSession({
+      oauth2Client: stubOAuth,
+      gmail: bundle.gmail,
+      authorizedScopes: bundle.scopes,
+      accountId: accountIdFromEnv,
+    });
+
+    const { server, dispatch } = buildMcpServer();
+    _dispatcherFn = dispatch;
+    void opts.skipTransport;
+
+    return {
+      oauth2Client: stubOAuth,
+      gmail: bundle.gmail,
+      authorizedScopes: bundle.scopes,
+      accountId: accountIdFromEnv,
+      server,
+      dispatch,
+    };
+  }
+
   // Resolve the active account using the M1 precedence chain. Returns
   // legacy-implicit "default" for unmigrated single-account users (which
   // triggers the credentials.json → accounts/default/ copy on first read).
