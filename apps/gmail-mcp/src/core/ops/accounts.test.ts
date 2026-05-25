@@ -223,3 +223,158 @@ describe("registry surface", () => {
     expect(op!.scopes).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Integration: switch_account end-to-end behaviours (Pre-TUI Steps 3 + 4)
+// ---------------------------------------------------------------------------
+
+describe("switch_account integration (mid-session)", () => {
+  it("fires sessionEvents.accountChanged with the right payload", async () => {
+    writeSharedOAuthKeys();
+    addAccount("work", { emailAddress: "w@example.com", scopes: ["gmail.modify"] });
+    addAccount("personal", {
+      emailAddress: "p@example.com",
+      scopes: ["gmail.readonly"],
+    });
+    writeAccount("work", TOKEN_BLOB_WORK);
+    writeAccount("personal", TOKEN_BLOB_PERSONAL);
+
+    setSession({
+      oauth2Client: {} as never,
+      gmail: {} as never,
+      authorizedScopes: ["gmail.modify"],
+      accountId: "work",
+    });
+
+    const { sessionEvents } = await import("../session.js");
+    const handler = vi.fn();
+    sessionEvents.on("accountChanged", handler);
+
+    const op = registry.get("switch_account");
+    await op!.handler({ accountId: "personal" }, buildCtx());
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        previous: "work",
+        current: "personal",
+        scopes: ["gmail.readonly"],
+      }),
+    );
+
+    sessionEvents.removeAllListeners();
+  });
+
+  it("idempotent switch does NOT fire accountChanged", async () => {
+    writeSharedOAuthKeys();
+    addAccount("work", { emailAddress: "w@example.com", scopes: ["gmail.modify"] });
+
+    setSession({
+      oauth2Client: {} as never,
+      gmail: {} as never,
+      authorizedScopes: ["gmail.modify"],
+      accountId: "work",
+    });
+
+    const { sessionEvents } = await import("../session.js");
+    const handler = vi.fn();
+    sessionEvents.on("accountChanged", handler);
+
+    const op = registry.get("switch_account");
+    await op!.handler({ accountId: "work" }, buildCtx());
+
+    expect(handler).not.toHaveBeenCalled();
+    sessionEvents.removeAllListeners();
+  });
+
+  it("subsequent ctx snapshots see the NEW gmail handle after a switch", async () => {
+    // Proves the swap actually changes which gmail handle the next dispatch
+    // gets — the integration concern behind the TUI account-switcher.
+    writeSharedOAuthKeys();
+    addAccount("work", { emailAddress: "w@example.com", scopes: ["gmail.modify"] });
+    addAccount("personal", {
+      emailAddress: "p@example.com",
+      scopes: ["gmail.readonly"],
+    });
+    writeAccount("work", TOKEN_BLOB_WORK);
+    writeAccount("personal", TOKEN_BLOB_PERSONAL);
+
+    const { getGmail } = await import("../session.js");
+    const { createContext } = await import("../context.js");
+
+    // Start with a marker-tagged stub so identity changes are visible.
+    setSession({
+      oauth2Client: {} as never,
+      gmail: { __marker__: "A" } as never,
+      authorizedScopes: ["gmail.modify"],
+      accountId: "work",
+    });
+    const before = getGmail() as unknown as { __marker__: string };
+    expect(before.__marker__).toBe("A");
+
+    // Take a context snapshot now — this is what an in-flight dispatch holds.
+    const inFlightCtx = createContext({
+      toolName: "list_inbox_threads",
+      signal: new AbortController().signal,
+    });
+
+    // Swap — switch_account installs a real googleapis handle.
+    const op = registry.get("switch_account");
+    await op!.handler({ accountId: "personal" }, buildCtx());
+
+    // Identity changed in the session singleton.
+    const after = getGmail();
+    expect(after).not.toBe(before);
+
+    // The in-flight context still holds the OLD handle (snapshot semantics).
+    // Critical for not breaking concurrent ops mid-swap.
+    expect(inFlightCtx.gmail).toBe(before);
+    expect((inFlightCtx.gmail as unknown as { __marker__: string }).__marker__).toBe("A");
+
+    // A fresh ctx snapshot gets the NEW handle.
+    const newCtx = createContext({
+      toolName: "list_inbox_threads",
+      signal: new AbortController().signal,
+    });
+    expect(newCtx.gmail).toBe(after);
+    expect(newCtx.gmail).not.toBe(before);
+  });
+
+  it("health_check is unaffected by account swaps (canary contract)", async () => {
+    writeSharedOAuthKeys();
+    addAccount("work", { emailAddress: "w@example.com", scopes: ["gmail.modify"] });
+    addAccount("personal", {
+      emailAddress: "p@example.com",
+      scopes: ["gmail.readonly"],
+    });
+    writeAccount("work", TOKEN_BLOB_WORK);
+    writeAccount("personal", TOKEN_BLOB_PERSONAL);
+
+    setSession({
+      oauth2Client: {} as never,
+      gmail: {} as never,
+      authorizedScopes: ["gmail.modify"],
+      accountId: "work",
+    });
+
+    // health_check before swap.
+    await import("./health.js");
+    const health = registry.get("health_check");
+    const before = await health!.handler({}, buildCtx());
+    expect(before.structuredContent).toBeDefined();
+    const beforeStatus = (before.structuredContent as { status: string }).status;
+
+    // Swap.
+    const op = registry.get("switch_account");
+    await op!.handler({ accountId: "personal" }, buildCtx());
+
+    // health_check after swap — still produces a snapshot. The status field
+    // depends on watchdog state, which is process-global and unaffected by
+    // account changes; assert at minimum that it returned a structuredContent
+    // and didn't throw.
+    const after = await health!.handler({}, buildCtx());
+    expect(after.structuredContent).toBeDefined();
+    expect(typeof (after.structuredContent as { status: string }).status).toBe("string");
+    expect((after.structuredContent as { status: string }).status).toBe(beforeStatus);
+  });
+});
