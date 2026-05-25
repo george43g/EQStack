@@ -5,12 +5,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  callOp,
   exitCodeForError,
   formatToolResultText,
   printToolResult,
   resolveBodyInput,
+  ToolCallError,
 } from "./runtime.js";
 
 describe("formatToolResultText", () => {
@@ -145,5 +147,85 @@ describe("resolveBodyInput", () => {
     const filePath = path.join(tmpDir, "body.txt");
     fs.writeFileSync(filePath, "from-disk body\n");
     expect(await resolveBodyInput(`@${filePath}`)).toBe("from-disk body\n");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// callOp + ToolCallError — typed in-process dispatch (Pre-TUI Step 2)
+// ---------------------------------------------------------------------------
+//
+// Mocks `../index.js` so we can drive callMcpTool / main(skipTransport) without
+// touching real credentials. Tests run hermetically.
+
+vi.mock("../index.js", async () => {
+  const stub = vi.fn();
+  return {
+    main: vi.fn(async () => undefined),
+    callMcpTool: stub,
+    __getStub: () => stub,
+  };
+});
+
+describe("callOp (typed in-process dispatch)", () => {
+  let callMcpToolStub: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const mod = (await import("../index.js")) as unknown as {
+      __getStub: () => ReturnType<typeof vi.fn>;
+    };
+    callMcpToolStub = mod.__getStub();
+    callMcpToolStub.mockReset();
+  });
+
+  it("happy path: returns structuredContent typed as TOutput", async () => {
+    interface InboxPayload {
+      threadCount: number;
+      threads: Array<{ id: string; subject: string }>;
+    }
+    const payload: InboxPayload = {
+      threadCount: 1,
+      threads: [{ id: "t1", subject: "hello" }],
+    };
+    callMcpToolStub.mockResolvedValueOnce({
+      content: [{ type: "text", text: "ignored" }],
+      structuredContent: payload,
+      isError: false,
+    });
+    const result = await callOp<InboxPayload>("list_inbox_threads", { maxResults: 1 });
+    expect(result).toEqual(payload);
+    expect(callMcpToolStub).toHaveBeenCalledWith(
+      "list_inbox_threads",
+      { maxResults: 1 },
+      undefined,
+    );
+  });
+
+  it("throws ToolCallError when the dispatcher returns isError:true", async () => {
+    callMcpToolStub.mockResolvedValueOnce({
+      content: [{ type: "text", text: "scope missing: gmail.send" }],
+      isError: true,
+    });
+    await expect(callOp("send_email", { to: ["x@y.z"] })).rejects.toBeInstanceOf(ToolCallError);
+
+    callMcpToolStub.mockResolvedValueOnce({
+      content: [{ type: "text", text: "scope missing: gmail.send" }],
+      isError: true,
+    });
+    try {
+      await callOp("send_email", { to: ["x@y.z"] });
+    } catch (err) {
+      expect((err as ToolCallError).toolName).toBe("send_email");
+      expect((err as ToolCallError).message).toContain("scope missing");
+    }
+  });
+
+  it("returns undefined when structuredContent is omitted (text-only ops)", async () => {
+    callMcpToolStub.mockResolvedValueOnce({
+      content: [{ type: "text", text: "Status: healthy" }],
+      // structuredContent intentionally absent — modelling a text-only op.
+      isError: false,
+    });
+    const result = await callOp<undefined>("legacy_text_op", {});
+    expect(result).toBeUndefined();
   });
 });

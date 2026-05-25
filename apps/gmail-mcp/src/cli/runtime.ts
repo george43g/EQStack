@@ -166,3 +166,52 @@ export async function runCliOp(
   }
   process.exit(outcome.isError ? 1 : 0);
 }
+
+// ---------------------------------------------------------------------------
+// Typed in-process op invocation (Pre-TUI Step 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown by `callOp` when the dispatcher returns an `isError: true` envelope.
+ * Distinguishes tool-level failures (which include their own diagnostic text)
+ * from infrastructure errors (which throw the underlying exception directly).
+ */
+export class ToolCallError extends Error {
+  constructor(
+    public toolName: string,
+    message: string,
+    public mcpResult?: ToolResult,
+  ) {
+    super(message);
+    this.name = "ToolCallError";
+  }
+}
+
+/**
+ * Typed in-process dispatch. Bootstraps the server (idempotent), dispatches
+ * the tool, returns its structured payload. Throws `ToolCallError` if the
+ * tool returned `isError: true`; bubbles any infrastructure error otherwise.
+ *
+ * Designed for long-lived embedders (the TUI hooks in particular) that want
+ * a Promise<TOutput> instead of the legacy MCP envelope. CLI commands keep
+ * using `runCliOp`; `callOp` is additive.
+ *
+ * Type parameter is unchecked at runtime — callers annotate with the op's
+ * `outputSchema` inferred type, e.g.
+ *   const data = await callOp<z.infer<typeof ListInboxThreadsOutputSchema>>(
+ *     "list_inbox_threads",
+ *     { maxResults: 25 },
+ *   );
+ */
+export async function callOp<TOutput = unknown>(
+  toolName: string,
+  args: unknown,
+  signal?: AbortSignal,
+): Promise<TOutput> {
+  await bootstrapForCli();
+  const result = (await callMcpTool(toolName, args, signal)) as ToolResult;
+  if (result.isError === true) {
+    throw new ToolCallError(toolName, formatToolResultText(result), result);
+  }
+  return result.structuredContent as TOutput;
+}
