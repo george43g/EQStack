@@ -10,10 +10,25 @@
 //   - src/server/build.ts      — MCP Server factory + dispatcher closure
 //   - src/server/http.ts       — Streamable HTTP transport (Phase G)
 //   - src/cli/commands/auth.ts — OAuth flow
+//
+// Public entry points:
+//   - `main(opts)`            — process-level entry. Installs watchdog +
+//                                signal handlers, calls bootstrapSession, hooks
+//                                up the transport. Exits the process on any
+//                                bootstrap error (CLI/MCP semantics).
+//   - `bootstrapSession(opts)` — pure orchestration. Loads credentials,
+//                                builds the server + dispatcher, returns a
+//                                SessionBundle. Throws BootstrapError instead
+//                                of calling shutdown(). Designed for the TUI
+//                                and any other long-lived embedder that wants
+//                                to render its own error UI on failure.
+//   - `callMcpTool`           — in-process dispatcher access. Initialised by
+//                                main() OR bootstrapSession().
 
+import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { OAuth2Client } from "google-auth-library";
-import { google } from "googleapis";
+import { type gmail_v1, google } from "googleapis";
 import { resolveActiveAccount } from "./core/accounts.js";
 import { loadOAuthKeys } from "./core/auth-flow.js";
 import { getConfigDir, getCredentialsPath, getOAuthPath } from "./core/config-paths.js";
@@ -38,19 +53,15 @@ import {
 import { DEFAULT_SCOPES } from "./scopes.js";
 import { buildMcpServer, type CallToolFn } from "./server/build.js";
 
-const CONFIG_DIR = getConfigDir();
-const OAUTH_PATH = getOAuthPath();
-const CREDENTIALS_PATH = getCredentialsPath();
-
-// In-process dispatcher reference. Populated by `main()` after session
-// initialisation so non-stdio callers (CLI / TUI / HTTP wrapper) can call
-// tool handlers directly without going through a transport.
+// In-process dispatcher reference. Populated by `bootstrapSession()` after
+// session initialisation so non-stdio callers (CLI / TUI / HTTP wrapper) can
+// call tool handlers directly without going through a transport.
 let _dispatcherFn: CallToolFn | null = null;
 
 /**
  * Call a tool by name with structured arguments, in-process. Throws if
- * `main()` hasn't completed bootstrap yet — credentials / Gmail client /
- * dispatcher are all initialised together.
+ * bootstrap hasn't completed yet — credentials / Gmail client / dispatcher
+ * are all initialised together.
  */
 export async function callMcpTool(
   name: string,
@@ -58,85 +69,146 @@ export async function callMcpTool(
   signal?: AbortSignal,
 ): Promise<ReturnType<CallToolFn>> {
   if (!_dispatcherFn) {
-    throw new Error("callMcpTool: dispatcher not initialised — make sure main() has completed.");
+    throw new Error(
+      "callMcpTool: dispatcher not initialised — call main() or bootstrapSession() first.",
+    );
   }
   return _dispatcherFn(name, args, signal);
 }
 
-interface LoadedCredentials {
-  oauth2Client: OAuth2Client;
-  authorizedScopes: string[];
-  accountId: string | null;
-}
+// ---------------------------------------------------------------------------
+// Embeddable bootstrap (used by main() and by the TUI)
+// ---------------------------------------------------------------------------
 
-async function loadCredentials(): Promise<LoadedCredentials | null> {
-  try {
-    // Resolve the active account using the M1 precedence chain. Returns
-    // legacy-implicit "default" for unmigrated single-account users (which
-    // triggers the credentials.json → accounts/default/ copy on first read).
-    // Env-driven credentials (GMAIL_CREDENTIALS_JSON / _OP) keep working
-    // because the loader chain short-circuits on env before consulting the
-    // account id.
-    const active = resolveActiveAccount();
-    const accountId = active.id ?? undefined;
-    // Tag every subsequent log entry with the resolved account so post-mortem
-    // grep of MCP_LOG_DIR/*.ndjson can answer "which account triggered this?".
-    logInfo("active account", { account: accountId ?? null, source: active.source });
-
-    let keys;
-    try {
-      keys = loadOAuthKeys({
-        oauthPath: OAUTH_PATH,
-        cwd: process.cwd(),
-        configDir: CONFIG_DIR,
-        accountId,
-      });
-    } catch (err) {
-      console.error(`Error: ${(err as Error).message}`);
-      await shutdown(1);
-      return null;
-    }
-
-    const oauth2Client = new OAuth2Client(
-      keys.client_id,
-      keys.client_secret,
-      "http://localhost:3000/oauth2callback",
-    );
-
-    // Load stored access/refresh tokens via the multi-source loader chain.
-    // Missing tokens are NOT fatal — required for `auth` subcommand bootstrap.
-    let authorizedScopes: string[] = DEFAULT_SCOPES;
-    try {
-      const loaded = await coreLoadCredentials({
-        fallbackPath: CREDENTIALS_PATH,
-        accountId,
-      });
-      oauth2Client.setCredentials(loaded.credentials.tokens);
-      if (loaded.credentials.scopes) authorizedScopes = loaded.credentials.scopes;
-    } catch (err) {
-      const e = err as { source?: string; name?: string; message?: string };
-      if (e.name === "CredentialLoadError" && e.source === "file") {
-        // No file yet — user will run `gmail auth` to create it.
-      } else {
-        console.error(`Error loading credentials: ${e.message ?? err}`);
-        await shutdown(1);
-        return null;
-      }
-    }
-
-    return { oauth2Client, authorizedScopes, accountId: accountId ?? null };
-  } catch (error) {
-    console.error("Error loading credentials:", error);
-    await shutdown(1);
-    return null;
+/**
+ * Typed error thrown by bootstrapSession when credential loading fails in a
+ * way the caller needs to surface to the user (bad keys, malformed credentials
+ * file, etc.). `main()` catches this and exits(1) — the TUI catches it and
+ * renders a "credentials missing" pane instead. The `stage` field tells the
+ * caller which step failed (useful for actionable error messages).
+ */
+export class BootstrapError extends Error {
+  constructor(
+    message: string,
+    public stage: "oauth-keys" | "credentials" | "unknown",
+    public override cause?: unknown,
+  ) {
+    super(message);
+    this.name = "BootstrapError";
   }
 }
 
+export interface BootstrapOptions {
+  /** When true, build the dispatcher but don't install any transport. Used by the CLI runtime + TUI. */
+  skipTransport?: boolean;
+  /** Override env (tests). Defaults to process.env. */
+  env?: NodeJS.ProcessEnv;
+}
+
+export interface SessionBundle {
+  oauth2Client: OAuth2Client;
+  gmail: gmail_v1.Gmail;
+  authorizedScopes: string[];
+  accountId: string | null;
+  server: Server;
+  dispatch: CallToolFn;
+}
+
 /**
- * Main entry. `skipTransport: true` runs the full bootstrap (credentials +
- * Gmail client + dispatcher) but does NOT install stdio or HTTP transport —
- * used by the CLI runtime to reach callMcpTool in-process without becoming
- * an MCP server.
+ * Pure bootstrap: load credentials, build the dispatcher, return a typed
+ * bundle. Does NOT install signal handlers, watchdog, or any transport — that
+ * stays in `main()` for the CLI/MCP path. Long-lived embedders (TUI) call
+ * this directly and own their own lifecycle.
+ *
+ * Throws `BootstrapError` on failure; never calls `process.exit` / `shutdown`.
+ */
+export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<SessionBundle> {
+  const env = opts.env ?? process.env;
+
+  // Resolve the active account using the M1 precedence chain. Returns
+  // legacy-implicit "default" for unmigrated single-account users (which
+  // triggers the credentials.json → accounts/default/ copy on first read).
+  // Env-driven credentials (GMAIL_CREDENTIALS_JSON / _OP) keep working because
+  // the loader chain short-circuits on env before consulting the account id.
+  const active = resolveActiveAccount({ env });
+  const accountId = active.id ?? undefined;
+  logInfo("active account", { account: accountId ?? null, source: active.source });
+
+  const configDir = getConfigDir(env);
+  const oauthPath = getOAuthPath(env);
+  const credentialsPath = getCredentialsPath(env);
+
+  let keys;
+  try {
+    keys = loadOAuthKeys({
+      oauthPath,
+      cwd: process.cwd(),
+      configDir,
+      accountId,
+      env,
+    });
+  } catch (err) {
+    throw new BootstrapError((err as Error).message, "oauth-keys", err);
+  }
+
+  const oauth2Client = new OAuth2Client(
+    keys.client_id,
+    keys.client_secret,
+    "http://localhost:3000/oauth2callback",
+  );
+
+  // Load stored access/refresh tokens via the multi-source loader chain.
+  // Missing tokens are NOT fatal — required for `auth` subcommand bootstrap.
+  // Any other error (malformed JSON, 1Password CLI missing, etc.) IS fatal.
+  let authorizedScopes: string[] = DEFAULT_SCOPES;
+  try {
+    const loaded = await coreLoadCredentials({
+      env,
+      fallbackPath: credentialsPath,
+      accountId,
+    });
+    oauth2Client.setCredentials(loaded.credentials.tokens);
+    if (loaded.credentials.scopes) authorizedScopes = loaded.credentials.scopes;
+  } catch (err) {
+    const e = err as { source?: string; name?: string; message?: string };
+    if (e.name === "CredentialLoadError" && e.source === "file") {
+      // No file yet — `gmail auth` will create it. Not a bootstrap failure.
+    } else {
+      throw new BootstrapError(e.message ?? String(err), "credentials", err);
+    }
+  }
+
+  const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+  setSession({
+    oauth2Client,
+    gmail,
+    authorizedScopes,
+    accountId: accountId ?? null,
+  });
+
+  const { server, dispatch } = buildMcpServer();
+  _dispatcherFn = dispatch;
+
+  // skipTransport is honoured here as a no-op (no transport install at this
+  // layer anyway) — it's a hint for main() to short-circuit before connecting
+  // stdio/HTTP, kept on the options for API parity with the legacy main() arg.
+  void opts.skipTransport;
+
+  return { oauth2Client, gmail, authorizedScopes, accountId: accountId ?? null, server, dispatch };
+}
+
+// ---------------------------------------------------------------------------
+// Process-level entry (CLI / `gmail mcp` / `gmail mcp --http`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Process-level entry. Installs the watchdog + signal handlers (one-shot),
+ * runs `bootstrapSession`, hooks up the transport, and exits on bootstrap
+ * failure with a clear message.
+ *
+ * `skipTransport: true` runs the full bootstrap (credentials + Gmail client +
+ * dispatcher) but does NOT install stdio or HTTP transport — used by the CLI
+ * runtime to reach callMcpTool in-process without becoming an MCP server.
  */
 export async function main(opts: { skipTransport?: boolean } = {}) {
   installShutdownHandlers();
@@ -145,23 +217,22 @@ export async function main(opts: { skipTransport?: boolean } = {}) {
   installWatchdog();
   logStartup("gmail-mcp");
 
-  // Normal MCP path: load credentials, publish session, build server.
-  const loaded = await loadCredentials();
-  if (!loaded) return;
-  const { oauth2Client, authorizedScopes } = loaded;
-
-  const gmail = google.gmail({ version: "v1", auth: oauth2Client });
-  setSession({
-    oauth2Client,
-    gmail,
-    authorizedScopes,
-    accountId: loaded.accountId ?? null,
-  });
-
-  const { server, dispatch } = buildMcpServer();
-  _dispatcherFn = dispatch;
+  let bundle: SessionBundle;
+  try {
+    bundle = await bootstrapSession({ skipTransport: opts.skipTransport });
+  } catch (err) {
+    if (err instanceof BootstrapError) {
+      console.error(`Error: ${err.message}`);
+    } else {
+      console.error("Error during bootstrap:", err);
+    }
+    await shutdown(1);
+    return;
+  }
 
   if (opts.skipTransport) return;
+
+  const { server } = bundle;
 
   // Transport selection: --http switches to Streamable HTTP (Phase G).
   if (process.argv.includes("--http")) {
@@ -214,4 +285,9 @@ function parseStringFlag(flag: string, fallback: string): string {
     return process.argv[idx + 1] ?? fallback;
   }
   return arg.slice(flag.length + 1) || fallback;
+}
+
+// Exported for tests — lets a test reset the in-process dispatcher between cases.
+export function _resetDispatcherForTests(): void {
+  _dispatcherFn = null;
 }
