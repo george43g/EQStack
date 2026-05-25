@@ -21,9 +21,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "vitest --config tests/e2e/vitest.config.ts run",
     "stress": "tsx scripts/stress-mcp.ts",
     "gen-usage": "tsx scripts/gen-usage.ts",
-    "verify": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run gen-usage -- --check",
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:e2e && pnpm run gen-usage -- --check",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },

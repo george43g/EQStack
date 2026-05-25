@@ -136,6 +136,59 @@ const switchOp: Operation<SwitchAccountInput, SwitchAccountOutput> = {
     }
 
     const env = process.env;
+
+    // Fixture-mode short-circuit: skip OAuth + credentials entirely; swap in
+    // a new GmailFixtureClient for the named account dir. The OAuth2Client
+    // proxy stays throwing-on-access (same contract as bootstrap fixture mode).
+    if (env.GMAIL_FIXTURE_MODE === "1") {
+      const fixtureDir = env.GMAIL_FIXTURE_DIR ?? "./fixtures/gmail";
+      const { loadFixtureGmail } = await import("../../fixtures/loader.js");
+      let bundle;
+      try {
+        bundle = loadFixtureGmail(fixtureDir, accountId);
+      } catch (err) {
+        throw new Error(
+          `switch_account: failed to load fixture client for "${accountId}": ${(err as Error).message}`,
+        );
+      }
+      const stubOAuth = new Proxy({} as OAuth2Client, {
+        get: () => {
+          throw new Error(
+            "OAuth2Client is stubbed in fixture mode — production code MUST NOT depend on it.",
+          );
+        },
+      });
+      setSession({
+        oauth2Client: stubOAuth,
+        gmail: bundle.gmail,
+        authorizedScopes: bundle.scopes,
+        accountId,
+      });
+      logInfo("account swapped (fixture)", {
+        account: accountId,
+        previousAccount: previousAccountId,
+        scopes: bundle.scopes,
+      });
+
+      const entry = manifest.accounts[accountId];
+      const structured: SwitchAccountOutput = {
+        previousAccountId: previousAccountId ?? null,
+        newAccountId: accountId,
+        emailAddress: entry?.emailAddress ?? null,
+        scopes: bundle.scopes,
+        note: "Active account swapped (fixture mode).",
+      };
+      const lines = [
+        `Switched active Gmail account: ${previousAccountId ?? "(none)"} → ${accountId} (fixture)`,
+        `Scopes now granted: ${bundle.scopes.length > 0 ? bundle.scopes.join(", ") : "(none)"}`,
+      ];
+      if (entry?.emailAddress) lines.push(`Email: ${entry.emailAddress}`);
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: structured,
+      };
+    }
+
     const configDir = getConfigDir(env);
     const oauthPath = getOAuthPath(env);
 
