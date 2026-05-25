@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SCOPES } from "../scopes.js";
+import type { AccountChangedPayload } from "./session.js";
 import {
   _resetForTests,
   getAuthorizedScopes,
@@ -10,6 +11,7 @@ import {
   incrementToolCallCount,
   isSessionReady,
   recordToolError,
+  sessionEvents,
   setAuthorizedScopes,
   setSession,
 } from "./session.js";
@@ -86,5 +88,117 @@ describe("counters", () => {
     } finally {
       Date.now = realNow;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sessionEvents.accountChanged (Pre-TUI Step 3)
+// ---------------------------------------------------------------------------
+
+describe("sessionEvents.accountChanged", () => {
+  afterEach(() => {
+    sessionEvents.removeAllListeners();
+  });
+
+  it("emits when accountId changes from null → 'work'", () => {
+    const handler = vi.fn();
+    sessionEvents.on("accountChanged", handler);
+
+    setSession({
+      oauth2Client: fakeOauth,
+      gmail: fakeGmail,
+      accountId: "work",
+      authorizedScopes: ["gmail.modify"],
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    const payload = handler.mock.calls[0]?.[0] as AccountChangedPayload;
+    expect(payload).toEqual({
+      previous: null,
+      current: "work",
+      scopes: ["gmail.modify"],
+    });
+  });
+
+  it("emits when accountId changes between two named accounts", () => {
+    setSession({
+      oauth2Client: fakeOauth,
+      gmail: fakeGmail,
+      accountId: "work",
+      authorizedScopes: ["gmail.modify"],
+    });
+
+    const handler = vi.fn();
+    sessionEvents.on("accountChanged", handler);
+
+    setSession({
+      oauth2Client: fakeOauth,
+      gmail: fakeGmail,
+      accountId: "personal",
+      authorizedScopes: ["gmail.readonly"],
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]?.[0]).toEqual({
+      previous: "work",
+      current: "personal",
+      scopes: ["gmail.readonly"],
+    });
+  });
+
+  it("does NOT emit when the same accountId is set twice", () => {
+    setSession({ oauth2Client: fakeOauth, gmail: fakeGmail, accountId: "work" });
+
+    const handler = vi.fn();
+    sessionEvents.on("accountChanged", handler);
+
+    setSession({ oauth2Client: fakeOauth, gmail: fakeGmail, accountId: "work" });
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("does NOT emit when accountId is omitted (legacy single-account bootstrap)", () => {
+    const handler = vi.fn();
+    sessionEvents.on("accountChanged", handler);
+
+    setSession({ oauth2Client: fakeOauth, gmail: fakeGmail });
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("emits when accountId is explicitly set to null (env-driven mode)", () => {
+    setSession({ oauth2Client: fakeOauth, gmail: fakeGmail, accountId: "work" });
+
+    const handler = vi.fn();
+    sessionEvents.on("accountChanged", handler);
+
+    setSession({ oauth2Client: fakeOauth, gmail: fakeGmail, accountId: null });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ previous: "work", current: null }),
+    );
+  });
+
+  it("fans out to multiple subscribers", () => {
+    const h1 = vi.fn();
+    const h2 = vi.fn();
+    sessionEvents.on("accountChanged", h1);
+    sessionEvents.on("accountChanged", h2);
+
+    setSession({ oauth2Client: fakeOauth, gmail: fakeGmail, accountId: "alpha" });
+
+    expect(h1).toHaveBeenCalledTimes(1);
+    expect(h2).toHaveBeenCalledTimes(1);
+  });
+
+  it("_resetForTests clears listeners (no cross-test leak)", () => {
+    const handler = vi.fn();
+    sessionEvents.on("accountChanged", handler);
+    _resetForTests();
+
+    setSession({ oauth2Client: fakeOauth, gmail: fakeGmail, accountId: "work" });
+
+    expect(handler).not.toHaveBeenCalled();
   });
 });

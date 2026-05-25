@@ -10,6 +10,7 @@
 // `switch_account` MCP tool does this. Phase M3 (simultaneous multi-account)
 // would replace this with a per-account session map.
 
+import { EventEmitter } from "node:events";
 import type { OAuth2Client } from "google-auth-library";
 import type { gmail_v1 } from "googleapis";
 import { DEFAULT_SCOPES } from "../scopes.js";
@@ -18,6 +19,34 @@ let _oauth2Client: OAuth2Client | null = null;
 let _gmail: gmail_v1.Gmail | null = null;
 let _authorizedScopes: string[] = DEFAULT_SCOPES;
 let _currentAccountId: string | null = null;
+
+/**
+ * Fire-and-forget session event bus. Emits when the active account changes
+ * (post-`setSession` with a different `accountId`). The TUI's `useAccount`
+ * hook subscribes to refresh its account list / sidebar / inbox cache. CLI
+ * and MCP-server consumers ignore — these events are advisory, never
+ * load-bearing for correctness.
+ *
+ * Events:
+ *   `accountChanged`  →  payload: { previous, current, scopes }
+ *
+ * Handlers MUST NOT throw — any exception propagates to the synchronous
+ * `emit()` call site (`setSession`). Use a try/catch in the listener if
+ * the handler can fail.
+ *
+ * `setMaxListeners(0)` removes the default 10-listener cap. Peak listener
+ * count is small (≤2 in normal use); the cap exists to surface leaks. We
+ * disable it because per-test re-subscribes are common and the cap would
+ * spam stderr with warnings.
+ */
+export const sessionEvents = new EventEmitter();
+sessionEvents.setMaxListeners(0);
+
+export interface AccountChangedPayload {
+  previous: string | null;
+  current: string | null;
+  scopes: string[];
+}
 
 // Counters surfaced via health_check.
 let _toolCallCount = 0;
@@ -36,10 +65,23 @@ export function setSession(opts: {
    */
   accountId?: string | null;
 }): void {
+  const previousAccountId = _currentAccountId;
   _oauth2Client = opts.oauth2Client;
   _gmail = opts.gmail;
   if (opts.authorizedScopes) _authorizedScopes = opts.authorizedScopes;
   if (opts.accountId !== undefined) _currentAccountId = opts.accountId;
+
+  // Emit only when the account id ACTUALLY changed. Same-id calls (bootstrap
+  // → bootstrap re-run, or `switch_account` to the active account) are silent
+  // — subscribers shouldn't refresh on a no-op.
+  if (opts.accountId !== undefined && opts.accountId !== previousAccountId) {
+    const payload: AccountChangedPayload = {
+      previous: previousAccountId,
+      current: _currentAccountId,
+      scopes: _authorizedScopes,
+    };
+    sessionEvents.emit("accountChanged", payload);
+  }
 }
 
 export function getCurrentAccountId(): string | null {
@@ -105,4 +147,5 @@ export function _resetForTests(): void {
   _currentAccountId = null;
   _toolCallCount = 0;
   _recentErrorTs.length = 0;
+  sessionEvents.removeAllListeners();
 }
