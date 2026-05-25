@@ -358,3 +358,27 @@ Substantial — this is the largest single piece on the master plan, roughly com
 - **Session 3** (~2 hours): Themes (all 8) + dev stats modal + config file loading + polish + tests + AGENTS.md update.
 
 Total: ~8-10 hours of focused work. Should be done in its own session (or three), not interleaved with other refactors.
+
+---
+
+## Addendum (pre-TUI refactor landed, 2026-05)
+
+Three preparatory commits landed before this plan starts (see `git log` for the `Pre-TUI Step N` series). They set up the TUI's entry points and test seams:
+
+- **`bootstrapSession(opts)`** in `src/index.ts` — the TUI's bootstrap entry. Returns `SessionBundle`, throws typed `BootstrapError(stage)` instead of calling `shutdown` so the TUI can render a "credentials missing" pane. Does NOT install signal handlers (that stays in `main()` — Ink owns Ctrl+C). Replaces the previous `bootstrapForCli`-via-`main` path; `bootstrapForCli` still works for the CLI runtime but the TUI should call `bootstrapSession` directly.
+- **`callOp<T>(name, args, signal)`** in `src/cli/runtime.ts` — typed in-process dispatch. Wraps `callMcpTool`, throws `ToolCallError` on `isError`, returns `structuredContent` as `T`. Replaces the `useGmail.ts` sketch's manual cast pattern; the TUI hooks should use `callOp` directly.
+- **`sessionEvents.accountChanged`** in `src/core/session.ts` — fires when `setSession` actually changes the active account id. Use this in `useAccount` (or wherever the account-switcher pane lives) to refresh the sidebar / inbox cache after a swap. Wire with `useEffect(() => sessionEvents.on(...), [])`.
+
+### Account-switcher pane (new)
+
+Phase M1 + M2-light (also landed) gave us `list_accounts` + `switch_account` MCP tools. The TUI should expose:
+
+- A modal (suggested key: `~a` or `:account list`) backed by `callOp("list_accounts", {})` → renders the typed `{active, accounts: [...]}` payload. Arrow keys navigate; Enter calls `callOp("switch_account", {accountId: <id>})`.
+- A persistent `[<accountId>]` chip in the StatusBar so the active account is always visible.
+- Subscribe `useAccount` to `sessionEvents.accountChanged` to invalidate the inbox cache and re-fetch on swap.
+
+The `switch_account` response includes a `note` field flagging that the host's cached `tools/list` does NOT auto-refresh after a swap. The TUI's tool catalog is in-process (no MCP host) so this caveat doesn't apply — but if scopes narrow, calls that need missing scopes will surface the standard re-auth hint via `wrapToolError`.
+
+### Fixture-mode dev loop (new)
+
+`GMAIL_FIXTURE_MODE=1 pnpm dev:tui` boots the TUI against `fixtures/gmail/{work,personal}/` — no real OAuth, no real Gmail. Use this for iterating on UI without depending on credentials. The fixture client serves the same surface the production gmail handle does (validated via Zod at the seam), and `switch_account` is fixture-mode-aware so the account-switcher pane is fully exercisable.

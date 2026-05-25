@@ -1242,6 +1242,30 @@ The server includes efficient batch processing capabilities:
    - **Size Limits**: Gmail has a 25MB attachment size limit per email
    - **Download Failures**: Verify you have write permissions to the download directory
 
+## Running against fixtures (development)
+
+`GMAIL_FIXTURE_MODE=1` boots the dispatcher against the JSON corpus under `fixtures/gmail/<account>/` instead of going through OAuth. Useful for iterating on the TUI / CLI without real credentials.
+
+```sh
+# Run the TUI against fixtures
+GMAIL_FIXTURE_MODE=1 GMAIL_FIXTURE_DIR=./fixtures/gmail GMAIL_ACCOUNT=work pnpm dev:tui
+
+# Run the CLI against fixtures (e.g. inspect search results)
+node --env-file=.env.test dist/cli/index.js search "in:inbox" --json
+
+# Switch account inside the fixture-backed dispatcher
+node --env-file=.env.test dist/cli/index.js --account personal search "in:inbox" --json
+```
+
+The shipped corpus is hand-crafted (no real Gmail data is committed). Zod schemas in `src/fixtures/gmail-schemas.ts` validate every fixture file at load time, and a CI guard fails the build if any fixture matches a known-real domain.
+
+End-to-end tests live under `tests/e2e/` and run automatically via `pnpm test:e2e` (also included in `pnpm verify`). They exercise:
+
+- `bootstrapSession` against fixtures
+- `list_inbox_threads` → `switch_account` → `list_inbox_threads` (proves the account-switcher contract)
+- `sessionEvents.accountChanged` firing on real swaps (and not firing on no-op swaps)
+- The built `dist/cli/index.js` binary spawned as a subprocess (matches the published shape)
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

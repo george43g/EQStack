@@ -143,6 +143,19 @@ The `src/robustness/` modules form a "robustness harness" that any local stdio M
 | `health.ts` | Pure formatter — never touches Gmail. Reads watchdog state + caller-supplied counters → `Status: healthy/degraded/unhealthy` text. |
 | `env.ts` | Validated env-var helpers. All robustness knobs use `MCP_*` prefix. |
 
+### Self-healing contract (who installs what)
+
+The watchdog + signal handlers are installed by `main()` in `src/index.ts`, **not** by `bootstrapSession()`. This is load-bearing — it lets long-lived embedders (the Phase D TUI) call `bootstrapSession` directly and own their own lifecycle (Ink handles Ctrl+C; the TUI catches `BootstrapError` to render a "credentials missing" pane instead of exiting). The contract is pinned by `src/index.test.ts` (asserts `bootstrapSession` registers 0 SIG* listeners) and `src/robustness/shutdown.test.ts` (asserts `installShutdownHandlers` wires all four signals).
+
+Self-healing surface covered by tests:
+- **Per-tool timeout** (`MCP_TOOL_TIMEOUT_DEFAULT_MS`, default 30s) → one hung handler returns `isError:true` envelope; the next call still routes through the dispatcher. Stress case `MCP self-heals: serves the next call after a timed-out one`.
+- **RSS cap** (`MCP_MAX_RSS_MB`, default 1024) → graceful kill, `watchdog_kill: rss_exceeded` line in NDJSON. Stress case asserts the NDJSON record exists for post-mortem grep.
+- **Memory leak** (`MCP_HEAP_GROWTH_SAMPLES` consecutive monotonically-growing heap samples) → `watchdog_kill: memory_leak_suspected`.
+- **Event-loop lag** (`MCP_EVENT_LOOP_KILL_MS`, default 10s p99) → `watchdog_kill: event_loop_blocked`.
+- **Idle restart** (`MCP_RESTART_AFTER_MS` uptime + `MCP_RESTART_QUIET_MS` idle, defaults 24h + 1h) → graceful `shutdown(0)`, `watchdog_kill: idle_restart`.
+- **Signals + lifecycle**: SIGINT (exit 130), SIGTERM/SIGHUP/SIGQUIT (exit 0); stdin EOF (host died → graceful exit); orphan reparent (ppid → 1 or different → graceful exit).
+- **Bootstrap failure**: `bootstrapSession` throws `BootstrapError(stage, cause)` instead of calling `shutdown` — `main()` catches and exits(1) for CLI/MCP; TUI catches and renders.
+
 ## How `.mcp.json` env vars reach the server
 
 - Claude Code (and most MCP hosts) **merge** the `env` block from `.mcp.json` into the inherited host environment — they do not replace it.
@@ -370,6 +383,7 @@ After every change to this repo:
 4. **Add a regression test** when the change is unit-testable. Vitest tests live next to the source (`*.test.ts`). The robustness library has full unit coverage — keep it that way.
 5. **Run the full test suite**: `npm test`.
 6. **Run the stress harness on changes that touch the dispatcher / lifecycle**: `npm run stress`.
+7. **Run the e2e suite when touching bootstrap / account / dispatch surfaces**: `pnpm test:e2e`. Boots the dispatcher against `fixtures/gmail/{work,personal}/` and exercises `list_inbox_threads → switch_account → list_inbox_threads` + the CLI binary. `pnpm verify` runs it automatically.
 
 This rule is non-negotiable. The dev MCP is the only way to catch issues that compile but break at runtime (e.g. silent stdout pollution, unhandled rejection paths, signal-handling regressions).
 
@@ -379,7 +393,7 @@ Mandatory security audit on every PR before presenting. See `.claude/skills/pr-r
 
 ## Stress harness
 
-`scripts/stress-mcp.ts` (run via `pnpm run stress` / `npm run stress`) covers nine cases:
+`scripts/stress-mcp.ts` (run via `pnpm run stress` / `npm run stress`) covers ten cases:
 
 - handshake + tools/list returns the full catalog
 - `health_check` returns `Status: healthy`
@@ -387,11 +401,26 @@ Mandatory security audit on every PR before presenting. See `.claude/skills/pr-r
 - unknown tool name is rejected
 - malformed schema input returns a usable error
 - `MCP_TOOL_TIMEOUT_FORCE_MS=1` triggers a clean timeout
+- **MCP self-heals: serves the next call after a timed-out one** (per-tool timeout doesn't kill the server)
 - SIGTERM produces exit code 0 (handler intercepted, not signal default)
-- `MCP_MAX_RSS_MB=50` triggers a watchdog kill
+- `MCP_MAX_RSS_MB=50` triggers a watchdog kill **and records `watchdog_kill: rss_exceeded` in NDJSON** (post-mortem grep contract)
 - HTTP transport: `/health` returns 200, `/mcp` without bearer token returns 401, full `initialize → notifications/initialized → tools/list` round-trip with bearer + session-id returns the full catalog
 
 Add a case here when you ship anything that changes lifecycle, dispatch, error handling, or transport.
+
+## Fixture-driven e2e tests
+
+`tests/e2e/` runs the full bootstrap → dispatcher pipeline against `fixtures/gmail/{work,personal}/` instead of real Gmail. Toggled by `GMAIL_FIXTURE_MODE=1` (set automatically by the e2e setup; also available via `node --env-file=.env.test`).
+
+Layout:
+- `fixtures/gmail/<accountId>/` — per-account JSON corpus: `profile.json`, `scopes.json`, `labels.json`, `filters.json`, `messages/<id>.json`, `threads/<id>.json`.
+- `src/fixtures/gmail-schemas.ts` — Zod mirrors of `gmail_v1.Schema$X` shapes. Every fixture is `.parse()`'d before being returned by the fake gmail client; a schema mismatch surfaces immediately.
+- `src/fixtures/gmail-fixture-client.ts` — implements ~15 `gmail.users.*` methods (read paths return validated fixture data, mutating paths return canned success).
+- `src/fixtures/schemas.test.ts` — runs in the unit suite. Validates every committed fixture under Zod **and** runs a no-real-data guard (denylist: `george.g93`, `@anthropic.com`). CI fails if a fixture leaks real data.
+
+Adding new fixtures: hand-craft JSON under `fixtures/gmail/<account>/`, run `pnpm test` to confirm Zod validation, then `pnpm test:e2e` to confirm the dispatcher serves them. Synthetic email addresses use the `@fixture.test` TLD by convention.
+
+Optional capture+anonymise scripts (`scripts/capture-fixtures.ts`, `scripts/anonymise-fixtures.ts`) are not yet shipped — the hand-crafted corpus suffices today. Open them as a follow-up when growing the corpus from real Gmail.
 
 ## Known follow-ups
 
