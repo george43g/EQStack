@@ -87,24 +87,24 @@ A Model Context Protocol (MCP) server for Gmail integration in Claude Desktop wi
    mv gcp-oauth.keys.json ~/.gmail-mcp/
 
    # Run authentication from anywhere
-   npx @gongrzhe/server-gmail-autoauth-mcp auth
+   npx @gongrzhe/server-gmail-autoauth-mcp account auth default
    ```
 
    b. Local Authentication:
    ```bash
    # Place gcp-oauth.keys.json in your current directory
    # The file will be automatically copied to global config
-   npx @gongrzhe/server-gmail-autoauth-mcp auth
+   npx @gongrzhe/server-gmail-autoauth-mcp account auth default
    ```
 
    The authentication process will:
    - Look for `gcp-oauth.keys.json` in the current directory or `~/.gmail-mcp/`
    - If found in current directory, copy it to `~/.gmail-mcp/`
    - Open your default browser for Google authentication
-   - Save credentials as `~/.gmail-mcp/credentials.json`
+   - Save credentials as `~/.gmail-mcp/accounts/default/credentials.json`
 
    > **Note**: 
-   > - After successful authentication, credentials are stored globally in `~/.gmail-mcp/` and can be used from any directory
+   > - After successful authentication, credentials are stored globally in `~/.gmail-mcp/accounts/<id>/` and can be used from any directory
    > - Both Desktop app and Web application credentials are supported
    > - For Web application credentials, make sure to add `http://localhost:3000/oauth2callback` to your authorized redirect URIs
 
@@ -116,7 +116,8 @@ A Model Context Protocol (MCP) server for Gmail integration in Claude Desktop wi
     "gmail": {
       "command": "npx",
       "args": [
-        "@gongrzhe/server-gmail-autoauth-mcp"
+        "@gongrzhe/server-gmail-autoauth-mcp",
+        "mcp"
       ]
     }
   }
@@ -135,7 +136,7 @@ docker run -i --rm \
   -e GMAIL_OAUTH_PATH=/gcp-oauth.keys.json \
   -e "GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json" \
   -p 3000:3000 \
-  mcp/gmail auth
+  mcp/gmail account auth default
 ```
 
 2. Usage:
@@ -164,7 +165,7 @@ docker run -i --rm \
 For cloud server environments (like n8n), you can specify a custom callback URL during authentication:
 
 ```bash
-npx @gongrzhe/server-gmail-autoauth-mcp auth https://gmail.gongrzhe.com/oauth2callback
+npx @gongrzhe/server-gmail-autoauth-mcp account auth default --callback https://gmail.gongrzhe.com/oauth2callback
 ```
 
 #### Setup Instructions for Cloud Environment
@@ -181,7 +182,7 @@ npx @gongrzhe/server-gmail-autoauth-mcp auth https://gmail.gongrzhe.com/oauth2ca
 
 4. **Run Authentication:**
    ```bash
-   npx @gongrzhe/server-gmail-autoauth-mcp auth https://gmail.gongrzhe.com/oauth2callback
+   npx @gongrzhe/server-gmail-autoauth-mcp account auth default --callback https://gmail.gongrzhe.com/oauth2callback
    ```
 
 5. **Configure in your application:**
@@ -191,7 +192,8 @@ npx @gongrzhe/server-gmail-autoauth-mcp auth https://gmail.gongrzhe.com/oauth2ca
        "gmail": {
          "command": "npx",
          "args": [
-           "@gongrzhe/server-gmail-autoauth-mcp"
+           "@gongrzhe/server-gmail-autoauth-mcp",
+           "mcp"
          ]
        }
      }
@@ -223,13 +225,13 @@ Use the `--scopes` flag to request only the permissions you need:
 
 ```bash
 # Read-only access (recommended for safe browsing)
-npx @gongrzhe/server-gmail-autoauth-mcp auth --scopes=gmail.readonly
+npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.readonly
 
 # Read-only with filter management
-npx @gongrzhe/server-gmail-autoauth-mcp auth --scopes=gmail.readonly,gmail.settings.basic
+npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.readonly,gmail.settings.basic
 
 # Full access (default behavior)
-npx @gongrzhe/server-gmail-autoauth-mcp auth --scopes=gmail.modify,gmail.settings.basic
+npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.modify,gmail.settings.basic
 ```
 
 If no `--scopes` flag is provided, the server defaults to `gmail.modify,gmail.settings.basic` for full functionality.
@@ -249,7 +251,7 @@ The server automatically filters available tools based on your authorized scopes
 
 ### Re-authenticating
 
-To change your scopes, simply run the auth command again with different scopes. This will replace your existing credentials.
+To change your scopes, run `gmail account auth <id>` again with different scopes. This replaces that account's credentials.
 
 ## Claude Code CLI Configuration
 
@@ -260,7 +262,7 @@ To use this MCP server with [Claude Code](https://docs.anthropic.com/en/docs/cla
 First, authenticate with read-only scope:
 
 ```bash
-npx @gongrzhe/server-gmail-autoauth-mcp auth --scopes=gmail.readonly
+npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.readonly
 ```
 
 Then add to your Claude Code MCP settings (`~/.claude/mcp_settings.json` or project-level `.mcp.json`):
@@ -270,7 +272,7 @@ Then add to your Claude Code MCP settings (`~/.claude/mcp_settings.json` or proj
   "mcpServers": {
     "gmail": {
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp"]
+      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]
     }
   }
 }
@@ -287,7 +289,7 @@ With read-only scopes, only these 4 tools will be available to Claude:
 For full Gmail management capabilities:
 
 ```bash
-npx @gongrzhe/server-gmail-autoauth-mcp auth --scopes=gmail.modify,gmail.settings.basic
+npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.modify,gmail.settings.basic
 ```
 
 ```json
@@ -295,7 +297,7 @@ npx @gongrzhe/server-gmail-autoauth-mcp auth --scopes=gmail.modify,gmail.setting
   "mcpServers": {
     "gmail": {
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp"]
+      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]
     }
   }
 }
@@ -305,7 +307,7 @@ This enables all 20 tools including sending emails, managing labels, creating fi
 
 ## Other MCP Hosts
 
-This server speaks the standard MCP stdio protocol — any host that supports MCP can talk to it. All examples below assume you've already run `gmail auth` (or `npx @gongrzhe/server-gmail-autoauth-mcp auth`) once on a machine with a browser. The credentials end up in `~/.gmail-mcp/credentials.json`.
+This server speaks the standard MCP stdio protocol — any host that supports MCP can talk to it. All examples below assume you've already run `gmail account auth default` (or `npx @gongrzhe/server-gmail-autoauth-mcp account auth default`) once on a machine with a browser. The credentials end up in `~/.gmail-mcp/accounts/default/credentials.json`.
 
 > **Bin layout change (May 2026):** the package now ships a single `gmail` binary. Subcommands `mcp` / `tui` / `console` expose the MCP server, terminal UI, and interactive REPL. Bare `gmail` prints help. **Update existing host configs** that say `args: ["@gongrzhe/server-gmail-autoauth-mcp"]` to `args: ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]` — the trailing `mcp` is required, since the CLI is now the default surface.
 
@@ -374,17 +376,20 @@ If you have [Bun](https://bun.sh/) installed, swap `npx` for `bunx` in any of th
 The `gmail` bin is also a full CLI — same set of operations as the MCP, but typed for humans + scripts. Bare `gmail` prints help.
 
 ```bash
-# Authenticate (interactive scope picker on TTY; opens browser)
-gmail auth
+# Open the interactive account manager
+gmail account
+
+# Authenticate a named account (interactive scope picker on TTY; opens browser)
+gmail account auth work
 
 # Specific scopes, no prompt
-gmail auth --scopes=gmail.readonly
+gmail account auth work --scopes=gmail.readonly
 
 # Remote-server flow (prints URL only — pair with SSH port-forward)
-gmail auth --headless
+gmail account auth work --headless
 
 # Capture credentials as env vars (for CI / Docker / 1Password / GH secrets)
-gmail auth --print-json
+gmail account auth work --print-json
 # Outputs: {"GMAIL_OAUTH_KEYS_JSON": "...", "GMAIL_CREDENTIALS_JSON": "..."}
 
 # Health check (local canary, no Gmail API call)
@@ -403,7 +408,7 @@ gmail labels list
 gmail send -t alice@example.com -s "Subject" -b "Body"
 ```
 
-The `tui` and `console` subcommands expose the terminal UI and an interactive REPL respectively (REPL: see `docs/` plan; TUI: Phase D).
+The `tui` and `console` subcommands expose the terminal UI and an interactive REPL respectively. In `gmail console`, use `accounts` to list configured accounts and `switch <id>` / `sw <id>` to swap the active account for subsequent REPL commands.
 
 ### Shell Completions / Manpages
 
@@ -444,7 +449,7 @@ For deployments where you don't want filesystem state (Docker, Cloud Run, epheme
   "mcpServers": {
     "gmail": {
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp"],
+      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"],
       "env": {
         "GMAIL_OAUTH_KEYS_JSON": "${GMAIL_OAUTH_KEYS_JSON}",
         "GMAIL_CREDENTIALS_JSON": "${GMAIL_CREDENTIALS_JSON}"
@@ -457,7 +462,7 @@ For deployments where you don't want filesystem state (Docker, Cloud Run, epheme
 To capture both env vars in one shot:
 
 ```bash
-gmail auth --print-json > deploy.env.json
+gmail account auth deploy --print-json > deploy.env.json
 # pipe into a host config, GH Actions repo secret, 1Password item, etc.
 ```
 
@@ -467,20 +472,23 @@ Three credential sources, first match wins:
 |---|---|
 | `GMAIL_CREDENTIALS_JSON` | CI secrets (GH Actions, GitLab), Docker, k8s — paste the JSON |
 | `GMAIL_CREDENTIALS_OP` | 1Password CLI — value is `op://Vault/Item/field`, shells to `op read` |
-| `GMAIL_CREDENTIALS_PATH` | File on disk (default `~/.gmail-mcp/credentials.json`) |
+| `GMAIL_CREDENTIALS_PATH` | Explicit credentials file override. Without this env var, named accounts use `~/.gmail-mcp/accounts/<id>/credentials.json`. |
 
 Same pattern for OAuth client keys: `GMAIL_OAUTH_KEYS_JSON` (env) > `GMAIL_OAUTH_PATH` (file).
 
-## Multi-Account (Phase M1)
+## Multi-Account
 
 `gmail` supports multiple Gmail accounts per `<configDir>`. Each named account has its own credentials directory; a manifest at `<configDir>/accounts.json` tracks them.
 
 ```sh
-gmail auth --account work             # authenticate a new account "work"
-gmail auth --account personal         # …and another
-gmail account list                    # tabular view (id, email, scopes, default?)
+gmail account                         # interactive CRUD manager
+gmail account auth work               # authenticate a new account "work"
+gmail account auth personal           # …and another
+gmail account list                    # tabular view (status, id, email, scopes, default?)
+gmail account check --all --json      # scriptable auth-health check
 gmail account use work                # set defaultAccount in the manifest
 gmail account current                 # print resolved active account + source
+gmail account rename work work-old    # rename an account id + directory
 gmail account rm personal             # remove (prompts to confirm; --force to skip)
 ```
 
@@ -518,7 +526,7 @@ OAuth client keys are resolved per-account first (if `accounts/<id>/gcp-oauth.ke
 
 **Migration:** on first read for accountId `default`, if the legacy `credentials.json` exists but `accounts/default/credentials.json` does not, the loader copies (not moves) the file — your existing single-account setup keeps working, and a downgrade still finds the legacy file.
 
-**Operator-time account selection in `.mcp.json`:** point separate MCP entries at separate accounts via per-entry env. Each process is bound to one account (Phase M1 is operator-time, not runtime-switching):
+**Operator-time account selection in `.mcp.json`:** point separate MCP entries at separate accounts via per-entry env. This is still the simplest way to make multiple accounts available to a host without a stateful `switch_account` call:
 
 ```jsonc
 {
@@ -548,7 +556,7 @@ Workflow from the model's perspective:
 
 **Important caveat:** the host's cached `tools/list` does NOT auto-refresh on switch. If the new account has narrower scopes than the previous one (e.g. `gmail.readonly` instead of `gmail.modify`), tools that need the missing scope will reject at call-time with the usual re-auth hint. The `switch_account` response surfaces this in its `note` field.
 
-Add a new account from the shell first (`gmail auth --account work`) — then it's pickable via `switch_account`. The MCP tools never run the OAuth flow; that always stays a CLI affordance.
+Add a new account from the shell first (`gmail account auth work`) — then it's pickable via `switch_account`. The MCP tools never run the OAuth flow; that always stays a CLI affordance.
 
 ## Self-Hosting on a Remote Server
 
@@ -560,7 +568,7 @@ Personal Gmail OAuth requires a browser-based flow — there's no headless way t
 
 ```bash
 # On laptop (with browser):
-gmail auth --scopes=gmail.modify,gmail.compose --print-json > deploy.json
+gmail account auth deploy --scopes=gmail.modify,gmail.compose --print-json > deploy.json
 
 # Ship deploy.json to the server (rsync, GH Actions secret, 1Password, etc.)
 ```
@@ -627,7 +635,7 @@ If you'd rather not expose anything publicly, run the auth locally over an SSH t
 ```bash
 ssh -L 3000:localhost:3000 your-server
 # Then on the server:
-gmail auth --headless
+gmail account auth work --headless
 # Open the printed URL on your laptop browser — the callback tunnels back.
 ```
 
@@ -656,9 +664,9 @@ jobs:
 To populate the secrets:
 
 ```bash
-gmail auth --scopes=gmail.send --print-json | jq -r .GMAIL_OAUTH_KEYS_JSON \
+gmail account auth ci-sender --scopes=gmail.send --print-json | jq -r .GMAIL_OAUTH_KEYS_JSON \
   | gh secret set GMAIL_OAUTH_KEYS_JSON
-gmail auth --scopes=gmail.send --print-json | jq -r .GMAIL_CREDENTIALS_JSON \
+gmail account auth ci-sender --scopes=gmail.send --print-json | jq -r .GMAIL_CREDENTIALS_JSON \
   | gh secret set GMAIL_CREDENTIALS_JSON
 ```
 

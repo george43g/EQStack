@@ -70,7 +70,7 @@ describe("bootstrapSession — happy path", () => {
 
   it("returns a bundle even when credentials file is missing (auth subcommand bootstrap)", async () => {
     fs.writeFileSync(path.join(tmpDir, "gcp-oauth.keys.json"), VALID_KEYS);
-    // No credentials.json — should NOT throw (this is the `gmail auth` bootstrap path).
+    // No credentials.json — should NOT throw (this is the first-time account auth bootstrap path).
 
     const bundle = await bootstrapSession();
     expect(bundle).toBeDefined();

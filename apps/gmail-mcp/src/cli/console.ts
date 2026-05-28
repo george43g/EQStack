@@ -11,6 +11,7 @@
 
 import { createInterface } from "node:readline";
 import pc from "picocolors";
+import { getCurrentAccountId } from "../core/session.js";
 import { buildProgram } from "./index.js";
 import { bootstrapForCli, executeCliOp } from "./runtime.js";
 
@@ -33,6 +34,7 @@ const ALIASES: Record<string, string> = {
   de: "download-email",
   da: "download-attachment",
   h: "health",
+  sw: "switch",
 };
 
 // ── Tokenizer ────────────────────────────────────────────────────────
@@ -102,6 +104,8 @@ const LEGEND_LINES: Array<{ kind: "header" | "cmd" | "blank"; left?: string; rig
   { kind: "cmd", left: "raw <name> <json>", right: "call any tool with raw args" },
   { kind: "blank" },
   { kind: "header", left: "Session" },
+  { kind: "cmd", left: "accounts", right: "list configured Gmail accounts" },
+  { kind: "cmd", left: "switch <id> / sw <id>", right: "switch this console session account" },
   { kind: "cmd", left: "help / ?", right: "show this legend" },
   { kind: "cmd", left: "clear / cls", right: "clear the screen" },
   { kind: "cmd", left: "quit / q / exit", right: "exit the console" },
@@ -142,7 +146,10 @@ export function isBuiltinCommand(cmd: string): boolean {
     cmd === "q" ||
     cmd === "exit" ||
     cmd === "tools" ||
-    cmd === "raw"
+    cmd === "raw" ||
+    cmd === "accounts" ||
+    cmd === "switch" ||
+    cmd === "sw"
   );
 }
 
@@ -171,6 +178,19 @@ async function listTools(): Promise<void> {
   for (const name of registry.names().sort()) {
     process.stdout.write(`${name}\n`);
   }
+}
+
+async function listAccountsInSession(): Promise<void> {
+  await executeCliOp("list_accounts", {}, { json: false });
+}
+
+async function switchAccountInSession(args: string[]): Promise<void> {
+  const [accountId] = args;
+  if (!accountId) {
+    process.stderr.write("Usage: switch <accountId>   e.g. switch work\n");
+    return;
+  }
+  await executeCliOp("switch_account", { accountId }, { json: false });
 }
 
 // ── REPL entry ───────────────────────────────────────────────────────
@@ -202,10 +222,13 @@ export async function runConsole(options: ConsoleOptions = {}): Promise<void> {
     process.exit(0);
   });
 
-  const promptStr = pc.cyan("gmail> ");
+  const promptStr = (): string => {
+    const accountId = getCurrentAccountId();
+    return pc.cyan(accountId ? `gmail[${accountId}]> ` : "gmail> ");
+  };
 
   const loop = (): void => {
-    rl.question(promptStr, async (line) => {
+    rl.question(promptStr(), async (line) => {
       const trimmed = line.trim();
       if (!trimmed) {
         loop();
@@ -243,6 +266,26 @@ export async function runConsole(options: ConsoleOptions = {}): Promise<void> {
       if (cmdLower === "raw") {
         try {
           await runRawCommand(args);
+        } catch (err) {
+          process.stderr.write(`Error: ${(err as Error).message}\n`);
+        }
+        process.stdout.write("\n");
+        loop();
+        return;
+      }
+      if (cmdLower === "accounts") {
+        try {
+          await listAccountsInSession();
+        } catch (err) {
+          process.stderr.write(`Error: ${(err as Error).message}\n`);
+        }
+        process.stdout.write("\n");
+        loop();
+        return;
+      }
+      if (cmdLower === "switch" || cmdLower === "sw") {
+        try {
+          await switchAccountInSession(args);
         } catch (err) {
           process.stderr.write(`Error: ${(err as Error).message}\n`);
         }

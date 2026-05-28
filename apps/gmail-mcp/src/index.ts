@@ -201,7 +201,7 @@ export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<Ses
   );
 
   // Load stored access/refresh tokens via the multi-source loader chain.
-  // Missing tokens are NOT fatal — required for `auth` subcommand bootstrap.
+  // Missing tokens are NOT fatal — required for first-time account auth bootstrap.
   // Any other error (malformed JSON, 1Password CLI missing, etc.) IS fatal.
   let authorizedScopes: string[] = DEFAULT_SCOPES;
   try {
@@ -215,7 +215,7 @@ export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<Ses
   } catch (err) {
     const e = err as { source?: string; name?: string; message?: string };
     if (e.name === "CredentialLoadError" && e.source === "file") {
-      // No file yet — `gmail auth` will create it. Not a bootstrap failure.
+      // No file yet — `gmail account auth <id>` will create it. Not a bootstrap failure.
     } else {
       throw new BootstrapError(e.message ?? String(err), "credentials", err);
     }

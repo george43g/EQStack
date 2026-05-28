@@ -1,4 +1,4 @@
-// Resolve OAuth scopes for `gmail auth`.
+// Resolve OAuth scopes for `gmail account auth`.
 //
 // Precedence (first match wins):
 //   1. --scopes=foo,bar        CLI flag

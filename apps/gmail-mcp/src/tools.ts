@@ -330,7 +330,7 @@ export const SwitchAccountSchema = z
       .string()
       .min(1)
       .describe(
-        "Account id to make active. Must already exist on disk — see `list_accounts` for available ids, or run `gmail auth --account <id>` from the shell first.",
+        "Account id to make active. Must already exist on disk — see `list_accounts` for available ids, or run `gmail account auth <id>` from the shell first.",
       ),
   })
   .describe(
@@ -812,7 +812,7 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     name: "switch_account",
     description:
-      "Switches the active Gmail account for subsequent tool calls. The new account's credentials must already exist on disk — run `gmail auth --account <id>` from the shell first, or call `list_accounts` to find an existing one. Note: the tool catalogue advertised via tools/list does NOT refresh automatically; if the new account has narrower scopes than the previous one, some tool calls may reject at call-time with a re-auth hint. Treat as a write/state-change operation that hosts can permission-gate.",
+      "Switches the active Gmail account for subsequent tool calls. The new account's credentials must already exist on disk — run `gmail account auth <id>` from the shell first, or call `list_accounts` to find an existing one. Note: the tool catalogue advertised via tools/list does NOT refresh automatically; if the new account has narrower scopes than the previous one, some tool calls may reject at call-time with a re-auth hint. Treat as a write/state-change operation that hosts can permission-gate.",
     schema: SwitchAccountSchema,
     scopes: [],
     annotations: { title: "Switch Gmail Account", destructiveHint: false, idempotentHint: false },

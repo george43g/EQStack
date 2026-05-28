@@ -13,7 +13,6 @@
 import type { OAuth2Client } from "google-auth-library";
 import type { gmail_v1 } from "googleapis";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import { registry } from "../core/registry.js";
 import {
   _resetForTests as resetSession,
@@ -22,6 +21,8 @@ import {
 } from "../core/session.js";
 import { ToolTimeoutError } from "../robustness/index.js";
 import { buildMcpServer } from "./build.js";
+
+type RequestHandler = (...args: unknown[]) => unknown;
 
 const fakeOauth = { __isFake: true } as unknown as OAuth2Client;
 const fakeGmail = { users: {} } as unknown as gmail_v1.Gmail;
@@ -46,7 +47,7 @@ describe("buildMcpServer tools/list scope filter (12.1)", () => {
 
     // SDK keeps the registered handlers on a private map. Drive the
     // tools/list handler directly — same code path the JSON-RPC layer hits.
-    const handlers = (server as unknown as { _requestHandlers: Map<string, Function> })
+    const handlers = (server as unknown as { _requestHandlers: Map<string, RequestHandler> })
       ._requestHandlers;
     const listHandler = handlers.get("tools/list");
     expect(listHandler).toBeDefined();
@@ -73,7 +74,7 @@ describe("buildMcpServer tools/list scope filter (12.1)", () => {
   it("returns the full catalogue when broad scopes are granted", async () => {
     setAuthorizedScopes(["gmail.modify", "gmail.settings.basic"]);
     const { server } = buildMcpServer();
-    const handlers = (server as unknown as { _requestHandlers: Map<string, Function> })
+    const handlers = (server as unknown as { _requestHandlers: Map<string, RequestHandler> })
       ._requestHandlers;
     const listHandler = handlers.get("tools/list")!;
     const response = (await listHandler(
@@ -157,6 +158,6 @@ describe("buildMcpServer dispatcher", () => {
     expect(result.content[0]?.text).toContain("read_email failed");
     expect(result.content[0]?.text).toContain("kaboom");
     // Non-auth error → no re-auth hint.
-    expect(result.content[0]?.text).not.toContain("npm run auth");
+    expect(result.content[0]?.text).not.toContain("gmail account auth");
   });
 });

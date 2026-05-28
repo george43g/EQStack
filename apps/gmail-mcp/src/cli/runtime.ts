@@ -14,7 +14,7 @@ let bootstrapped = false;
  * and exposes the dispatcher via callMcpTool. Subsequent calls are no-ops.
  *
  * Throws with a clear message if credentials are missing — callers should
- * surface that to the user with a hint to run `gmail auth`.
+ * surface that to the user with a hint to run `gmail account auth <id>`.
  */
 export async function bootstrapForCli(): Promise<void> {
   if (bootstrapped) return;
@@ -68,7 +68,7 @@ export function formatToolResultText(result: {
  */
 export function exitCodeForError(err: Error): number {
   const msg = err.message ?? "";
-  if (/credentials|invalid_grant|gmail auth/i.test(msg)) return 2;
+  if (/credentials|invalid_grant|gmail account auth|gmail auth/i.test(msg)) return 2;
   if (/INVALID_SCOPE|invalid scope|usage/i.test(msg)) return 3;
   return 1;
 }

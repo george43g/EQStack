@@ -1,4 +1,4 @@
-// Multi-account manifest for Gmail-MCP-Server (Phase M1).
+// Multi-account manifest for Gmail-MCP-Server.
 //
 // The manifest lives at <configDir>/accounts.json and tracks which named
 // accounts exist + which one is the default. Per-account secrets (tokens,
@@ -28,6 +28,20 @@ export interface AccountEntry {
   createdAt: string;
   /** Mirror of the scopes the credentials were minted with. Source of truth is credentials.json. */
   scopes?: string[];
+  /** Last cached local auth-health status. Secrets never live in the manifest. */
+  authStatus?:
+    | "ok"
+    | "needs_reauth"
+    | "missing_credentials"
+    | "invalid_credentials"
+    | "unverified_limited_scope"
+    | "unknown";
+  /** Last non-secret auth-health error, if any. */
+  authError?: string;
+  /** ISO timestamp of the last account-health check. */
+  lastCheckedAt?: string;
+  /** ISO timestamp of the last metadata update. */
+  updatedAt?: string;
 }
 
 export interface AccountManifest {
@@ -155,6 +169,13 @@ export function loadManifest(
       emailAddress: typeof entry.emailAddress === "string" ? entry.emailAddress : undefined,
       createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date(0).toISOString(),
       scopes: Array.isArray(entry.scopes) ? (entry.scopes as string[]) : undefined,
+      authStatus:
+        typeof entry.authStatus === "string"
+          ? (entry.authStatus as AccountEntry["authStatus"])
+          : undefined,
+      authError: typeof entry.authError === "string" ? entry.authError : undefined,
+      lastCheckedAt: typeof entry.lastCheckedAt === "string" ? entry.lastCheckedAt : undefined,
+      updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : undefined,
     };
   }
   return { defaultAccount, accounts };
@@ -187,6 +208,10 @@ export function addAccount(
     createdAt: manifest.accounts[id]?.createdAt ?? entry.createdAt ?? new Date().toISOString(),
     emailAddress: entry.emailAddress ?? manifest.accounts[id]?.emailAddress,
     scopes: entry.scopes ?? manifest.accounts[id]?.scopes,
+    authStatus: entry.authStatus ?? manifest.accounts[id]?.authStatus,
+    authError: entry.authError ?? manifest.accounts[id]?.authError,
+    lastCheckedAt: entry.lastCheckedAt ?? manifest.accounts[id]?.lastCheckedAt,
+    updatedAt: entry.updatedAt ?? manifest.accounts[id]?.updatedAt,
   };
   // First account auto-becomes default.
   if (!manifest.defaultAccount || (!existed && Object.keys(manifest.accounts).length === 1)) {

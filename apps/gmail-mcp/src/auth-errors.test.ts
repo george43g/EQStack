@@ -42,7 +42,7 @@ describe("wrapToolError", () => {
     );
     expect(res.content[0].text).toContain("list_email_labels failed");
     expect(res.content[0].text).toContain("re-authenticate");
-    expect(res.content[0].text).toContain("npm run auth");
+    expect(res.content[0].text).toContain("gmail account auth");
   });
 
   it("attempts refresh on invalid_grant (only once)", async () => {
@@ -68,7 +68,7 @@ describe("wrapToolError", () => {
 
     const res = await wrapToolError(new Error("invalid_grant"), "send_email", client);
     expect(res.content[0].text).toContain("re-authenticate");
-    expect(res.content[0].text).toContain("npm run auth");
+    expect(res.content[0].text).toContain("gmail account auth");
   });
 
   it("handles non-Error inputs", async () => {

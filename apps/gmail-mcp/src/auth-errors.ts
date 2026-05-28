@@ -1,11 +1,12 @@
 import type { OAuth2Client } from "google-auth-library";
+import { getCurrentAccountId } from "./core/session.js";
 import { error as logError, info as logInfo } from "./robustness/index.js";
 
 /**
  * Detects Gmail / OAuth auth failures, attempts a single token refresh on
  * `invalid_grant` (in case the access_token expired and the refresh_token is
  * still valid), and returns an MCP-friendly error response with a remediation
- * hint pointing the user at `npm run auth`.
+ * hint pointing the user at `gmail account auth`.
  *
  * Refresh is attempted at most once per server lifetime per tool call. When
  * google-auth-library is configured correctly it usually refreshes
@@ -78,9 +79,7 @@ export async function wrapToolError(
     if (isInvalidGrant(err)) {
       refreshed = await tryRefreshOnce(oauth2Client);
     }
-    const hint = refreshed
-      ? "auth token was refreshed — retry the call"
-      : "re-authenticate with `npm run auth`";
+    const hint = refreshed ? "auth token was refreshed — retry the call" : formatReauthHint();
     return {
       isError: true,
       content: [
@@ -101,6 +100,13 @@ export async function wrapToolError(
       },
     ],
   };
+}
+
+function formatReauthHint(): string {
+  const accountId = getCurrentAccountId();
+  return accountId
+    ? `re-authenticate with \`gmail account auth ${accountId}\``
+    : "re-authenticate with `gmail account auth <id>`";
 }
 
 /**

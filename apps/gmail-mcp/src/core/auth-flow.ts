@@ -1,6 +1,6 @@
 // OAuth2 authentication flow for Gmail-MCP-Server.
 //
-// Drives the `gmail auth` CLI subcommand.
+// Drives the `gmail account auth` CLI subcommand.
 // Implements the loopback-IP redirect pattern that's the only flow Google
 // supports for installed/desktop clients today (OOB was deprecated in 2022).
 //
@@ -8,8 +8,8 @@
 // for personal Gmail. Two workarounds, documented in README:
 //   a) SSH local port-forward — run the flow on the server, tunnel
 //      localhost:3000 back to the user's laptop browser.
-//   b) Auth on a laptop, transfer ~/.gmail-mcp/credentials.json to the
-//      server (or set GMAIL_CREDENTIALS_JSON / GMAIL_CREDENTIALS_OP).
+//   b) Auth on a laptop, transfer ~/.gmail-mcp/accounts/<id>/credentials.json
+//      to the server (or set GMAIL_CREDENTIALS_JSON / GMAIL_CREDENTIALS_OP).
 
 import fs from "node:fs";
 import http from "node:http";
@@ -44,7 +44,7 @@ function probePort(port: number, host: string): Promise<boolean> {
 
 /**
  * Try `preferredPort` first; on conflict, walk the next few ports; if all
- * are taken, let the OS pick an ephemeral one. Used by `gmail auth` so a
+ * are taken, let the OS pick an ephemeral one. Used by `gmail account auth` so a
  * busy port 3000 (a common collision with dev servers) doesn't crash the
  * flow.
  */
@@ -97,7 +97,7 @@ export interface OAuthFlowResult {
 
 export interface LoadKeysOptions {
   // Path to gcp-oauth.keys.json on disk. Used as the fallback when env-driven
-  // keys aren't set. Required for the `gmail auth` flow's first run.
+  // keys aren't set. Required for the `gmail account auth` flow's first run.
   oauthPath: string;
   cwd?: string; // for the "found in current directory" copy convenience
   configDir?: string; // where to copy local keys to
@@ -234,7 +234,9 @@ export async function runOAuthFlow(
     log("If running on a remote server with no local browser, you have two options:");
     log("  1. SSH port-forward:  ssh -L 3000:localhost:3000 your-server");
     log("     then open the URL above in your laptop browser. The callback will tunnel back.");
-    log("  2. Auth locally on a laptop, then transfer ~/.gmail-mcp/credentials.json to the server");
+    log(
+      "  2. Auth locally on a laptop, then transfer ~/.gmail-mcp/accounts/<id>/credentials.json to the server",
+    );
     log("     (or set GMAIL_CREDENTIALS_JSON / GMAIL_CREDENTIALS_OP env vars).");
     log("");
   } else {
@@ -324,6 +326,10 @@ export function saveCredentialsToFile(opts: SaveCredentialsOptions): void {
   if (opts.configDir && !fs.existsSync(opts.configDir)) {
     fs.mkdirSync(opts.configDir, { recursive: true, mode: 0o700 });
   }
+  const targetDir = path.dirname(opts.path);
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true, mode: 0o700 });
+  }
   const payload = JSON.stringify({ tokens: opts.tokens, scopes: opts.scopes }, null, 2);
   fs.writeFileSync(opts.path, payload, { mode: 0o600 });
 }
@@ -396,7 +402,7 @@ function renderErrorPage(message: string): string {
   <div class="icon">✗</div>
   <h1>Authentication failed</h1>
   <p>${escapeHtml(message)}</p>
-  <p class="footnote">You can close this tab and re-run <code>gmail auth</code>.</p>
+  <p class="footnote">You can close this tab and re-run <code>gmail account auth</code>.</p>
 </div></body></html>`;
 }
 

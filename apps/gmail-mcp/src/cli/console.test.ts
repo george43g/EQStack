@@ -55,6 +55,7 @@ describe("rewriteAlias", () => {
     ["de", "download-email"],
     ["da", "download-attachment"],
     ["h", "health"],
+    ["sw", "switch"],
   ])("rewrites %s → %s", (input, expected) => {
     expect(rewriteAlias(input)).toBe(expected);
   });
@@ -77,6 +78,9 @@ describe("isBuiltinCommand", () => {
     "exit",
     "tools",
     "raw",
+    "accounts",
+    "switch",
+    "sw",
   ])("recognises `%s` as a built-in", (cmd) => {
     expect(isBuiltinCommand(cmd)).toBe(true);
   });
@@ -193,6 +197,7 @@ describe("runConsole legend + REPL built-ins (11.7, 11.11, 11.12)", () => {
     stderrSpy.mockRestore();
     process.exit = originalExit;
     vi.doUnmock("node:readline");
+    vi.doUnmock("./runtime.js");
     vi.resetModules();
   });
 
@@ -260,5 +265,25 @@ describe("runConsole legend + REPL built-ins (11.7, 11.11, 11.12)", () => {
     expect(stdoutText).toMatch(/health_check/);
     expect(stdoutText).toMatch(/search_emails/);
     expect(stdoutText).toMatch(/list_email_labels/);
+  });
+
+  it("`switch <id>` swaps the current console session via the switch_account tool", async () => {
+    queuedLines.push("switch personal");
+    const executeCliOp = vi.fn(async () => ({ isError: false }));
+    vi.doMock("./runtime.js", () => ({
+      bootstrapForCli: vi.fn(async () => {}),
+      executeCliOp,
+    }));
+
+    const { runConsole } = await import("./console.js");
+    await runConsole({ write: () => {} });
+    await donePromise;
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(executeCliOp).toHaveBeenCalledWith(
+      "switch_account",
+      { accountId: "personal" },
+      { json: false },
+    );
   });
 });

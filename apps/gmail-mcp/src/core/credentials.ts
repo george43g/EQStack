@@ -7,8 +7,8 @@
 //      "op://Personal/gmail-mcp/credentials". Shells out to `op read`. The
 //      `op` CLI must be installed and authenticated (Touch ID via the
 //      desktop app, or OP_SERVICE_ACCOUNT_TOKEN for headless).
-//   3. GMAIL_CREDENTIALS_PATH file     — default ~/.gmail-mcp/credentials.json.
-//      The historical loader, still the default for laptop use.
+//   3. GMAIL_CREDENTIALS_PATH file     — explicit override. Without it,
+//      named accounts resolve ~/.gmail-mcp/accounts/<id>/credentials.json.
 //
 // Why three sources: a CLI tool that's used both interactively and from CI/
 // remote servers needs flexibility. Personal Gmail OAuth tokens cannot be
@@ -21,7 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { addAccount, getAccountCredentialsPath, loadManifest } from "./accounts.js";
-import { getConfigDir, getCredentialsPath } from "./config-paths.js";
+import { getCredentialsPath } from "./config-paths.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -191,7 +191,7 @@ export async function loadCredentials(opts: LoadOptions = {}): Promise<LoadedCre
   if (!fileExists(credPath)) {
     throw new CredentialLoadError(
       "file",
-      `Credentials file not found: ${credPath}. Run \`gmail auth\` to create it.`,
+      `Credentials file not found: ${credPath}. Run \`gmail account auth <id>\` to create it.`,
     );
   }
   const raw = readFile(credPath, "utf8");

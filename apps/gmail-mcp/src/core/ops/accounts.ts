@@ -79,7 +79,7 @@ const listOp: Operation<ListAccountsInput, ListAccountsOutput> = {
     const lines: string[] = [];
     if (accounts.length === 0) {
       lines.push("No accounts in the manifest yet.");
-      lines.push("Run `gmail auth --account <id>` from the shell to add one.");
+      lines.push("Run `gmail account auth <id>` from the shell to add one.");
     } else {
       lines.push(`${accounts.length} account(s) configured:`);
       for (const a of accounts) {
@@ -211,7 +211,7 @@ const switchOp: Operation<SwitchAccountInput, SwitchAccountOutput> = {
       loaded = await loadCredentials({ env, accountId });
     } catch (err) {
       throw new Error(
-        `switch_account: failed to load credentials for "${accountId}": ${(err as Error).message}. Run \`gmail auth --account ${accountId}\` to mint them.`,
+        `switch_account: failed to load credentials for "${accountId}": ${(err as Error).message}. Run \`gmail account auth ${accountId}\` to mint them.`,
       );
     }
 

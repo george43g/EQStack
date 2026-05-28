@@ -6,7 +6,7 @@
 //   gmail mcp [--http]      — run the MCP server
 //   gmail tui               — multi-pane terminal UI (Phase D)
 //   gmail console           — interactive REPL for ad-hoc Gmail operations
-//   gmail auth, search, …   — direct CLI for humans + shell scripts
+//   gmail account, search, … — direct CLI for humans + shell scripts
 //
 // Bare `gmail` prints help and exits 0. The CLI is the default surface; the
 // MCP / TUI / console modes are reachable via their explicit subcommands.
@@ -65,7 +65,7 @@ export function buildProgram(): Command {
       "Gmail — single bin for the Gmail MCP Server package. " +
         "CLI is the default; subcommands `mcp`, `tui`, `console` expose " +
         "the server, terminal UI, and interactive REPL respectively. " +
-        "Run `gmail auth` first to authenticate.",
+        "Run `gmail account` to manage authentication.",
     )
     .version(version, "-V, --version")
     // Note: --json lives on each subcommand individually. Defining it at the
@@ -75,7 +75,7 @@ export function buildProgram(): Command {
     .option("-v, --verbose", "Log debug-level information to stderr")
     .option(
       "-a, --account <id>",
-      "Gmail account id to use for this command (Phase M1). Overrides GMAIL_ACCOUNT env. See `gmail account list`.",
+      "Gmail account id to use for this command. Overrides GMAIL_ACCOUNT env. See `gmail account list`.",
     )
     .addHelpText(
       "after",
@@ -85,11 +85,12 @@ Examples:
   gmail mcp                               # run the MCP server (stdio)
   gmail mcp --http --port 8080            # run the MCP server (Streamable HTTP)
   gmail tui                               # multi-pane terminal UI (Phase D)
-  gmail console                           # interactive REPL
-  gmail auth                              # interactive scope-picker, opens browser
-  gmail auth --scopes=gmail.readonly      # specific scopes, no prompt
-  gmail auth --headless                   # remote-server flow (prints URL only)
-  gmail auth --print-json                 # auth, then print credentials JSON to stdout
+  gmail console                           # interactive REPL; use "accounts" / "switch work" inside
+  gmail account                           # interactive account manager
+  gmail account auth work                 # authenticate or re-authenticate an account
+  gmail account auth work --scopes=gmail.readonly
+  gmail account auth work --headless      # remote-server flow (prints URL only)
+  gmail account auth work --print-json    # print credentials JSON to stdout
                                           # (pipe to GMAIL_CREDENTIALS_JSON / GH secret / 1Password)
   gmail health                            # local canary; no Gmail API call
   gmail search "from:noreply" --json      # typed structured payload (jq-friendly)
@@ -97,7 +98,7 @@ Examples:
 Credentials sources (first match wins):
   1. GMAIL_CREDENTIALS_JSON   raw JSON  (CI / Docker / k8s secrets)
   2. GMAIL_CREDENTIALS_OP     op://...  (1Password CLI)
-  3. GMAIL_CREDENTIALS_PATH   file path (default ~/.gmail-mcp/credentials.json)
+  3. GMAIL_CREDENTIALS_PATH   explicit file path override
 
 Scopes (space=toggle, a=all, i=invert in interactive mode):
   gmail.readonly, gmail.modify, gmail.compose, gmail.send,
@@ -107,7 +108,7 @@ Scopes (space=toggle, a=all, i=invert in interactive mode):
 
   // Global pre-action hook: when -a/--account is passed at the root, stamp
   // GMAIL_ACCOUNT in the env so every downstream resolver (resolveActiveAccount,
-  // runAuthCommand, bootstrapForCli, …) picks it up via the same env-driven
+  // runAccountAuthCommand, bootstrapForCli, …) picks it up via the same env-driven
   // path that operator-set env vars use. This keeps the resolution chain
   // single-source and means subcommand actions don't need to know about the
   // flag at all.
