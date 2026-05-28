@@ -106,6 +106,60 @@ describe("reducer", () => {
   });
 });
 
+describe("overlay state machine", () => {
+  it("OPEN_OVERLAY(command) flips mode to insert and stores empty buffer", () => {
+    const s = reducer(initialState, {
+      type: "OPEN_OVERLAY",
+      payload: { kind: "command", text: "" },
+    });
+    expect(s.mode).toBe("insert");
+    expect(s.overlay).toEqual({ kind: "command", text: "" });
+  });
+
+  it("OVERLAY_INPUT appends characters; OVERLAY_BACKSPACE removes one", () => {
+    let s = reducer(initialState, {
+      type: "OPEN_OVERLAY",
+      payload: { kind: "search", text: "" },
+    });
+    s = reducer(s, { type: "OVERLAY_INPUT", payload: "i" });
+    s = reducer(s, { type: "OVERLAY_INPUT", payload: "n" });
+    expect(s.overlay).toEqual({ kind: "search", text: "in" });
+    s = reducer(s, { type: "OVERLAY_BACKSPACE" });
+    expect(s.overlay).toEqual({ kind: "search", text: "i" });
+  });
+
+  it("CLOSE_OVERLAY returns to normal mode and clears overlay", () => {
+    let s = reducer(initialState, {
+      type: "OPEN_OVERLAY",
+      payload: { kind: "command", text: "theme dracula" },
+    });
+    s = reducer(s, { type: "CLOSE_OVERLAY" });
+    expect(s.mode).toBe("normal");
+    expect(s.overlay).toEqual({ kind: "none" });
+  });
+
+  it("CURSOR_DOWN in theme overlay moves the picker cursor instead of the pane cursor", () => {
+    let s = reducer(initialState, {
+      type: "OPEN_OVERLAY",
+      payload: { kind: "theme", cursor: 0 },
+    });
+    s = reducer(s, { type: "CURSOR_DOWN" });
+    expect(s.overlay).toEqual({ kind: "theme", cursor: 1 });
+    // The thread cursor is untouched.
+    expect(s.threadCursor).toBe(0);
+  });
+
+  it("REQUEST_EDITOR sets pendingEditor; CLEAR_EDITOR clears it", () => {
+    let s = reducer(initialState, {
+      type: "REQUEST_EDITOR",
+      payload: { kind: "compose", initialContent: "draft" },
+    });
+    expect(s.pendingEditor).toEqual({ kind: "compose", initialContent: "draft" });
+    s = reducer(s, { type: "CLEAR_EDITOR" });
+    expect(s.pendingEditor).toBeNull();
+  });
+});
+
 describe("resolveKey", () => {
   it("matches single-char bindings immediately", () => {
     expect(resolveKey("", "j")).toEqual({ cmd: "cursor.down", pending: false });

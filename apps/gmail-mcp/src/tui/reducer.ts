@@ -18,6 +18,13 @@ export type ThreadList = z.infer<typeof ListInboxThreadsOutputSchema>;
 export type ThreadView = z.infer<typeof GetThreadOutputSchema>;
 export type AccountList = z.infer<typeof ListAccountsOutputSchema>;
 
+export type Overlay =
+  | { kind: "none" }
+  | { kind: "command"; text: string }
+  | { kind: "search"; text: string }
+  | { kind: "confirm"; prompt: string; pendingCmd: string }
+  | { kind: "theme"; cursor: number };
+
 export interface AppState {
   mode: Mode;
   focus: Pane;
@@ -33,8 +40,11 @@ export interface AppState {
   messageCursor: number;
   // Modal / overlay state
   showHelp: boolean;
+  overlay: Overlay;
   // Active account chip
   account: AccountList["active"] | null;
+  // Theme (mutable via :theme command)
+  themeName: string;
   // Transient status bar text + last action
   status: string;
   loading: boolean;
@@ -43,6 +53,15 @@ export interface AppState {
   quit: boolean;
   // Pending key sequence (for two-char bindings like `gg`)
   keyBuffer: string;
+  // Editor suspension marker — App reads this and triggers useEditor
+  pendingEditor: null | {
+    kind: "compose" | "reply" | "reply-all" | "draft-edit";
+    initialContent: string;
+    /** For reply / reply-all: the source message id. */
+    sourceMessageId?: string;
+    /** For reply / reply-all: the source thread id (so send_email replies into the same thread). */
+    sourceThreadId?: string;
+  };
 }
 
 export const initialState: AppState = {
@@ -56,12 +75,15 @@ export const initialState: AppState = {
   thread: null,
   messageCursor: 0,
   showHelp: false,
+  overlay: { kind: "none" },
   account: null,
+  themeName: "default",
   status: "Loading inbox…",
   loading: true,
   error: null,
   quit: false,
   keyBuffer: "",
+  pendingEditor: null,
 };
 
 export type Action =
@@ -74,6 +96,7 @@ export type Action =
   | { type: "SET_ERROR"; payload: string | null }
   | { type: "SET_MODE"; payload: Mode }
   | { type: "SET_FOCUS"; payload: Pane }
+  | { type: "SET_THEME"; payload: string }
   | { type: "CURSOR_DOWN" }
   | { type: "CURSOR_UP" }
   | { type: "CURSOR_TOP" }
@@ -84,7 +107,13 @@ export type Action =
   | { type: "TOGGLE_HELP" }
   | { type: "QUIT" }
   | { type: "APPEND_KEY"; payload: string }
-  | { type: "CLEAR_KEY_BUFFER" };
+  | { type: "CLEAR_KEY_BUFFER" }
+  | { type: "OPEN_OVERLAY"; payload: Overlay }
+  | { type: "CLOSE_OVERLAY" }
+  | { type: "OVERLAY_INPUT"; payload: string }
+  | { type: "OVERLAY_BACKSPACE" }
+  | { type: "REQUEST_EDITOR"; payload: NonNullable<AppState["pendingEditor"]> }
+  | { type: "CLEAR_EDITOR" };
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -116,10 +145,6 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, mode: action.payload };
     case "SET_FOCUS":
       return { ...state, focus: action.payload };
-    case "CURSOR_DOWN":
-      return moveCursor(state, +1);
-    case "CURSOR_UP":
-      return moveCursor(state, -1);
     case "CURSOR_TOP":
       return setCursorAbs(state, 0);
     case "CURSOR_BOTTOM":
@@ -152,6 +177,49 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, keyBuffer: state.keyBuffer + action.payload };
     case "CLEAR_KEY_BUFFER":
       return { ...state, keyBuffer: "" };
+    case "SET_THEME":
+      return { ...state, themeName: action.payload };
+    case "OPEN_OVERLAY":
+      // Search / command both enter insert mode. Confirm / theme stay in normal.
+      return {
+        ...state,
+        overlay: action.payload,
+        mode:
+          action.payload.kind === "command" || action.payload.kind === "search"
+            ? "insert"
+            : state.mode,
+      };
+    case "CLOSE_OVERLAY":
+      return { ...state, overlay: { kind: "none" }, mode: "normal" };
+    case "OVERLAY_INPUT":
+      if (state.overlay.kind === "command" || state.overlay.kind === "search") {
+        return {
+          ...state,
+          overlay: { ...state.overlay, text: state.overlay.text + action.payload },
+        };
+      }
+      return state;
+    case "OVERLAY_BACKSPACE":
+      if (
+        (state.overlay.kind === "command" || state.overlay.kind === "search") &&
+        state.overlay.text.length > 0
+      ) {
+        return {
+          ...state,
+          overlay: { ...state.overlay, text: state.overlay.text.slice(0, -1) },
+        };
+      }
+      return state;
+    case "CURSOR_DOWN":
+      if (state.overlay.kind === "theme") return overlayThemeCursor(state, +1);
+      return moveCursor(state, +1);
+    case "CURSOR_UP":
+      if (state.overlay.kind === "theme") return overlayThemeCursor(state, -1);
+      return moveCursor(state, -1);
+    case "REQUEST_EDITOR":
+      return { ...state, pendingEditor: action.payload };
+    case "CLEAR_EDITOR":
+      return { ...state, pendingEditor: null };
     default:
       return state;
   }
@@ -198,4 +266,13 @@ function setCursorAbs(state: AppState, pos: number | "end"): AppState {
 function clamp(n: number, min: number, max: number): number {
   if (max < min) return min;
   return n < min ? min : n > max ? max : n;
+}
+
+function overlayThemeCursor(state: AppState, delta: number): AppState {
+  if (state.overlay.kind !== "theme") return state;
+  // 8 themes shipped; the picker reads listThemeNames() at render time.
+  // Bound here by the static count to keep the reducer pure.
+  const count = 8;
+  const next = clamp(state.overlay.cursor + delta, 0, count - 1);
+  return { ...state, overlay: { ...state.overlay, cursor: next } };
 }

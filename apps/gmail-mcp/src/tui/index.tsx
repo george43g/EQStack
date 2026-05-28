@@ -30,7 +30,7 @@ export async function runTui(): Promise<void> {
   }
 
   const theme = resolveInitialTheme();
-  const ink = withFullScreen(<App theme={theme} />);
+  const ink = withFullScreen(<App initialTheme={theme} />);
   await ink.start();
   await ink.waitUntilExit();
 }

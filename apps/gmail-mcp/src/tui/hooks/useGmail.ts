@@ -63,3 +63,39 @@ export function switchAccount(
 ): Promise<SwitchAccountResult> {
   return callOp<SwitchAccountResult>("switch_account", { accountId }, signal);
 }
+
+export interface SendEmailArgs {
+  to: string[];
+  subject: string;
+  body: string;
+  cc?: string[];
+  bcc?: string[];
+  threadId?: string;
+  inReplyTo?: string;
+}
+
+export function sendEmail(args: SendEmailArgs, signal?: AbortSignal): Promise<unknown> {
+  return callOp("send_email", args, signal);
+}
+
+export function draftEmail(args: SendEmailArgs, signal?: AbortSignal): Promise<unknown> {
+  return callOp("draft_email", args, signal);
+}
+
+export function replyAll(
+  args: { messageId: string; body: string },
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return callOp("reply_all", args, signal);
+}
+
+export function modifyEmail(
+  args: { messageId: string; addLabelIds?: string[]; removeLabelIds?: string[] },
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return callOp("modify_email", args, signal);
+}
+
+export function deleteEmail(messageId: string, signal?: AbortSignal): Promise<unknown> {
+  return callOp("delete_email", { messageId }, signal);
+}
