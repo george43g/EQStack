@@ -5,7 +5,8 @@
 import { withFullScreen } from "fullscreen-ink";
 import { BootstrapError, bootstrapSession } from "../index.js";
 import { App } from "./App.js";
-import { resolveInitialTheme } from "./hooks/useTheme.js";
+import { loadTuiConfig } from "./config.js";
+import { loadTheme } from "./themes/index.js";
 
 export async function runTui(): Promise<void> {
   if (!process.stdout.isTTY) {
@@ -29,8 +30,9 @@ export async function runTui(): Promise<void> {
     throw err;
   }
 
-  const theme = resolveInitialTheme();
-  const ink = withFullScreen(<App initialTheme={theme} />);
+  const config = loadTuiConfig();
+  const theme = loadTheme(config.theme);
+  const ink = withFullScreen(<App initialTheme={theme} config={config} />);
   await ink.start();
   await ink.waitUntilExit();
 }

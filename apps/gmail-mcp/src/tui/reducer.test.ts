@@ -158,6 +158,33 @@ describe("overlay state machine", () => {
     s = reducer(s, { type: "CLEAR_EDITOR" });
     expect(s.pendingEditor).toBeNull();
   });
+
+  it("CURSOR_DOWN in account overlay moves the picker cursor", () => {
+    let s = reducer(initialState, {
+      type: "SET_ACCOUNT_LIST",
+      payload: {
+        active: { id: "work", source: "env", isLegacyImplicit: false },
+        count: 2,
+        accounts: [
+          { id: "work", emailAddress: null, scopes: null, isDefault: true, isActive: true },
+          { id: "personal", emailAddress: null, scopes: null, isDefault: false, isActive: false },
+        ],
+      },
+    });
+    s = reducer(s, { type: "OPEN_OVERLAY", payload: { kind: "account", cursor: 0 } });
+    s = reducer(s, { type: "CURSOR_DOWN" });
+    expect(s.overlay).toEqual({ kind: "account", cursor: 1 });
+    // Pane cursor untouched.
+    expect(s.threadCursor).toBe(0);
+  });
+
+  it("TOGGLE_STATS flips the dev-stats overlay flag", () => {
+    expect(initialState.showStats).toBe(false);
+    const s = reducer(initialState, { type: "TOGGLE_STATS" });
+    expect(s.showStats).toBe(true);
+    const s2 = reducer(s, { type: "TOGGLE_STATS" });
+    expect(s2.showStats).toBe(false);
+  });
 });
 
 describe("resolveKey", () => {

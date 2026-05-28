@@ -2,9 +2,12 @@
 // Stays focused on wiring — heavy lifting lives in hooks/components.
 
 import { Box, Text, useApp, useInput, useStdin } from "ink";
-import { useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
+import { type AccountChangedPayload, sessionEvents } from "../core/session.js";
+import { AccountSwitcher } from "./components/AccountSwitcher.js";
 import { CommandPalette } from "./components/CommandPalette.js";
 import { ConfirmModal } from "./components/ConfirmModal.js";
+import { DevStatsModal } from "./components/DevStatsModal.js";
 import { HelpBar } from "./components/HelpBar.js";
 import { MessagePane } from "./components/MessagePane.js";
 import { SearchBar } from "./components/SearchBar.js";
@@ -13,7 +16,10 @@ import { StatusBar } from "./components/StatusBar.js";
 import { ThemePicker } from "./components/ThemePicker.js";
 import { ThreadList } from "./components/ThreadList.js";
 import { buildComposeTemplate, parseCompose, quoteReplyBody } from "./compose-parser.js";
-import { createEditorOpener } from "./hooks/useEditor.js";
+import { type TuiConfig } from "./config.js";
+import { defaultCacheBytes, LruCache } from "./hooks/useCache.js";
+import { useDevStats } from "./hooks/useDevStats.js";
+import { createEditorOpener, resolveEditor } from "./hooks/useEditor.js";
 import * as gmail from "./hooks/useGmail.js";
 import { defaultBindings, resolveKey } from "./keymap.js";
 import { type Action, initialState, reducer } from "./reducer.js";
@@ -21,15 +27,60 @@ import { listThemeNames, loadTheme, type Theme } from "./themes/index.js";
 
 interface Props {
   initialTheme: Theme;
+  config: TuiConfig;
 }
 
-export function App({ initialTheme }: Props) {
+export function App({ initialTheme, config }: Props) {
   const [state, dispatch] = useReducer(reducer, { ...initialState, themeName: initialTheme.name });
   const { exit } = useApp();
   const { setRawMode } = useStdin();
   const fetchingThread = useRef<string | null>(null);
   const openEditorRef = useRef(createEditorOpener(setRawMode));
+  const threadCacheRef = useRef(
+    new LruCache<gmail.ThreadView>(config.cacheMB * 1024 * 1024 || defaultCacheBytes()),
+  );
   const theme = loadTheme(state.themeName);
+
+  // Stable stats reader — useDevStats polls this each tick.
+  const cacheStats = useCallback(() => threadCacheRef.current.stats(), []);
+  const stats = useDevStats({
+    enabled: state.showStats,
+    intervalMs: 1000,
+    cache: cacheStats,
+    themeName: state.themeName,
+    editor: config.editor ?? resolveEditor(),
+  });
+
+  // Subscribe to mid-session account swaps so the sidebar/inbox refresh.
+  useEffect(() => {
+    const onChange = (_payload: AccountChangedPayload) => {
+      threadCacheRef.current.clear();
+      dispatch({ type: "SET_STATUS", payload: "Account switched. Refreshing…" });
+      (async () => {
+        try {
+          const [labels, threads, accounts] = await Promise.all([
+            gmail.listLabels(),
+            gmail.listInboxThreads({ query: "in:inbox", maxResults: 50 }),
+            gmail.listAccounts(),
+          ]);
+          dispatch({ type: "SET_LABELS", payload: labels });
+          dispatch({ type: "SET_THREADS", payload: threads });
+          dispatch({ type: "SET_ACCOUNT", payload: accounts.active });
+          dispatch({ type: "SET_ACCOUNT_LIST", payload: accounts });
+          dispatch({ type: "SET_STATUS", payload: `${threads.resultCount} threads` });
+        } catch (err) {
+          dispatch({
+            type: "SET_ERROR",
+            payload: err instanceof Error ? err.message : String(err),
+          });
+        }
+      })();
+    };
+    sessionEvents.on("accountChanged", onChange);
+    return () => {
+      sessionEvents.off("accountChanged", onChange);
+    };
+  }, []);
 
   // Boot: load labels + initial inbox + account in parallel
   useEffect(() => {
@@ -44,7 +95,10 @@ export function App({ initialTheme }: Props) {
         if (cancelled) return;
         dispatch({ type: "SET_LABELS", payload: labels });
         dispatch({ type: "SET_THREADS", payload: threads });
-        if (accounts) dispatch({ type: "SET_ACCOUNT", payload: accounts.active });
+        if (accounts) {
+          dispatch({ type: "SET_ACCOUNT", payload: accounts.active });
+          dispatch({ type: "SET_ACCOUNT_LIST", payload: accounts });
+        }
         dispatch({ type: "SET_STATUS", payload: `${threads.resultCount} threads` });
       } catch (err) {
         if (cancelled) return;
@@ -58,16 +112,24 @@ export function App({ initialTheme }: Props) {
     };
   }, []);
 
-  // Handle pending thread open
+  // Handle pending thread open — cache hit returns instantly; miss fetches.
   useEffect(() => {
     if (!state.loading || state.focus !== "threads") return;
     const t = state.threads?.threads[state.threadCursor];
     if (!t) return;
     if (fetchingThread.current === t.threadId) return;
+    const cached = threadCacheRef.current.get(t.threadId);
+    if (cached) {
+      dispatch({ type: "SET_THREAD", payload: cached });
+      dispatch({ type: "SET_LOADING", payload: false });
+      dispatch({ type: "SET_STATUS", payload: `Thread (cached): ${cached.messageCount} messages` });
+      return;
+    }
     fetchingThread.current = t.threadId;
     (async () => {
       try {
         const thread = await gmail.getThread(t.threadId);
+        threadCacheRef.current.put(t.threadId, thread);
         dispatch({ type: "SET_THREAD", payload: thread });
         dispatch({ type: "SET_LOADING", payload: false });
         dispatch({ type: "SET_STATUS", payload: `Thread: ${thread.messageCount} messages` });
@@ -171,6 +233,29 @@ export function App({ initialTheme }: Props) {
       if (input === "n" || input === "N" || key.escape) {
         dispatch({ type: "CLOSE_OVERLAY" });
         dispatch({ type: "SET_STATUS", payload: "Aborted." });
+        return;
+      }
+      return;
+    }
+    // Account switcher: j/k navigate, Enter applies, Esc closes.
+    if (state.overlay.kind === "account") {
+      if (key.escape) {
+        dispatch({ type: "CLOSE_OVERLAY" });
+        return;
+      }
+      if (input === "j") {
+        dispatch({ type: "CURSOR_DOWN" });
+        return;
+      }
+      if (input === "k") {
+        dispatch({ type: "CURSOR_UP" });
+        return;
+      }
+      if (key.return) {
+        const items = state.accountList?.accounts ?? [];
+        const target = items[state.overlay.cursor];
+        if (target) requestSwitchAccount(target.id, target.isActive, dispatch);
+        dispatch({ type: "CLOSE_OVERLAY" });
         return;
       }
       return;
@@ -283,6 +368,10 @@ export function App({ initialTheme }: Props) {
       {state.overlay.kind === "search" ? (
         <SearchBar text={state.overlay.text} theme={theme} />
       ) : null}
+      {state.overlay.kind === "account" ? (
+        <AccountSwitcher list={state.accountList} cursor={state.overlay.cursor} theme={theme} />
+      ) : null}
+      {state.showStats ? <DevStatsModal stats={stats} theme={theme} /> : null}
       <StatusBar
         mode={state.mode}
         status={state.error ? `Error: ${state.error}` : state.status}
@@ -417,13 +506,13 @@ function runExCommand(
       }
       return;
     case "health":
-      dispatch({ type: "SET_STATUS", payload: "Health: coming in Phase D Session 3" });
+      runHealthCheck(dispatch);
       return;
     case "stats":
-      dispatch({ type: "SET_STATUS", payload: "Dev stats: coming in Phase D Session 3" });
+      dispatch({ type: "TOGGLE_STATS" });
       return;
     case "account":
-      dispatch({ type: "SET_STATUS", payload: "Account switcher: coming in Phase D Session 3" });
+      openAccountSwitcher(state, dispatch);
       return;
     default:
       dispatch({ type: "SET_STATUS", payload: `Unknown command: ${head}` });
@@ -484,7 +573,7 @@ function runNormalCmd(
       dispatch({ type: "OPEN_OVERLAY", payload: { kind: "command", text: "" } });
       return;
     case "ui.stats":
-      dispatch({ type: "SET_STATUS", payload: "Dev stats: coming in Phase D Session 3" });
+      dispatch({ type: "TOGGLE_STATS" });
       return;
     case "msg.compose":
       dispatch({
@@ -604,6 +693,72 @@ function toggleRead(state: import("./reducer.js").AppState, dispatch: (a: Action
     try {
       await gmail.modifyEmail(args);
       dispatch({ type: "SET_STATUS", payload: isUnread ? "Marked read" : "Marked unread" });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
+function openAccountSwitcher(
+  state: import("./reducer.js").AppState,
+  dispatch: (a: Action) => void,
+) {
+  const activeIdx = Math.max(0, state.accountList?.accounts.findIndex((a) => a.isActive) ?? 0);
+  dispatch({ type: "OPEN_OVERLAY", payload: { kind: "account", cursor: activeIdx } });
+  // Refresh asynchronously so the list reflects the latest state.
+  (async () => {
+    try {
+      const list = await gmail.listAccounts();
+      dispatch({ type: "SET_ACCOUNT_LIST", payload: list });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
+function requestSwitchAccount(
+  accountId: string,
+  alreadyActive: boolean,
+  dispatch: (a: Action) => void,
+) {
+  if (alreadyActive) {
+    dispatch({ type: "SET_STATUS", payload: `Already on ${accountId}` });
+    return;
+  }
+  (async () => {
+    try {
+      dispatch({ type: "SET_STATUS", payload: `Switching to ${accountId}…` });
+      const result = await gmail.switchAccount(accountId);
+      // sessionEvents.accountChanged will fire from setSession inside the op —
+      // the subscribed listener in App refreshes labels/threads/account.
+      dispatch({
+        type: "SET_STATUS",
+        payload: `Switched ${result.previousAccountId ?? "(none)"} → ${result.newAccountId}`,
+      });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
+function runHealthCheck(dispatch: (a: Action) => void) {
+  (async () => {
+    try {
+      const { callOp } = await import("../cli/runtime.js");
+      const res = await callOp<{ status: string; issues: string[] }>("health_check", {});
+      dispatch({
+        type: "SET_STATUS",
+        payload: `Health: ${res.status}${res.issues.length ? ` — ${res.issues.join(", ")}` : ""}`,
+      });
     } catch (err) {
       dispatch({
         type: "SET_ERROR",

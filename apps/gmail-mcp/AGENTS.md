@@ -9,7 +9,7 @@ Gmail integration exposed through 28 tools (read, search, send, draft, reply-all
 | Subcommand | Purpose | Transport |
 |---|---|---|
 | `gmail mcp` | MCP server (default = stdio, `--http` enables Streamable HTTP) | stdio / HTTP |
-| `gmail tui` | Ink/React multi-pane TUI (Phase D — currently a stub) | n/a |
+| `gmail tui` | Ink/React multi-pane TUI (Phase D MVP — browse + compose) | n/a |
 | `gmail console` | Interactive REPL for ad-hoc Gmail operations | n/a (in-process calls) |
 | `gmail account`, `gmail search`, … | Per-op CLI subcommands for humans + scripts | n/a (in-process calls) |
 
@@ -431,7 +431,7 @@ Optional capture+anonymise scripts (`scripts/capture-fixtures.ts`, `scripts/anon
 
 - **`gmail console` polish.** The REPL exists, prints a legend, routes through the commander tree, and supports `accounts` plus `switch <id>` / `sw <id>`. Future polish: inline `@inquirer/prompts` widgets for destructive ops and richer account/status summaries.
 - **`usage.kdl` spec for shell completions.** Generated from the commander tree by `scripts/gen-usage.ts` (run via `pnpm run gen-usage`). `pnpm verify` runs `gen-usage --check` so drift fails CI. The committed `usage.kdl` is consumed by the [`usage`](https://usage.jdx.dev/) Rust binary; `gmail --usage-spec` also prints it on demand.
-- **Phase D — TUI MVP.** Multi-pane Ink/React app with vim-modal keyboard UX, external-editor compose flow, in-memory LRU cache, themes (default ASCII / dracula / solarized / nord / nerd-font). Now wired as `gmail tui` subcommand (not its own bin). See `docs/phase-d-tui-plan.md`.
+- **Phase D — TUI MVP** ✅ shipped. `gmail tui` opens a 3-pane Ink/React UI against the in-process dispatcher: vim-modal keymap, `$EDITOR` suspend for compose / reply / reply-all / draft-edit, 8 themes (`:theme` overlay), account switcher (`:account` modal that subscribes to `sessionEvents.accountChanged`), dev stats overlay (`~` / `:stats`), per-thread LRU cache (`GMAIL_TUI_CACHE_MB`). Reads `~/.gmail-mcp/config.json` for `theme` / `editor` / `cacheMB`; `GMAIL_TUI_*` env wins over the file. See `docs/phase-d-tui-plan.md` for the (now-historical) plan. Phase D2 follow-ups: visual-mode batch ops, filter/label CRUD UI, attachment preview, sent/drafts folder UIs.
 - **Phase G2 — multi-tenant HTTP mode.** Defer until a real use case appears. Would add per-request OAuth introspection, per-tenant credential lookup, scope-isolated rate limiting.
 - **`zod` 3 → 4** (with `zod-to-json-schema` co-bump). zod 4 changes the discriminated-union surface, default-value semantics, and error format. The 27 schemas in `tools.ts` plus the test fixtures all need review. Defer until there's a concrete reason — currently no zod 3 bug is biting us.
 - **Wrap remaining Gmail call sites with `withRetry` / `rateLimitAcquire`**. The library is in place and is wired into `read_email` and `search_emails` as the canonical pattern. The other read paths (`list_inbox_threads`, `get_thread`, `download_*`, etc.) and the idempotent writes (`modify_*`, `delete_*`, `batch_*`) are progressive-adoption candidates. Send/draft creation must remain unwrapped (non-idempotent).

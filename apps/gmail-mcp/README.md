@@ -410,6 +410,42 @@ gmail send -t alice@example.com -s "Subject" -b "Body"
 
 The `tui` and `console` subcommands expose the terminal UI and an interactive REPL respectively. In `gmail console`, use `accounts` to list configured accounts and `switch <id>` / `sw <id>` to swap the active account for subsequent REPL commands.
 
+### `gmail tui` (Phase D MVP)
+
+```bash
+gmail tui
+```
+
+Full-screen Ink/React app with a vim-modal keymap. The three panes (Sidebar / ThreadList / MessageReader) share the in-process dispatcher with the CLI, so every action goes through the same MCP ops, scope gates, and timeouts.
+
+| Key | Action |
+|---|---|
+| `j` / `k` | Cursor down / up in the focused pane |
+| `gg` / `G` | Top / bottom of list |
+| `Tab` | Cycle focus across panes |
+| `Enter` | Open selected thread / label |
+| `q` / `Q` | Close pane / quit |
+| `r` / `R` | Reply / reply-all (opens `$EDITOR`) |
+| `c` / `e` | Compose / edit-draft (opens `$EDITOR`) |
+| `x` | Delete (with confirm modal) |
+| `s` / `m` | Star / mark read–unread toggle |
+| `/` | Inline search bar |
+| `:` | Ex-command palette (`:q`, `:theme [name]`, `:search`, `:label`, `:account`, `:health`, `:stats`) |
+| `~` | Toggle dev stats overlay |
+| `?` | Help overlay |
+
+Themes (`:theme <name>` or `GMAIL_TUI_THEME=…`): `default`, `mono`, `dracula`, `solarized-dark`, `solarized-light`, `nord`, `gruvbox`, `nerd` (requires a Nerd Font).
+
+Config: `~/.gmail-mcp/config.json` (`{theme, editor, cacheMB}`); env vars `GMAIL_TUI_THEME` / `GMAIL_TUI_EDITOR` / `GMAIL_TUI_CACHE_MB` override the file. Editor resolution: `VISUAL` → `EDITOR` → `GMAIL_TUI_EDITOR` → `config.editor` → `vi`.
+
+Account switcher: open with `:account` (or via the planned binding `Ctrl-a`). Enter swaps the active account via `switch_account`; the TUI subscribes to `sessionEvents.accountChanged` and re-fetches labels / inbox automatically.
+
+Fixture-mode dev loop (no real OAuth):
+
+```bash
+GMAIL_FIXTURE_MODE=1 GMAIL_FIXTURE_DIR=./fixtures/gmail GMAIL_ACCOUNT=work pnpm dev:tui
+```
+
 ### Shell Completions / Manpages
 
 The `gmail` bin ships a [`usage`](https://usage.jdx.dev) spec (`usage.kdl`) that drives shell completions and manpages. Install the `usage` Rust binary once:

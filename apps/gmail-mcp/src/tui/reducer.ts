@@ -23,7 +23,8 @@ export type Overlay =
   | { kind: "command"; text: string }
   | { kind: "search"; text: string }
   | { kind: "confirm"; prompt: string; pendingCmd: string }
-  | { kind: "theme"; cursor: number };
+  | { kind: "theme"; cursor: number }
+  | { kind: "account"; cursor: number };
 
 export interface AppState {
   mode: Mode;
@@ -40,9 +41,11 @@ export interface AppState {
   messageCursor: number;
   // Modal / overlay state
   showHelp: boolean;
+  showStats: boolean;
   overlay: Overlay;
-  // Active account chip
+  // Active account chip + cached list for the switcher overlay
   account: AccountList["active"] | null;
+  accountList: AccountList | null;
   // Theme (mutable via :theme command)
   themeName: string;
   // Transient status bar text + last action
@@ -75,8 +78,10 @@ export const initialState: AppState = {
   thread: null,
   messageCursor: 0,
   showHelp: false,
+  showStats: false,
   overlay: { kind: "none" },
   account: null,
+  accountList: null,
   themeName: "default",
   status: "Loading inbox…",
   loading: true,
@@ -91,6 +96,8 @@ export type Action =
   | { type: "SET_THREADS"; payload: ThreadList }
   | { type: "SET_THREAD"; payload: ThreadView }
   | { type: "SET_ACCOUNT"; payload: AccountList["active"] | null }
+  | { type: "SET_ACCOUNT_LIST"; payload: AccountList | null }
+  | { type: "TOGGLE_STATS" }
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_STATUS"; payload: string }
   | { type: "SET_ERROR"; payload: string | null }
@@ -135,6 +142,10 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     case "SET_ACCOUNT":
       return { ...state, account: action.payload };
+    case "SET_ACCOUNT_LIST":
+      return { ...state, accountList: action.payload };
+    case "TOGGLE_STATS":
+      return { ...state, showStats: !state.showStats };
     case "SET_LOADING":
       return { ...state, loading: action.payload };
     case "SET_STATUS":
@@ -212,9 +223,11 @@ export function reducer(state: AppState, action: Action): AppState {
       return state;
     case "CURSOR_DOWN":
       if (state.overlay.kind === "theme") return overlayThemeCursor(state, +1);
+      if (state.overlay.kind === "account") return overlayAccountCursor(state, +1);
       return moveCursor(state, +1);
     case "CURSOR_UP":
       if (state.overlay.kind === "theme") return overlayThemeCursor(state, -1);
+      if (state.overlay.kind === "account") return overlayAccountCursor(state, -1);
       return moveCursor(state, -1);
     case "REQUEST_EDITOR":
       return { ...state, pendingEditor: action.payload };
@@ -274,5 +287,12 @@ function overlayThemeCursor(state: AppState, delta: number): AppState {
   // Bound here by the static count to keep the reducer pure.
   const count = 8;
   const next = clamp(state.overlay.cursor + delta, 0, count - 1);
+  return { ...state, overlay: { ...state.overlay, cursor: next } };
+}
+
+function overlayAccountCursor(state: AppState, delta: number): AppState {
+  if (state.overlay.kind !== "account") return state;
+  const items = state.accountList?.accounts.length ?? 0;
+  const next = clamp(state.overlay.cursor + delta, 0, Math.max(0, items - 1));
   return { ...state, overlay: { ...state.overlay, cursor: next } };
 }
