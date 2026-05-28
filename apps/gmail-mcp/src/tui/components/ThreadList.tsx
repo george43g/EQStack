@@ -1,0 +1,89 @@
+import { Box, Text } from "ink";
+import { memo } from "react";
+import type { ThreadList as ThreadListT } from "../reducer.js";
+import type { Theme } from "../themes/index.js";
+
+interface Props {
+  threads: ThreadListT | null;
+  cursor: number;
+  focused: boolean;
+  theme: Theme;
+  title: string;
+}
+
+function ThreadListImpl({ threads, cursor, focused, theme, title }: Props) {
+  return (
+    <Box
+      flexDirection="column"
+      flexGrow={1}
+      paddingX={1}
+      paddingY={1}
+      borderStyle="single"
+      borderColor={focused ? theme.accent : theme.border}
+    >
+      <Text color={theme.accent} bold>
+        {title}
+      </Text>
+      <Box height={1} />
+      {!threads ? (
+        <Text color={theme.dim}>(loading)</Text>
+      ) : threads.threads.length === 0 ? (
+        <Text color={theme.dim}>(no threads)</Text>
+      ) : (
+        threads.threads.map((t, i) => {
+          const selected = focused && i === cursor;
+          const from = truncate(t.latestMessage.from, 24);
+          const subject = truncate(t.latestMessage.subject || "(no subject)", 50);
+          const dateStr = relativeDate(t.latestMessage.date);
+          const indicator = t.messageCount > 1 ? `(${t.messageCount})` : "   ";
+          return (
+            <Text
+              key={t.threadId}
+              color={selected ? theme.selectedFg : theme.fg}
+              backgroundColor={selected ? theme.selectedBg : undefined}
+            >
+              {`${dateStr.padEnd(10)}  ${from.padEnd(24)}  ${subject.padEnd(50)} ${indicator}`}
+            </Text>
+          );
+        })
+      )}
+    </Box>
+  );
+}
+
+function truncate(s: string, n: number): string {
+  if (s.length <= n) return s;
+  return `${s.slice(0, Math.max(0, n - 1))}…`;
+}
+
+function relativeDate(raw: string): string {
+  // Gmail returns RFC 5322 dates. Best-effort format: "Mon 13" or "13:45".
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw.slice(0, 10);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) {
+    const hh = d.getHours().toString().padStart(2, "0");
+    const mm = d.getMinutes().toString().padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
+  const sameYear = d.getFullYear() === now.getFullYear();
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  if (sameYear) return `${months[d.getMonth()]} ${d.getDate().toString().padStart(2, " ")}`;
+  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
+}
+
+export const ThreadList = memo(ThreadListImpl);

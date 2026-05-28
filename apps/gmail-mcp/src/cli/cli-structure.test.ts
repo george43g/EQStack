@@ -129,17 +129,16 @@ describe("buildTuiCommand (10.6)", () => {
     process.exit = origExit;
   });
 
-  it("prints a not-yet-implemented stderr message and exits gracefully when runTui is undefined", async () => {
-    // The TUI module exists but exports `runTui = undefined` (Phase D
-    // placeholder). The action prints the stub message and exits — the
-    // exact code depends on which branch fires inside the try/catch, but
-    // the user-facing contract is the stderr message.
+  it("refuses to start when stdout is not a TTY (vitest env) and prints a helpful hint", async () => {
+    // Vitest captures stdout, so `process.stdout.isTTY` is undefined/false.
+    // The TUI entry point detects this and refuses to start rather than
+    // crashing inside Ink. Contract: it writes a TTY-required line on stderr
+    // and exits with code 2 (auth/usage convention).
     const cmd = buildTuiCommand();
     cmd.exitOverride();
     await expect(cmd.parseAsync(["node", "tui"])).rejects.toThrow(/^__exit_called__/);
     const out = stderr.join("");
-    expect(out).toMatch(/TUI not yet implemented/);
-    expect(out).toMatch(/phase-d-tui-plan/);
+    expect(out).toMatch(/requires an interactive terminal/);
   });
 });
 
