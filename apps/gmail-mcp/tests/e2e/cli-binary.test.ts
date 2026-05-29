@@ -15,10 +15,12 @@ const NODE = process.execPath;
 function runCli(
   args: string[],
   extraEnv: Record<string, string> = {},
+  input?: string,
 ): { status: number | null; stdout: string; stderr: string } {
   const result = spawnSync(NODE, [CLI_BIN, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf8",
+    input,
     env: {
       ...process.env,
       ...extraEnv,
@@ -83,5 +85,42 @@ describe("e2e: gmail CLI binary against fixtures", () => {
     const parsed = JSON.parse(stdout) as { status: string; pid: number };
     expect(["healthy", "degraded", "unhealthy"]).toContain(parsed.status);
     expect(typeof parsed.pid).toBe("number");
+  });
+
+  it("`gmail console` processes piped account/scope browsing without mixing single-account inboxes", () => {
+    const script = [
+      "accounts",
+      "switch personal",
+      "inbox 5",
+      "switch work",
+      "inbox 5",
+      "scope all",
+      "inbox 5",
+      "quit",
+      "",
+    ].join("\n");
+    const { status, stdout, stderr } = runCli(["console"], {}, script);
+
+    expect(status).toBe(0);
+    expect(stderr).toBe("");
+    const personalSection = stdout.slice(
+      stdout.indexOf("Switched active Gmail account: work"),
+      stdout.indexOf("Switched active Gmail account: personal"),
+    );
+    expect(personalSection).toContain("p_thr_001");
+    expect(personalSection).not.toContain("w_thr_001");
+
+    const workSection = stdout.slice(
+      stdout.indexOf("Switched active Gmail account: personal"),
+      stdout.indexOf("Browse scope: all accounts"),
+    );
+    expect(workSection).toContain("w_thr_001");
+    expect(workSection).not.toContain("p_thr_001");
+
+    const combinedSection = stdout.slice(stdout.indexOf("Browse scope: all accounts"));
+    expect(combinedSection).toContain("[work<user-work@fixture.test>]");
+    expect(combinedSection).toContain("[personal<user-personal@fixture.test>]");
+    expect(combinedSection).toContain("w_thr_001");
+    expect(combinedSection).toContain("p_thr_001");
   });
 });

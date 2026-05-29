@@ -19,6 +19,7 @@ let _oauth2Client: OAuth2Client | null = null;
 let _gmail: gmail_v1.Gmail | null = null;
 let _authorizedScopes: string[] = DEFAULT_SCOPES;
 let _currentAccountId: string | null = null;
+let _sessionEventSuppressions = 0;
 
 /**
  * Fire-and-forget session event bus. Emits when the active account changes
@@ -74,13 +75,26 @@ export function setSession(opts: {
   // Emit only when the account id ACTUALLY changed. Same-id calls (bootstrap
   // → bootstrap re-run, or `switch_account` to the active account) are silent
   // — subscribers shouldn't refresh on a no-op.
-  if (opts.accountId !== undefined && opts.accountId !== previousAccountId) {
+  if (
+    opts.accountId !== undefined &&
+    opts.accountId !== previousAccountId &&
+    _sessionEventSuppressions === 0
+  ) {
     const payload: AccountChangedPayload = {
       previous: previousAccountId,
       current: _currentAccountId,
       scopes: _authorizedScopes,
     };
     sessionEvents.emit("accountChanged", payload);
+  }
+}
+
+export async function withoutSessionChangeEvents<T>(fn: () => Promise<T>): Promise<T> {
+  _sessionEventSuppressions += 1;
+  try {
+    return await fn();
+  } finally {
+    _sessionEventSuppressions -= 1;
   }
 }
 

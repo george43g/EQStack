@@ -59,6 +59,10 @@ export class LruCache<T> {
   }
 }
 
+export function accountScopedCacheKey(accountId: string | null | undefined, id: string): string {
+  return `${accountId || "unknown"}:${id}`;
+}
+
 export function defaultCacheBytes(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.GMAIL_TUI_CACHE_MB;
   const n = raw ? Number.parseInt(raw, 10) : Number.NaN;

@@ -119,6 +119,63 @@ describe("get_thread handler", () => {
     expect(msg.body).toBe("");
     expect(msg.subject).toBe("Skip body");
   });
+
+  it("renders a readable transcript and derives plain text from HTML-only messages", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        messages: [
+          {
+            id: "msg-html",
+            threadId: "thread-html",
+            labelIds: ["INBOX", "SENT"],
+            payload: {
+              headers: [
+                { name: "Subject", value: "HTML report" },
+                { name: "From", value: "me@example.com" },
+                { name: "To", value: "team@example.com" },
+                { name: "Cc", value: "lead@example.com" },
+                { name: "Date", value: "2026-05-29" },
+              ],
+              mimeType: "multipart/mixed",
+              parts: [
+                {
+                  mimeType: "text/html",
+                  body: {
+                    data: Buffer.from(
+                      "<p>Build <strong>passed</strong>.</p><p>Ship it.</p>",
+                    ).toString("base64url"),
+                    size: 48,
+                  },
+                },
+                {
+                  filename: "report.txt",
+                  mimeType: "text/plain",
+                  body: { attachmentId: "att-report", size: 123 },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const ctx = buildCtx({ get });
+
+    const op = registry.get("get_thread")!;
+    const result = await op.handler({ threadId: "thread-html" }, ctx);
+
+    const text = result.content[0].text;
+    expect(text).toContain("Thread thread-html (1 message)");
+    expect(text).toContain("From: me@example.com");
+    expect(text).toContain("To: team@example.com");
+    expect(text).toContain("Cc: lead@example.com");
+    expect(text).toContain("Labels: INBOX, SENT");
+    expect(text).toContain("Attachments: report.txt (text/plain, 0 KB)");
+    expect(text).toContain("Build passed.\n\nShip it.");
+    expect(text).not.toContain("<strong>");
+    // biome-ignore lint/suspicious/noExplicitAny: structured access
+    const msg = (result.structuredContent as any).messages[0];
+    expect(msg.body).toBe("Build passed.\n\nShip it.");
+  });
 });
 
 describe("list_inbox_threads handler", () => {

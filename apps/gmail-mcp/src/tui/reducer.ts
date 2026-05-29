@@ -14,9 +14,25 @@ export type Mode = "normal" | "insert" | "command";
 export type Pane = "sidebar" | "threads" | "message";
 
 export type LabelList = z.infer<typeof ListEmailLabelsOutputSchema>;
-export type ThreadList = z.infer<typeof ListInboxThreadsOutputSchema>;
-export type ThreadView = z.infer<typeof GetThreadOutputSchema>;
+type BaseThreadList = z.infer<typeof ListInboxThreadsOutputSchema>;
+type BaseThreadView = z.infer<typeof GetThreadOutputSchema>;
+export type ThreadList = Omit<BaseThreadList, "threads"> & {
+  threads: Array<
+    BaseThreadList["threads"][number] & { accountId?: string; emailAddress?: string | null }
+  >;
+};
+export type ThreadView = Omit<BaseThreadView, "messages"> & {
+  accountId?: string;
+  emailAddress?: string | null;
+  messages: Array<
+    BaseThreadView["messages"][number] & { accountId?: string; emailAddress?: string | null }
+  >;
+};
 export type AccountList = z.infer<typeof ListAccountsOutputSchema>;
+export type BrowseScope =
+  | { kind: "single"; accountId: string | null }
+  | { kind: "all" }
+  | { kind: "selected"; accountIds: string[] };
 
 export type Overlay =
   | { kind: "none" }
@@ -24,7 +40,7 @@ export type Overlay =
   | { kind: "search"; text: string }
   | { kind: "confirm"; prompt: string; pendingCmd: string }
   | { kind: "theme"; cursor: number }
-  | { kind: "account"; cursor: number };
+  | { kind: "account"; cursor: number; selectedIds?: string[] };
 
 export interface AppState {
   mode: Mode;
@@ -46,6 +62,7 @@ export interface AppState {
   // Active account chip + cached list for the switcher overlay
   account: AccountList["active"] | null;
   accountList: AccountList | null;
+  scope: BrowseScope;
   // Theme (mutable via :theme command)
   themeName: string;
   // Transient status bar text + last action
@@ -82,6 +99,7 @@ export const initialState: AppState = {
   overlay: { kind: "none" },
   account: null,
   accountList: null,
+  scope: { kind: "single", accountId: null },
   themeName: "default",
   status: "Loading inbox…",
   loading: true,
@@ -97,6 +115,7 @@ export type Action =
   | { type: "SET_THREAD"; payload: ThreadView }
   | { type: "SET_ACCOUNT"; payload: AccountList["active"] | null }
   | { type: "SET_ACCOUNT_LIST"; payload: AccountList | null }
+  | { type: "SET_SCOPE"; payload: BrowseScope }
   | { type: "TOGGLE_STATS" }
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_STATUS"; payload: string }
@@ -144,6 +163,22 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, account: action.payload };
     case "SET_ACCOUNT_LIST":
       return { ...state, accountList: action.payload };
+    case "SET_SCOPE":
+      return {
+        ...state,
+        scope: action.payload,
+        labels: null,
+        labelCursor: 0,
+        selectedLabelId: "INBOX",
+        threads: null,
+        threadCursor: 0,
+        thread: null,
+        messageCursor: 0,
+        focus: "threads",
+        status: "Loading inbox…",
+        loading: true,
+        error: null,
+      };
     case "TOGGLE_STATS":
       return { ...state, showStats: !state.showStats };
     case "SET_LOADING":
@@ -292,7 +327,7 @@ function overlayThemeCursor(state: AppState, delta: number): AppState {
 
 function overlayAccountCursor(state: AppState, delta: number): AppState {
   if (state.overlay.kind !== "account") return state;
-  const items = state.accountList?.accounts.length ?? 0;
+  const items = (state.accountList?.accounts.length ?? 0) + 1;
   const next = clamp(state.overlay.cursor + delta, 0, Math.max(0, items - 1));
   return { ...state, overlay: { ...state.overlay, cursor: next } };
 }

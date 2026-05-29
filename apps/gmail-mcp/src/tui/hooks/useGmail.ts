@@ -4,6 +4,7 @@
 
 import type { z } from "zod";
 import { callOp } from "../../cli/runtime.js";
+import { getCurrentAccountId, withoutSessionChangeEvents } from "../../core/session.js";
 import type {
   GetThreadOutputSchema,
   ListAccountsOutputSchema,
@@ -13,6 +14,7 @@ import type {
   SearchEmailsOutputSchema,
   SwitchAccountOutputSchema,
 } from "../../tools.js";
+import type { BrowseScope } from "../reducer.js";
 
 export type LabelList = z.infer<typeof ListEmailLabelsOutputSchema>;
 export type ThreadList = z.infer<typeof ListInboxThreadsOutputSchema>;
@@ -21,6 +23,18 @@ export type EmailView = z.infer<typeof ReadEmailOutputSchema>;
 export type SearchResults = z.infer<typeof SearchEmailsOutputSchema>;
 export type AccountList = z.infer<typeof ListAccountsOutputSchema>;
 export type SwitchAccountResult = z.infer<typeof SwitchAccountOutputSchema>;
+export type ScopedThreadList = Omit<ThreadList, "threads"> & {
+  threads: Array<
+    ThreadList["threads"][number] & { accountId?: string; emailAddress?: string | null }
+  >;
+};
+export type ScopedThreadView = Omit<ThreadView, "messages"> & {
+  accountId?: string;
+  emailAddress?: string | null;
+  messages: Array<
+    ThreadView["messages"][number] & { accountId?: string; emailAddress?: string | null }
+  >;
+};
 
 export function listLabels(signal?: AbortSignal): Promise<LabelList> {
   return callOp<LabelList>("list_email_labels", {}, signal);
@@ -37,8 +51,74 @@ export function listInboxThreads(
   );
 }
 
+export async function listLabelsForScope(
+  scope: BrowseScope,
+  signal?: AbortSignal,
+): Promise<LabelList> {
+  if (scope.kind !== "single") return emptyLabels();
+  if (scope.accountId && scope.accountId !== getCurrentAccountId()) {
+    await switchAccount(scope.accountId, signal);
+  }
+  return listLabels(signal);
+}
+
+export async function listInboxThreadsForScope(
+  scope: BrowseScope,
+  opts: { query?: string; maxResults?: number } = {},
+  signal?: AbortSignal,
+): Promise<ScopedThreadList> {
+  if (scope.kind === "single") {
+    if (scope.accountId && scope.accountId !== getCurrentAccountId()) {
+      await switchAccount(scope.accountId, signal);
+    }
+    return listInboxThreads(opts, signal);
+  }
+
+  return withRestoredAccount(async () => {
+    const accounts = await listAccounts(signal);
+    const ids =
+      scope.kind === "all"
+        ? accounts.accounts.map((a) => a.id)
+        : scope.accountIds.filter((id) => accounts.accounts.some((a) => a.id === id));
+    const emailById = new Map(accounts.accounts.map((a) => [a.id, a.emailAddress]));
+    const threads: ScopedThreadList["threads"] = [];
+    for (const accountId of ids) {
+      await switchAccount(accountId, signal);
+      const list = await listInboxThreads(opts, signal);
+      threads.push(
+        ...list.threads.map((thread) => ({
+          ...thread,
+          accountId,
+          emailAddress: emailById.get(accountId) ?? null,
+        })),
+      );
+    }
+    return { resultCount: threads.length, threads };
+  });
+}
+
 export function getThread(threadId: string, signal?: AbortSignal): Promise<ThreadView> {
   return callOp<ThreadView>("get_thread", { threadId, format: "full" }, signal);
+}
+
+export async function getThreadForScope(
+  threadId: string,
+  accountId?: string | null,
+  signal?: AbortSignal,
+): Promise<ScopedThreadView> {
+  if (!accountId) return getThread(threadId, signal);
+  if (accountId === getCurrentAccountId()) {
+    const accounts = await listAccounts(signal).catch(() => null);
+    const email = accounts?.accounts.find((a) => a.id === accountId)?.emailAddress ?? null;
+    return annotateThread(await getThread(threadId, signal), accountId, email);
+  }
+  return withRestoredAccount(async () => {
+    const accounts = await listAccounts(signal);
+    const email = accounts.accounts.find((a) => a.id === accountId)?.emailAddress ?? null;
+    await switchAccount(accountId, signal);
+    const thread = await getThread(threadId, signal);
+    return annotateThread(thread, accountId, email);
+  });
 }
 
 export function readEmail(messageId: string, signal?: AbortSignal): Promise<EmailView> {
@@ -62,6 +142,37 @@ export function switchAccount(
   signal?: AbortSignal,
 ): Promise<SwitchAccountResult> {
   return callOp<SwitchAccountResult>("switch_account", { accountId }, signal);
+}
+
+function emptyLabels(): LabelList {
+  return { count: { total: 0, system: 0, user: 0 }, system: [], user: [] };
+}
+
+async function withRestoredAccount<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = getCurrentAccountId();
+  return withoutSessionChangeEvents(async () => {
+    try {
+      return await fn();
+    } finally {
+      const current = getCurrentAccountId();
+      if (previous && current !== previous) {
+        await switchAccount(previous).catch(() => undefined);
+      }
+    }
+  });
+}
+
+function annotateThread(
+  thread: ThreadView,
+  accountId: string,
+  emailAddress: string | null,
+): ScopedThreadView {
+  return {
+    ...thread,
+    accountId,
+    emailAddress,
+    messages: thread.messages.map((message) => ({ ...message, accountId, emailAddress })),
+  };
 }
 
 export interface SendEmailArgs {

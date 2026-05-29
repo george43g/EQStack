@@ -63,6 +63,61 @@ export function extractEmailContent(messagePart: GmailMessagePart): EmailContent
 }
 
 /**
+ * Convert a small HTML email body into readable terminal text. This is not a
+ * full DOM renderer; it is deliberately conservative and dependency-free for
+ * Gmail bodies where we only need plain text fallback.
+ */
+export function htmlToText(html: string): string {
+  if (!html) return "";
+  const withoutUnsafeBlocks = html
+    .replace(/<\s*(script|style)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
+    .replace(
+      /<\s*\/\s*(p|div|h[1-6]|blockquote|tr|table|section|article)\s*>\s*<\s*br\s*\/?\s*>/gi,
+      "\n",
+    )
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\s*\/\s*(p|div|h[1-6]|blockquote|tr|table|section|article)\s*>/gi, "\n\n")
+    .replace(/<\s*li[^>]*>/gi, "- ")
+    .replace(/<\s*\/\s*li\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "");
+
+  return decodeHtmlEntities(withoutUnsafeBlocks)
+    .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function readableEmailBody(content: EmailContent): string {
+  return content.text || htmlToText(content.html) || "";
+}
+
+function decodeHtmlEntities(text: string): string {
+  const named: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
+    const lower = entity.toLowerCase();
+    if (lower.startsWith("#x")) {
+      const code = Number.parseInt(lower.slice(2), 16);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    }
+    if (lower.startsWith("#")) {
+      const code = Number.parseInt(lower.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    }
+    return named[lower] ?? match;
+  });
+}
+
+/**
  * Extract common headers from a Gmail message payload (subject / from / to /
  * date / message-id). Case-insensitive header lookup; returns empty strings
  * for missing values rather than undefined so callers can compose unchecked.

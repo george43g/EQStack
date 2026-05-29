@@ -33,7 +33,11 @@ function ThreadListImpl({ threads, cursor, focused, theme, title }: Props) {
         threads.threads.map((t, i) => {
           const selected = focused && i === cursor;
           const from = truncate(t.latestMessage.from, 24);
-          const subject = truncate(t.latestMessage.subject || "(no subject)", 50);
+          const account =
+            "accountId" in t && t.accountId
+              ? `[${t.accountId}${t.emailAddress ? ` ${t.emailAddress}` : ""}] `
+              : "";
+          const subject = truncate(`${account}${t.latestMessage.subject || "(no subject)"}`, 50);
           const dateStr = relativeDate(t.latestMessage.date);
           const indicator = t.messageCount > 1 ? `(${t.messageCount})` : "   ";
           return (

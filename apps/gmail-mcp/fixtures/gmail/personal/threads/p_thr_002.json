@@ -12,9 +12,13 @@
         "mimeType": "text/plain",
         "headers": [
           { "name": "From", "value": "family@fixture.test" },
-          { "name": "Subject", "value": "Dinner tomorrow at 7pm" }
+          { "name": "Subject", "value": "Dinner tomorrow at 7pm" },
+          { "name": "Date", "value": "Wed, 29 Oct 2025 18:45:00 +0000" }
         ],
-        "body": { "size": 60 }
+        "body": {
+          "size": 60,
+          "data": "RGlubmVyIHRvbW9ycm93IGF0IDdwbS4gQnJpbmcgZGVzc2VydCBpZiB5b3UgY2FuLgo="
+        }
       }
     }
   ]

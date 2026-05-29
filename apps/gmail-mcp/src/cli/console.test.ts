@@ -79,6 +79,7 @@ describe("isBuiltinCommand", () => {
     "tools",
     "raw",
     "accounts",
+    "scope",
     "switch",
     "sw",
   ])("recognises `%s` as a built-in", (cmd) => {
@@ -135,9 +136,9 @@ describe("runCliOp REPL-mode flag", () => {
 // ── runConsole legend + REPL-driven built-ins ────────────────────────────
 // These tests mock `node:readline.createInterface` so the loop can be driven
 // from in-memory line queues instead of stdin. `runConsole` returns once the
-// legend is rendered and bootstrap settles; the readline mock keeps the loop
-// alive by calling each queued line's question-callback in turn, and signals
-// completion via a resolver shared with the test.
+// legend is rendered and bootstrap settles; the readline mock emits queued
+// `line` events in order and signals completion via a resolver shared with the
+// test.
 
 describe("runConsole legend + REPL built-ins (11.7, 11.11, 11.12)", () => {
   type Line = string;
@@ -164,29 +165,23 @@ describe("runConsole legend + REPL built-ins (11.7, 11.11, 11.12)", () => {
       throw new Error(`__exit_called__:${code}`);
     }) as typeof process.exit;
 
-    // Mock readline so `rl.question(prompt, cb)` pops the next queued line
-    // and dispatches it. When the queue empties, resolve the test's
-    // donePromise instead of hanging.
+    // Mock readline so runConsole can register a sequential `line` handler.
+    // Once the handler is registered, dispatch the queued lines in order.
     vi.resetModules();
     vi.doMock("node:readline", () => ({
       createInterface: () => ({
-        question: (_prompt: string, cb: (line: string) => void) => {
-          if (queuedLines.length === 0) {
-            // No more lines — signal completion. The loop is left dangling
-            // (the next question() never resolves), but the test has already
-            // observed the side-effects it cares about.
-            doneResolve?.();
-            return;
+        on: (event: string, handler: (line?: string) => void | Promise<void>) => {
+          if (event === "line") {
+            queueMicrotask(async () => {
+              while (queuedLines.length > 0) {
+                await handler(queuedLines.shift());
+              }
+              doneResolve?.();
+            });
           }
-          const next = queuedLines.shift() as string;
-          // Defer to a microtask so the synchronous `loop()` returns first,
-          // matching how a real readline would invoke the callback.
-          queueMicrotask(() => cb(next));
         },
-        on: (_event: string, _handler: () => void) => {
-          // Swallow close handlers — runConsole registers one that calls
-          // process.exit(0). Not invoking it keeps the test process alive.
-        },
+        prompt: () => {},
+        setPrompt: () => {},
         close: () => {},
       }),
     }));
@@ -206,8 +201,8 @@ describe("runConsole legend + REPL built-ins (11.7, 11.11, 11.12)", () => {
     const write = (s: string) => {
       writes.push(s);
     };
-    // No queued lines — the readline mock will resolve donePromise on the
-    // first question() call, immediately after legend rendering completes.
+    // No queued lines — the readline mock resolves donePromise immediately
+    // after the line handler is registered.
     const { runConsole } = await import("./console.js");
     await runConsole({ write });
     await donePromise;
@@ -273,6 +268,7 @@ describe("runConsole legend + REPL built-ins (11.7, 11.11, 11.12)", () => {
     vi.doMock("./runtime.js", () => ({
       bootstrapForCli: vi.fn(async () => {}),
       executeCliOp,
+      callOp: vi.fn(async () => ({})),
     }));
 
     const { runConsole } = await import("./console.js");
@@ -281,6 +277,78 @@ describe("runConsole legend + REPL built-ins (11.7, 11.11, 11.12)", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(executeCliOp).toHaveBeenCalledWith(
+      "switch_account",
+      { accountId: "personal" },
+      { json: false },
+    );
+  });
+});
+
+describe("runConsole piped line processing", () => {
+  let lineHandler: ((line: string) => void | Promise<void>) | undefined;
+  let closeHandler: (() => void) | undefined;
+  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let originalExit: typeof process.exit;
+
+  beforeEach(() => {
+    lineHandler = undefined;
+    closeHandler = undefined;
+    stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    originalExit = process.exit;
+    process.exit = ((code?: number) => {
+      throw new Error(`__exit_called__:${code}`);
+    }) as typeof process.exit;
+
+    vi.resetModules();
+    vi.doMock("node:readline", () => ({
+      createInterface: () => ({
+        on: (event: string, handler: (line?: string) => void | Promise<void>) => {
+          if (event === "line") lineHandler = handler as (line: string) => void | Promise<void>;
+          if (event === "close") closeHandler = handler as () => void;
+        },
+        prompt: () => {},
+        close: () => {
+          closeHandler?.();
+        },
+      }),
+    }));
+  });
+
+  afterEach(() => {
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+    process.exit = originalExit;
+    vi.doUnmock("node:readline");
+    vi.doUnmock("./runtime.js");
+    vi.resetModules();
+  });
+
+  it("executes every piped line in order and exits cleanly on EOF", async () => {
+    const executeCliOp = vi.fn(async () => ({
+      result: { content: [{ type: "text", text: "ok" }], structuredContent: {} },
+      isError: false,
+    }));
+    vi.doMock("./runtime.js", () => ({
+      bootstrapForCli: vi.fn(async () => {}),
+      executeCliOp,
+      callOp: vi.fn(async () => ({})),
+    }));
+
+    const { runConsole } = await import("./console.js");
+    await runConsole({ write: () => {} });
+
+    expect(lineHandler).toBeTypeOf("function");
+    await lineHandler?.("raw health_check {}");
+    await lineHandler?.("accounts");
+    await lineHandler?.("switch personal");
+
+    expect(() => closeHandler?.()).not.toThrow();
+    expect(executeCliOp).toHaveBeenNthCalledWith(1, "health_check", {}, { json: false });
+    expect(executeCliOp).toHaveBeenNthCalledWith(2, "list_accounts", {}, { json: false });
+    expect(executeCliOp).toHaveBeenNthCalledWith(
+      3,
       "switch_account",
       { accountId: "personal" },
       { json: false },

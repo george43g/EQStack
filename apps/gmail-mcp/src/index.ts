@@ -135,9 +135,20 @@ export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<Ses
   if (env.GMAIL_FIXTURE_MODE === "1") {
     const fixtureDir = env.GMAIL_FIXTURE_DIR ?? "./fixtures/gmail";
     const accountIdFromEnv = env.GMAIL_ACCOUNT?.trim() || null;
-    const { loadFixtureGmail } = await import("./fixtures/loader.js");
+    const { loadFixtureGmail, ensureFixtureConfigDir } = await import("./fixtures/loader.js");
+    // Isolate the config dir so list_accounts / account manifest reads never
+    // leak the real ~/.gmail-mcp/accounts.json into fixture-mode sessions.
+    // Honours an explicit GMAIL_CONFIG_DIR if the caller set one (e.g. the
+    // e2e suite uses .test-config); otherwise builds a per-process temp dir
+    // seeded with fixture-derived account metadata.
+    const configDir = ensureFixtureConfigDir(fixtureDir, env);
+    process.env.GMAIL_CONFIG_DIR = configDir;
     const bundle = loadFixtureGmail(fixtureDir, accountIdFromEnv);
-    logInfo("fixture mode", { accountDir: bundle.accountDir, scopes: bundle.scopes });
+    logInfo("fixture mode", {
+      accountDir: bundle.accountDir,
+      scopes: bundle.scopes,
+      configDir,
+    });
 
     const stubOAuth = new Proxy({} as OAuth2Client, {
       get: () => {

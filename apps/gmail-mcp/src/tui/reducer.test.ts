@@ -2,6 +2,7 @@
 // the TUI is built on without touching IO.
 
 import { describe, expect, it } from "vitest";
+import { accountScopedCacheKey } from "./hooks/useCache.js";
 import { resolveKey } from "./keymap.js";
 import {
   type AppState,
@@ -9,6 +10,7 @@ import {
   type LabelList,
   reducer,
   type ThreadList,
+  type ThreadView,
 } from "./reducer.js";
 
 const fakeLabels: LabelList = {
@@ -36,6 +38,26 @@ const fakeThreads: ThreadList = {
       historyId: "h2",
       messageCount: 1,
       latestMessage: { from: "b@x.test", subject: "world", date: "Mon, 1 Jan 2026 00:00:00 +0000" },
+    },
+  ],
+};
+
+const fakeThreadView: ThreadView = {
+  threadId: "t1",
+  messageCount: 1,
+  messages: [
+    {
+      messageId: "m1",
+      threadId: "t1",
+      from: "a@x.test",
+      to: "b@x.test",
+      cc: "",
+      bcc: "",
+      subject: "hello",
+      date: "Mon, 1 Jan 2026 00:00:00 +0000",
+      body: "body",
+      labelIds: ["INBOX"],
+      attachments: [],
     },
   ],
 };
@@ -103,6 +125,48 @@ describe("reducer", () => {
     expect(s.showHelp).toBe(true);
     const s2 = reducer(s, { type: "TOGGLE_HELP" });
     expect(s2.showHelp).toBe(false);
+  });
+
+  it("SET_SCOPE clears stale account-specific browse state", () => {
+    const dirty: AppState = {
+      ...initialState,
+      labels: fakeLabels,
+      labelCursor: 2,
+      selectedLabelId: "Label_1",
+      threads: fakeThreads,
+      threadCursor: 1,
+      thread: fakeThreadView,
+      messageCursor: 1,
+      focus: "message",
+      status: "Thread: 1 message",
+      loading: false,
+      error: "old error",
+    };
+
+    const next = reducer(dirty, {
+      type: "SET_SCOPE",
+      payload: { kind: "selected", accountIds: ["work", "personal"] },
+    });
+
+    expect(next.scope).toEqual({ kind: "selected", accountIds: ["work", "personal"] });
+    expect(next.labels).toBeNull();
+    expect(next.threads).toBeNull();
+    expect(next.thread).toBeNull();
+    expect(next.labelCursor).toBe(0);
+    expect(next.threadCursor).toBe(0);
+    expect(next.messageCursor).toBe(0);
+    expect(next.selectedLabelId).toBe("INBOX");
+    expect(next.focus).toBe("threads");
+    expect(next.loading).toBe(true);
+    expect(next.error).toBeNull();
+    expect(next.status).toBe("Loading inbox…");
+  });
+});
+
+describe("account-scoped cache keys", () => {
+  it("namespaces thread/message ids by account id", () => {
+    expect(accountScopedCacheKey("work", "thr_1")).toBe("work:thr_1");
+    expect(accountScopedCacheKey("personal", "thr_1")).toBe("personal:thr_1");
   });
 });
 

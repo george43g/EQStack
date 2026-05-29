@@ -20,6 +20,7 @@ import {
   extractEmailContent,
   extractHeaders,
   type GmailMessagePart,
+  readableEmailBody,
 } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
 
@@ -47,14 +48,11 @@ const readEmail: Operation<unknown, ReadEmailOutput> = {
 
     const { subject, from, to, date, rfcMessageId } = extractHeaders(response.data.payload);
     const threadId = response.data.threadId || "";
-    const { text, html } = extractEmailContent((response.data.payload as GmailMessagePart) || {});
+    const extracted = extractEmailContent((response.data.payload as GmailMessagePart) || {});
+    const { text, html } = extracted;
     const attachments = extractAttachments(response.data.payload as GmailMessagePart);
 
-    const body = text || html || "";
-    const contentTypeNote =
-      !text && html
-        ? "[Note: This email is HTML-formatted. Plain text version not available.]\n\n"
-        : "";
+    const body = readableEmailBody(extracted);
     const attachmentInfo =
       attachments.length > 0
         ? `\n\nAttachments (${attachments.length}):\n` +
@@ -70,7 +68,7 @@ const readEmail: Operation<unknown, ReadEmailOutput> = {
       content: [
         {
           type: "text",
-          text: `Thread ID: ${threadId}\nMessage-ID: ${rfcMessageId}\nSubject: ${subject}\nFrom: ${from}\nTo: ${to}\nDate: ${date}\n\n${contentTypeNote}${body}${attachmentInfo}`,
+          text: `Thread ID: ${threadId}\nMessage-ID: ${rfcMessageId}\nSubject: ${subject}\nFrom: ${from}\nTo: ${to}\nDate: ${date}\n\n${body}${attachmentInfo}`,
         },
       ],
       structuredContent: {

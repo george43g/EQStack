@@ -29,7 +29,11 @@ function MessagePaneImpl({ thread, cursor, focused, theme }: Props) {
       ) : (
         thread.messages.map((msg, i) => {
           const isCursor = focused && i === cursor;
-          const header = `${msg.from}   ${msg.date}`;
+          const account =
+            "accountId" in msg && msg.accountId
+              ? ` [${msg.accountId}${msg.emailAddress ? ` <${msg.emailAddress}>` : ""}]`
+              : "";
+          const header = `${msg.from}${account}   ${msg.date}`;
           const subject = msg.subject || "(no subject)";
           return (
             <Box key={msg.messageId} flexDirection="column" marginBottom={1}>

@@ -114,4 +114,54 @@ describe("fixture-mode bootstrap end-to-end", () => {
     process.env.GMAIL_ACCOUNT = "ghost";
     await expect(bootstrapSession()).rejects.toThrow(/Available: .*work/);
   });
+
+  // Regression: prior to ensureFixtureConfigDir, GMAIL_FIXTURE_MODE=1 with no
+  // GMAIL_CONFIG_DIR set would fall through to ~/.gmail-mcp/accounts.json, so
+  // list_accounts surfaced the user's REAL accounts (and their real email
+  // addresses) inside a fixture session. The TUI's "[work <user@…>]" chip
+  // then leaked private data on screen.
+  it("does NOT leak the real ~/.gmail-mcp/accounts.json when GMAIL_CONFIG_DIR is unset", async () => {
+    process.env.GMAIL_FIXTURE_MODE = "1";
+    process.env.GMAIL_FIXTURE_DIR = FIXTURE_ROOT;
+    process.env.GMAIL_ACCOUNT = "work";
+    delete process.env.GMAIL_CONFIG_DIR;
+
+    await bootstrapSession();
+
+    // bootstrap should have stamped a fixture-mode config dir into the env.
+    expect(process.env.GMAIL_CONFIG_DIR).toBeTruthy();
+    expect(process.env.GMAIL_CONFIG_DIR).not.toBe(path.join(process.env.HOME ?? "", ".gmail-mcp"));
+    expect(process.env.GMAIL_CONFIG_DIR).not.toMatch(/^~\/\.gmail-mcp$/);
+
+    const result = await callMcpTool("list_accounts", {});
+    expect(result.isError).not.toBe(true);
+    const structured = result.structuredContent as {
+      accounts: Array<{ id: string; emailAddress: string | null }>;
+    };
+    // Every email surfaced must be a synthetic @fixture.test address.
+    for (const a of structured.accounts) {
+      if (a.emailAddress) {
+        expect(a.emailAddress).toMatch(/@fixture\.test$/);
+      }
+    }
+    // And the manifest must contain both fixture accounts.
+    const ids = structured.accounts.map((a) => a.id).sort();
+    expect(ids).toEqual(["personal", "work"]);
+  });
+
+  it("ensureFixtureConfigDir preserves an explicit GMAIL_CONFIG_DIR (e2e suite uses .test-config)", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "fixture-cfg-preserve-"));
+    try {
+      process.env.GMAIL_FIXTURE_MODE = "1";
+      process.env.GMAIL_FIXTURE_DIR = FIXTURE_ROOT;
+      process.env.GMAIL_CONFIG_DIR = tmpDir;
+      process.env.GMAIL_ACCOUNT = "work";
+
+      await bootstrapSession();
+      expect(process.env.GMAIL_CONFIG_DIR).toBe(tmpDir);
+      expect(fs.existsSync(path.join(tmpDir, "accounts.json"))).toBe(true);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

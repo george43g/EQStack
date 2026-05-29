@@ -13,7 +13,7 @@ import {
   ModifyThreadOutputSchema,
   ModifyThreadSchema,
 } from "../../tools.js";
-import { extractEmailContent, type GmailMessagePart } from "../email-helpers.js";
+import { extractEmailContent, type GmailMessagePart, readableEmailBody } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
 
 type GetThreadOutput = z.infer<typeof GetThreadOutputSchema>;
@@ -73,8 +73,7 @@ const getThread: Operation<unknown, GetThreadOutput> = {
 
       let body = "";
       if (args.format !== "minimal") {
-        const { text, html } = extractEmailContent((msg.payload as GmailMessagePart) || {});
-        body = text || html || "";
+        body = readableEmailBody(extractEmailContent((msg.payload as GmailMessagePart) || {}));
       }
 
       const attachments = collectAttachmentMeta(msg.payload as GmailMessagePart | undefined);
@@ -104,7 +103,7 @@ const getThread: Operation<unknown, GetThreadOutput> = {
       messages: messagesOutput,
     };
     return {
-      content: [{ type: "text", text: JSON.stringify(structured, null, 2) }],
+      content: [{ type: "text", text: renderThreadTranscript(structured) }],
       structuredContent: structured,
     };
   },
@@ -234,8 +233,9 @@ const getInboxWithThreads: Operation<unknown, GetInboxWithThreadsOutput> = {
           const bcc = headers.find((h) => h.name?.toLowerCase() === "bcc")?.value || "";
           const date = headers.find((h) => h.name?.toLowerCase() === "date")?.value || "";
 
-          const { text, html } = extractEmailContent((msg.payload as GmailMessagePart) || {});
-          const body = text || html || "";
+          const body = readableEmailBody(
+            extractEmailContent((msg.payload as GmailMessagePart) || {}),
+          );
 
           const attachments = collectAttachmentMeta(msg.payload as GmailMessagePart | undefined);
 
@@ -311,3 +311,36 @@ registry.register(getThread);
 registry.register(listInboxThreads);
 registry.register(getInboxWithThreads);
 registry.register(modifyThread);
+
+function renderThreadTranscript(thread: GetThreadOutput): string {
+  const messageNoun = thread.messageCount === 1 ? "message" : "messages";
+  const lines = [`Thread ${thread.threadId} (${thread.messageCount} ${messageNoun})`];
+
+  thread.messages.forEach((msg, index) => {
+    if (index > 0) lines.push("");
+    const subject = msg.subject || "(no subject)";
+    lines.push(`--- Message ${index + 1}/${thread.messageCount}: ${subject}`);
+    const accountId = (msg as { accountId?: string }).accountId;
+    const emailAddress = (msg as { emailAddress?: string | null }).emailAddress;
+    if (accountId) {
+      lines.push(`Account: ${accountId}${emailAddress ? ` <${emailAddress}>` : ""}`);
+    }
+    lines.push(`From: ${msg.from}`);
+    if (msg.to) lines.push(`To: ${msg.to}`);
+    if (msg.cc) lines.push(`Cc: ${msg.cc}`);
+    if (msg.bcc) lines.push(`Bcc: ${msg.bcc}`);
+    if (msg.date) lines.push(`Date: ${msg.date}`);
+    if (msg.labelIds.length > 0) lines.push(`Labels: ${msg.labelIds.join(", ")}`);
+    if (msg.attachments.length > 0) {
+      lines.push(
+        `Attachments: ${msg.attachments
+          .map((a) => `${a.filename} (${a.mimeType}, ${Math.round(a.size / 1024)} KB)`)
+          .join(", ")}`,
+      );
+    }
+    lines.push("");
+    lines.push(msg.body || "(no body)");
+  });
+
+  return lines.join("\n");
+}

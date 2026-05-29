@@ -12,9 +12,13 @@
         "mimeType": "text/plain",
         "headers": [
           { "name": "From", "value": "newsletter@fixture.test" },
-          { "name": "Subject", "value": "Fixture newsletter: this week's roundup" }
+          { "name": "Subject", "value": "Fixture newsletter: this week's roundup" },
+          { "name": "Date", "value": "Sun, 26 Oct 2025 09:15:00 +0000" }
         ],
-        "body": { "size": 88 }
+        "body": {
+          "size": 88,
+          "data": "VGhpcyB3ZWVrJ3MgZml4dHVyZSByb3VuZHVwOgotIEZpeHR1cmUgY29ycHVzIGRvY3VtZW50ZWQuCg=="
+        }
       }
     }
   ]

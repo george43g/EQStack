@@ -17,7 +17,7 @@ import { ThemePicker } from "./components/ThemePicker.js";
 import { ThreadList } from "./components/ThreadList.js";
 import { buildComposeTemplate, parseCompose, quoteReplyBody } from "./compose-parser.js";
 import { type TuiConfig } from "./config.js";
-import { defaultCacheBytes, LruCache } from "./hooks/useCache.js";
+import { accountScopedCacheKey, defaultCacheBytes, LruCache } from "./hooks/useCache.js";
 import { useDevStats } from "./hooks/useDevStats.js";
 import { createEditorOpener, resolveEditor } from "./hooks/useEditor.js";
 import * as gmail from "./hooks/useGmail.js";
@@ -37,7 +37,7 @@ export function App({ initialTheme, config }: Props) {
   const fetchingThread = useRef<string | null>(null);
   const openEditorRef = useRef(createEditorOpener(setRawMode));
   const threadCacheRef = useRef(
-    new LruCache<gmail.ThreadView>(config.cacheMB * 1024 * 1024 || defaultCacheBytes()),
+    new LruCache<gmail.ScopedThreadView>(config.cacheMB * 1024 * 1024 || defaultCacheBytes()),
   );
   const theme = loadTheme(state.themeName);
 
@@ -53,21 +53,13 @@ export function App({ initialTheme, config }: Props) {
 
   // Subscribe to mid-session account swaps so the sidebar/inbox refresh.
   useEffect(() => {
-    const onChange = (_payload: AccountChangedPayload) => {
+    const onChange = (payload: AccountChangedPayload) => {
+      const nextScope = { kind: "single" as const, accountId: payload.current };
       threadCacheRef.current.clear();
-      dispatch({ type: "SET_STATUS", payload: "Account switched. Refreshing…" });
+      dispatch({ type: "SET_SCOPE", payload: nextScope });
       (async () => {
         try {
-          const [labels, threads, accounts] = await Promise.all([
-            gmail.listLabels(),
-            gmail.listInboxThreads({ query: "in:inbox", maxResults: 50 }),
-            gmail.listAccounts(),
-          ]);
-          dispatch({ type: "SET_LABELS", payload: labels });
-          dispatch({ type: "SET_THREADS", payload: threads });
-          dispatch({ type: "SET_ACCOUNT", payload: accounts.active });
-          dispatch({ type: "SET_ACCOUNT_LIST", payload: accounts });
-          dispatch({ type: "SET_STATUS", payload: `${threads.resultCount} threads` });
+          await reloadScope(nextScope, dispatch);
         } catch (err) {
           dispatch({
             type: "SET_ERROR",
@@ -87,19 +79,15 @@ export function App({ initialTheme, config }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const [labels, threads, accounts] = await Promise.all([
-          gmail.listLabels(),
-          gmail.listInboxThreads({ query: "in:inbox", maxResults: 50 }),
-          gmail.listAccounts().catch(() => null),
-        ]);
+        const accounts = await gmail.listAccounts().catch(() => null);
         if (cancelled) return;
-        dispatch({ type: "SET_LABELS", payload: labels });
-        dispatch({ type: "SET_THREADS", payload: threads });
+        const bootScope = { kind: "single" as const, accountId: accounts?.active.id ?? null };
         if (accounts) {
           dispatch({ type: "SET_ACCOUNT", payload: accounts.active });
           dispatch({ type: "SET_ACCOUNT_LIST", payload: accounts });
         }
-        dispatch({ type: "SET_STATUS", payload: `${threads.resultCount} threads` });
+        dispatch({ type: "SET_SCOPE", payload: bootScope });
+        await reloadScope(bootScope, dispatch);
       } catch (err) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
@@ -117,19 +105,22 @@ export function App({ initialTheme, config }: Props) {
     if (!state.loading || state.focus !== "threads") return;
     const t = state.threads?.threads[state.threadCursor];
     if (!t) return;
-    if (fetchingThread.current === t.threadId) return;
-    const cached = threadCacheRef.current.get(t.threadId);
+    const accountId =
+      t.accountId ?? (state.scope.kind === "single" ? state.scope.accountId : state.account?.id);
+    const cacheKey = accountScopedCacheKey(accountId, t.threadId);
+    if (fetchingThread.current === cacheKey) return;
+    const cached = threadCacheRef.current.get(cacheKey);
     if (cached) {
       dispatch({ type: "SET_THREAD", payload: cached });
       dispatch({ type: "SET_LOADING", payload: false });
       dispatch({ type: "SET_STATUS", payload: `Thread (cached): ${cached.messageCount} messages` });
       return;
     }
-    fetchingThread.current = t.threadId;
+    fetchingThread.current = cacheKey;
     (async () => {
       try {
-        const thread = await gmail.getThread(t.threadId);
-        threadCacheRef.current.put(t.threadId, thread);
+        const thread = await gmail.getThreadForScope(t.threadId, accountId);
+        threadCacheRef.current.put(cacheKey, thread);
         dispatch({ type: "SET_THREAD", payload: thread });
         dispatch({ type: "SET_LOADING", payload: false });
         dispatch({ type: "SET_STATUS", payload: `Thread: ${thread.messageCount} messages` });
@@ -141,7 +132,7 @@ export function App({ initialTheme, config }: Props) {
         fetchingThread.current = null;
       }
     })();
-  }, [state.loading, state.focus, state.threadCursor, state.threads]);
+  }, [state.loading, state.focus, state.threadCursor, state.threads, state.scope, state.account]);
 
   // Editor suspension — runs whenever pendingEditor flips on.
   useEffect(() => {
@@ -251,10 +242,43 @@ export function App({ initialTheme, config }: Props) {
         dispatch({ type: "CURSOR_UP" });
         return;
       }
+      if (input === " ") {
+        const items = state.accountList?.accounts ?? [];
+        const target = items[state.overlay.cursor - 1];
+        if (!target) return;
+        const selectedIds = new Set(state.overlay.selectedIds ?? []);
+        if (selectedIds.has(target.id)) selectedIds.delete(target.id);
+        else selectedIds.add(target.id);
+        dispatch({
+          type: "OPEN_OVERLAY",
+          payload: {
+            kind: "account",
+            cursor: state.overlay.cursor,
+            selectedIds: [...selectedIds],
+          },
+        });
+        return;
+      }
       if (key.return) {
         const items = state.accountList?.accounts ?? [];
-        const target = items[state.overlay.cursor];
-        if (target) requestSwitchAccount(target.id, target.isActive, dispatch);
+        if (state.overlay.cursor === 0) {
+          applyBrowseScope({ kind: "all" }, dispatch, threadCacheRef.current);
+          dispatch({ type: "CLOSE_OVERLAY" });
+          return;
+        }
+        const selectedIds = state.overlay.selectedIds ?? [];
+        if (selectedIds.length > 1) {
+          applyBrowseScope(
+            { kind: "selected", accountIds: selectedIds },
+            dispatch,
+            threadCacheRef.current,
+          );
+          dispatch({ type: "CLOSE_OVERLAY" });
+          return;
+        }
+        const target = items[state.overlay.cursor - 1];
+        if (target)
+          requestSwitchAccount(target.id, target.isActive, dispatch, threadCacheRef.current);
         dispatch({ type: "CLOSE_OVERLAY" });
         return;
       }
@@ -325,7 +349,7 @@ export function App({ initialTheme, config }: Props) {
     runNormalCmd(cmd, state, dispatch);
   });
 
-  const accountChip = state.account?.id ?? null;
+  const accountChip = tuiScopeLabel(state.scope, state.account?.id ?? null);
 
   return (
     <Box flexDirection="column" width="100%" height="100%">
@@ -369,7 +393,12 @@ export function App({ initialTheme, config }: Props) {
         <SearchBar text={state.overlay.text} theme={theme} />
       ) : null}
       {state.overlay.kind === "account" ? (
-        <AccountSwitcher list={state.accountList} cursor={state.overlay.cursor} theme={theme} />
+        <AccountSwitcher
+          list={state.accountList}
+          cursor={state.overlay.cursor}
+          selectedIds={state.overlay.selectedIds}
+          theme={theme}
+        />
       ) : null}
       {state.showStats ? <DevStatsModal stats={stats} theme={theme} /> : null}
       <StatusBar
@@ -423,11 +452,43 @@ function labelTitle(state: {
   return `${niceName}  (${count})`;
 }
 
-function triggerLabelLoad(labelId: string, dispatch: (a: Action) => void) {
+function tuiScopeLabel(
+  scope: import("./reducer.js").BrowseScope,
+  activeAccountId: string | null,
+): string | null {
+  if (scope.kind === "all") return "all";
+  if (scope.kind === "selected") return `selected:${scope.accountIds.join(",")}`;
+  return scope.accountId ?? activeAccountId;
+}
+
+async function reloadScope(
+  scope: import("./reducer.js").BrowseScope,
+  dispatch: (a: Action) => void,
+  query = "in:inbox",
+) {
+  const [labels, threads, accounts] = await Promise.all([
+    gmail.listLabelsForScope(scope),
+    gmail.listInboxThreadsForScope(scope, { query, maxResults: 50 }),
+    gmail.listAccounts().catch(() => null),
+  ]);
+  dispatch({ type: "SET_LABELS", payload: labels });
+  dispatch({ type: "SET_THREADS", payload: threads });
+  if (accounts) {
+    dispatch({ type: "SET_ACCOUNT", payload: accounts.active });
+    dispatch({ type: "SET_ACCOUNT_LIST", payload: accounts });
+  }
+  dispatch({ type: "SET_STATUS", payload: `${threads.resultCount} threads` });
+}
+
+function triggerLabelLoad(
+  labelId: string,
+  scope: import("./reducer.js").BrowseScope,
+  dispatch: (a: Action) => void,
+) {
   const query = labelId === "INBOX" ? "in:inbox" : `label:${labelId}`;
   (async () => {
     try {
-      const threads = await gmail.listInboxThreads({ query, maxResults: 50 });
+      const threads = await gmail.listInboxThreadsForScope(scope, { query, maxResults: 50 });
       dispatch({ type: "SET_THREADS", payload: threads });
       dispatch({ type: "SET_STATUS", payload: `${threads.resultCount} threads` });
     } catch (err) {
@@ -437,12 +498,16 @@ function triggerLabelLoad(labelId: string, dispatch: (a: Action) => void) {
   })();
 }
 
-function runSearch(query: string, dispatch: (a: Action) => void) {
+function runSearch(
+  query: string,
+  scope: import("./reducer.js").BrowseScope,
+  dispatch: (a: Action) => void,
+) {
   if (!query) return;
   (async () => {
     dispatch({ type: "SET_STATUS", payload: `Searching: ${query}` });
     try {
-      const threads = await gmail.listInboxThreads({ query, maxResults: 50 });
+      const threads = await gmail.listInboxThreadsForScope(scope, { query, maxResults: 50 });
       dispatch({ type: "SET_THREADS", payload: threads });
       dispatch({ type: "SET_STATUS", payload: `${threads.resultCount} matches` });
     } catch (err) {
@@ -456,7 +521,7 @@ function runOverlay(state: import("./reducer.js").AppState, dispatch: (a: Action
   if (state.overlay.kind === "search") {
     const q = state.overlay.text.trim();
     dispatch({ type: "CLOSE_OVERLAY" });
-    if (q) runSearch(q, dispatch);
+    if (q) runSearch(q, state.scope, dispatch);
     return;
   }
   if (state.overlay.kind === "command") {
@@ -497,12 +562,12 @@ function runExCommand(
       }
       return;
     case "search":
-      if (arg) runSearch(arg, dispatch);
+      if (arg) runSearch(arg, state.scope, dispatch);
       return;
     case "label":
       if (arg) {
         dispatch({ type: "SELECT_LABEL", payload: arg });
-        triggerLabelLoad(arg, dispatch);
+        triggerLabelLoad(arg, state.scope, dispatch);
       }
       return;
     case "health":
@@ -549,7 +614,7 @@ function runNormalCmd(
         if (label) {
           dispatch({ type: "SELECT_LABEL", payload: label.id });
           dispatch({ type: "SET_FOCUS", payload: "threads" });
-          triggerLabelLoad(label.id, dispatch);
+          triggerLabelLoad(label.id, state.scope, dispatch);
         }
       }
       return;
@@ -576,18 +641,22 @@ function runNormalCmd(
       dispatch({ type: "TOGGLE_STATS" });
       return;
     case "msg.compose":
+      if (!ensureSingleScope(state, dispatch)) return;
       dispatch({
         type: "REQUEST_EDITOR",
         payload: { kind: "compose", initialContent: buildComposeTemplate({}) },
       });
       return;
     case "msg.reply":
+      if (!ensureSingleScope(state, dispatch)) return;
       requestReply(state, "reply", dispatch);
       return;
     case "msg.reply-all":
+      if (!ensureSingleScope(state, dispatch)) return;
       requestReply(state, "reply-all", dispatch);
       return;
     case "msg.draft.edit":
+      if (!ensureSingleScope(state, dispatch)) return;
       // For MVP, treat as "open compose form for a new draft" — selecting an
       // existing draft for in-place editing comes in Session 3 when the
       // drafts label is first-class.
@@ -597,6 +666,7 @@ function runNormalCmd(
       });
       return;
     case "msg.delete": {
+      if (!ensureSingleScope(state, dispatch)) return;
       const msg = currentMessage(state);
       if (!msg) {
         dispatch({ type: "SET_STATUS", payload: "No message selected." });
@@ -613,9 +683,11 @@ function runNormalCmd(
       return;
     }
     case "msg.star":
+      if (!ensureSingleScope(state, dispatch)) return;
       toggleStar(state, dispatch);
       return;
     case "msg.read":
+      if (!ensureSingleScope(state, dispatch)) return;
       toggleRead(state, dispatch);
       return;
     default:
@@ -625,6 +697,15 @@ function runNormalCmd(
 
 function currentMessage(state: import("./reducer.js").AppState) {
   return state.thread?.messages[state.messageCursor] ?? null;
+}
+
+function ensureSingleScope(
+  state: import("./reducer.js").AppState,
+  dispatch: (a: Action) => void,
+): boolean {
+  if (state.scope.kind === "single") return true;
+  dispatch({ type: "SET_STATUS", payload: "Switch to one account before modifying messages." });
+  return false;
 }
 
 function requestReply(
@@ -707,7 +788,16 @@ function openAccountSwitcher(
   dispatch: (a: Action) => void,
 ) {
   const activeIdx = Math.max(0, state.accountList?.accounts.findIndex((a) => a.isActive) ?? 0);
-  dispatch({ type: "OPEN_OVERLAY", payload: { kind: "account", cursor: activeIdx } });
+  const selectedIds =
+    state.scope.kind === "selected"
+      ? state.scope.accountIds
+      : state.scope.kind === "single" && state.scope.accountId
+        ? [state.scope.accountId]
+        : [];
+  dispatch({
+    type: "OPEN_OVERLAY",
+    payload: { kind: "account", cursor: activeIdx + 1, selectedIds },
+  });
   // Refresh asynchronously so the list reflects the latest state.
   (async () => {
     try {
@@ -722,13 +812,37 @@ function openAccountSwitcher(
   })();
 }
 
+function applyBrowseScope(
+  scope: import("./reducer.js").BrowseScope,
+  dispatch: (a: Action) => void,
+  threadCache: LruCache<gmail.ScopedThreadView>,
+) {
+  threadCache.clear();
+  dispatch({ type: "SET_SCOPE", payload: scope });
+  (async () => {
+    try {
+      await reloadScope(scope, dispatch);
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
 function requestSwitchAccount(
   accountId: string,
   alreadyActive: boolean,
   dispatch: (a: Action) => void,
+  threadCache?: LruCache<gmail.ScopedThreadView>,
 ) {
   if (alreadyActive) {
-    dispatch({ type: "SET_STATUS", payload: `Already on ${accountId}` });
+    if (threadCache) {
+      applyBrowseScope({ kind: "single", accountId }, dispatch, threadCache);
+    } else {
+      dispatch({ type: "SET_SCOPE", payload: { kind: "single", accountId } });
+    }
     return;
   }
   (async () => {

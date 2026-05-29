@@ -12,9 +12,13 @@
         "mimeType": "text/plain",
         "headers": [
           { "name": "From", "value": "releases@fixture.test" },
-          { "name": "Subject", "value": "[fixture] Release 1.2.3 deployed" }
+          { "name": "Subject", "value": "[fixture] Release 1.2.3 deployed" },
+          { "name": "Date", "value": "Mon, 27 Oct 2025 14:00:00 +0000" }
         ],
-        "body": { "size": 142 }
+        "body": {
+          "size": 142,
+          "data": "UmVsZWFzZSAxLjIuMyB3YXMgZGVwbG95ZWQgdG8gcHJvZHVjdGlvbi4KQWxsIGNhbmFyaWVzIGFyZSBncmVlbiwgcm9sbGJhY2sgcGxhbiB1bnVzZWQuCg=="
+        }
       }
     },
     {
@@ -26,9 +30,13 @@
         "mimeType": "text/plain",
         "headers": [
           { "name": "From", "value": "reviewer@fixture.test" },
-          { "name": "Subject", "value": "Re: [fixture] Release 1.2.3 deployed" }
+          { "name": "Subject", "value": "Re: [fixture] Release 1.2.3 deployed" },
+          { "name": "Date", "value": "Mon, 27 Oct 2025 16:30:00 +0000" }
         ],
-        "body": { "size": 78 }
+        "body": {
+          "size": 78,
+          "data": "VGhhbmtzIGZvciB0aGUgaGVhZHMtdXAuIENhbiB3ZSBkb3VibGUtY2hlY2sgcm9sbGJhY2sgZHJpbGw_Cg=="
+        }
       }
     }
   ]

@@ -88,26 +88,27 @@ describe("read_email handler", () => {
     });
   });
 
-  it("emits the HTML-only contentTypeNote when no plain text is present (1.1)", async () => {
+  it("renders readable text for HTML-only messages while preserving raw HTML fields (1.1)", async () => {
     const getMock = vi.fn().mockResolvedValue({
       data: {
         threadId: "T2",
         payload: {
           mimeType: "text/html",
           headers: [{ name: "Subject", value: "html only" }],
-          body: { data: Buffer.from("<p>hi</p>", "utf8").toString("base64") },
+          body: {
+            data: Buffer.from("<p>hi <strong>there</strong></p>", "utf8").toString("base64"),
+          },
         },
       },
     });
     const ctx = makeCtx({ get: getMock });
 
     const result = await registry.dispatch("read_email", { messageId: "Mhtml" }, ctx);
-    expect(result.content[0].text).toContain(
-      "[Note: This email is HTML-formatted. Plain text version not available.]",
-    );
+    expect(result.content[0].text).toContain("hi there");
+    expect(result.content[0].text).not.toContain("<strong>");
     expect(result.structuredContent).toMatchObject({
-      body: "<p>hi</p>",
-      bodyHtml: "<p>hi</p>",
+      body: "hi there",
+      bodyHtml: "<p>hi <strong>there</strong></p>",
       bodyText: "",
     });
   });

@@ -4,6 +4,7 @@ import {
   extractEmailContent,
   extractHeaders,
   type GmailMessagePart,
+  htmlToText,
 } from "./email-helpers.js";
 
 describe("extractHeaders", () => {
@@ -88,6 +89,24 @@ describe("extractEmailContent", () => {
 
   it("handles missing body data", () => {
     expect(extractEmailContent({})).toEqual({ text: "", html: "" });
+  });
+});
+
+describe("htmlToText", () => {
+  it("converts HTML-only bodies into readable plain text", () => {
+    expect(
+      htmlToText(
+        '<html><body><h1>Release shipped</h1><p>All checks <strong>passed</strong>.</p><br><a href="https://example.test">Details</a></body></html>',
+      ),
+    ).toBe("Release shipped\n\nAll checks passed.\nDetails");
+  });
+
+  it("strips scripts/styles and decodes common entities", () => {
+    expect(
+      htmlToText(
+        "<style>.x{}</style><script>alert(1)</script><p>Tom &amp; Jerry&nbsp;&lt;team&gt;</p>",
+      ),
+    ).toBe("Tom & Jerry <team>");
   });
 });
 

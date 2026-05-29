@@ -13,7 +13,19 @@ import { createInterface } from "node:readline";
 import pc from "picocolors";
 import { getCurrentAccountId } from "../core/session.js";
 import { buildProgram } from "./index.js";
-import { bootstrapForCli, executeCliOp } from "./runtime.js";
+import {
+  bootstrapForCli,
+  callMcpTool,
+  callOp,
+  executeCliOp,
+  formatToolResultText,
+  type ToolResult,
+} from "./runtime.js";
+
+type BrowseScope =
+  | { kind: "single"; accountId: string | null }
+  | { kind: "all" }
+  | { kind: "selected"; accountIds: string[] };
 
 // ── Alias table ──────────────────────────────────────────────────────
 // Console-only shortcuts. The CLI surface keeps the canonical long names.
@@ -106,6 +118,7 @@ const LEGEND_LINES: Array<{ kind: "header" | "cmd" | "blank"; left?: string; rig
   { kind: "header", left: "Session" },
   { kind: "cmd", left: "accounts", right: "list configured Gmail accounts" },
   { kind: "cmd", left: "switch <id> / sw <id>", right: "switch this console session account" },
+  { kind: "cmd", left: "scope all | scope <ids>", right: "browse all or selected accounts" },
   { kind: "cmd", left: "help / ?", right: "show this legend" },
   { kind: "cmd", left: "clear / cls", right: "clear the screen" },
   { kind: "cmd", left: "quit / q / exit", right: "exit the console" },
@@ -148,6 +161,7 @@ export function isBuiltinCommand(cmd: string): boolean {
     cmd === "tools" ||
     cmd === "raw" ||
     cmd === "accounts" ||
+    cmd === "scope" ||
     cmd === "switch" ||
     cmd === "sw"
   );
@@ -184,13 +198,271 @@ async function listAccountsInSession(): Promise<void> {
   await executeCliOp("list_accounts", {}, { json: false });
 }
 
-async function switchAccountInSession(args: string[]): Promise<void> {
+async function switchAccountInSession(
+  args: string[],
+  setScope?: (scope: BrowseScope) => void,
+): Promise<void> {
   const [accountId] = args;
   if (!accountId) {
     process.stderr.write("Usage: switch <accountId>   e.g. switch work\n");
     return;
   }
-  await executeCliOp("switch_account", { accountId }, { json: false });
+  const outcome = await executeCliOp("switch_account", { accountId }, { json: false });
+  if (!outcome.isError) setScope?.({ kind: "single", accountId });
+}
+
+function scopeLabel(scope: BrowseScope): string {
+  if (scope.kind === "all") return "all";
+  if (scope.kind === "selected") return `selected:${scope.accountIds.join(",")}`;
+  return scope.accountId ?? getCurrentAccountId() ?? "(none)";
+}
+
+function isCombinedScope(scope: BrowseScope): boolean {
+  return scope.kind === "all" || scope.kind === "selected";
+}
+
+async function resolveScopeAccountIds(scope: BrowseScope): Promise<string[]> {
+  if (scope.kind === "single") return scope.accountId ? [scope.accountId] : [];
+  const accounts = await callOp<{ accounts: Array<{ id: string }> }>("list_accounts", {});
+  if (scope.kind === "all") return accounts.accounts.map((a) => a.id);
+  const valid = new Set(accounts.accounts.map((a) => a.id));
+  return scope.accountIds.filter((id) => valid.has(id));
+}
+
+async function handleScopeCommand(
+  args: string[],
+  isTty: boolean,
+  getScope: () => BrowseScope,
+  setScope: (scope: BrowseScope) => void,
+): Promise<void> {
+  if (args.length === 0) {
+    process.stdout.write(`Browse scope: ${scopeLabel(getScope())}\n`);
+    return;
+  }
+
+  const [head, ...rest] = args;
+  if (head === "all") {
+    setScope({ kind: "all" });
+    process.stdout.write("Browse scope: all accounts\n");
+    return;
+  }
+
+  if (head === "select") {
+    if (rest.length > 0) {
+      setScope({ kind: "selected", accountIds: rest });
+      process.stdout.write(`Browse scope: selected ${rest.join(", ")}\n`);
+      return;
+    }
+    if (!isTty) {
+      process.stderr.write("Usage: scope select <accountId...> in non-TTY mode\n");
+      return;
+    }
+    const accounts = await callOp<{
+      accounts: Array<{ id: string; emailAddress: string | null; isActive: boolean }>;
+    }>("list_accounts", {});
+    const { checkbox } = await import("@inquirer/prompts");
+    const selected = (await checkbox({
+      message: "Select accounts to browse",
+      choices: accounts.accounts.map((a) => ({
+        name: `${a.id}${a.emailAddress ? ` <${a.emailAddress}>` : ""}`,
+        value: a.id,
+        checked: a.isActive,
+      })),
+    })) as string[];
+    setScope({ kind: "selected", accountIds: selected });
+    process.stdout.write(`Browse scope: selected ${selected.join(", ")}\n`);
+    return;
+  }
+
+  const singleMatch = /^single:(.+)$/.exec(head);
+  if (singleMatch) {
+    const accountId = singleMatch[1]!;
+    const outcome = await executeCliOp("switch_account", { accountId }, { json: false });
+    if (!outcome.isError) setScope({ kind: "single", accountId });
+    return;
+  }
+
+  if (args.length === 1) {
+    const outcome = await executeCliOp("switch_account", { accountId: head }, { json: false });
+    if (!outcome.isError) setScope({ kind: "single", accountId: head });
+    return;
+  }
+
+  setScope({ kind: "selected", accountIds: args });
+  process.stdout.write(`Browse scope: selected ${args.join(", ")}\n`);
+}
+
+async function runCombinedReadCommand(
+  scope: BrowseScope,
+  resolvedCmd: string,
+  args: string[],
+): Promise<boolean> {
+  if (!isCombinedScope(scope)) return false;
+  if (resolvedCmd === "inbox") {
+    const maxResults = parsePositiveIntArg(args) ?? 10;
+    await printCombinedInbox(scope, { query: "in:inbox", maxResults });
+    return true;
+  }
+  if (resolvedCmd === "search") {
+    const query = args.filter((a) => !a.startsWith("-")).join(" ");
+    if (!query) {
+      process.stderr.write("Usage: search <query>\n");
+      return true;
+    }
+    await printCombinedSearch(scope, { query, maxResults: 25 });
+    return true;
+  }
+  if (resolvedCmd === "threads" && (args[0] === "list" || args[0] === "inbox")) {
+    await printCombinedInbox(scope, { query: "in:inbox", maxResults: 25 });
+    return true;
+  }
+  if (resolvedCmd === "threads" && args[0] === "get") {
+    const threadId = args[1];
+    if (!threadId) {
+      process.stderr.write("Usage: threads get <threadId>\n");
+      return true;
+    }
+    await printCombinedThread(scope, threadId);
+    return true;
+  }
+  return false;
+}
+
+function parsePositiveIntArg(args: string[]): number | null {
+  for (const arg of args) {
+    const n = Number.parseInt(arg, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
+async function printCombinedInbox(
+  scope: BrowseScope,
+  opts: { query: string; maxResults: number },
+): Promise<void> {
+  const rows: Array<{
+    accountId: string;
+    emailAddress: string | null;
+    threadId: string;
+    from: string;
+    subject: string;
+    date: string;
+    messageCount: number;
+  }> = [];
+  const previous = getCurrentAccountId();
+  const accounts = await callOp<{
+    accounts: Array<{ id: string; emailAddress: string | null }>;
+  }>("list_accounts", {});
+  const emailById = new Map(accounts.accounts.map((a) => [a.id, a.emailAddress]));
+  const ids = await resolveScopeAccountIds(scope);
+
+  try {
+    for (const accountId of ids) {
+      await callOp("switch_account", { accountId });
+      const inbox = await callOp<{
+        threads: Array<{
+          threadId: string;
+          messageCount: number;
+          latestMessage: { from: string; subject: string; date: string };
+        }>;
+      }>("list_inbox_threads", opts);
+      for (const t of inbox.threads) {
+        rows.push({
+          accountId,
+          emailAddress: emailById.get(accountId) ?? null,
+          threadId: t.threadId,
+          from: t.latestMessage.from,
+          subject: t.latestMessage.subject,
+          date: t.latestMessage.date,
+          messageCount: t.messageCount,
+        });
+      }
+    }
+  } finally {
+    if (previous && previous !== getCurrentAccountId()) {
+      await callOp("switch_account", { accountId: previous }).catch(() => undefined);
+    }
+  }
+
+  if (rows.length === 0) {
+    process.stdout.write("(no threads)\n");
+    return;
+  }
+  for (const row of rows) {
+    const account = row.emailAddress ? `${row.accountId}<${row.emailAddress}>` : row.accountId;
+    const count = row.messageCount > 1 ? ` (${row.messageCount})` : "";
+    process.stdout.write(
+      `[${account}] ${row.threadId}${count}\nSubject: ${row.subject}\nFrom: ${row.from}\nDate: ${row.date}\n\n`,
+    );
+  }
+}
+
+async function printCombinedSearch(
+  scope: BrowseScope,
+  opts: { query: string; maxResults: number },
+): Promise<void> {
+  const previous = getCurrentAccountId();
+  const accounts = await callOp<{
+    accounts: Array<{ id: string; emailAddress: string | null }>;
+  }>("list_accounts", {});
+  const emailById = new Map(accounts.accounts.map((a) => [a.id, a.emailAddress]));
+  const ids = await resolveScopeAccountIds(scope);
+  try {
+    for (const accountId of ids) {
+      await callOp("switch_account", { accountId });
+      const result = await callOp<{
+        results: Array<{ id: string | null; subject: string; from: string; date: string }>;
+      }>("search_emails", opts);
+      const email = emailById.get(accountId) ?? null;
+      for (const r of result.results) {
+        const account = email ? `${accountId}<${email}>` : accountId;
+        process.stdout.write(
+          `[${account}] ID: ${r.id}\nSubject: ${r.subject}\nFrom: ${r.from}\nDate: ${r.date}\n\n`,
+        );
+      }
+    }
+  } finally {
+    if (previous && previous !== getCurrentAccountId()) {
+      await callOp("switch_account", { accountId: previous }).catch(() => undefined);
+    }
+  }
+}
+
+async function printCombinedThread(scope: BrowseScope, rawThreadId: string): Promise<void> {
+  const previous = getCurrentAccountId();
+  const accounts = await callOp<{
+    accounts: Array<{ id: string; emailAddress: string | null }>;
+  }>("list_accounts", {});
+  const emailById = new Map(accounts.accounts.map((a) => [a.id, a.emailAddress]));
+  const prefixed = /^([^:]+):(.+)$/.exec(rawThreadId);
+  const ids = prefixed ? [prefixed[1]!] : await resolveScopeAccountIds(scope);
+  const threadId = prefixed ? prefixed[2]! : rawThreadId;
+  let found = false;
+
+  try {
+    for (const accountId of ids) {
+      try {
+        await callOp("switch_account", { accountId });
+        const result = (await callMcpTool("get_thread", {
+          threadId,
+          format: "full",
+        })) as ToolResult;
+        const email = emailById.get(accountId) ?? null;
+        const account = email ? `${accountId}<${email}>` : accountId;
+        process.stdout.write(`[${account}]\n${formatToolResultText(result)}\n\n`);
+        found = true;
+        if (prefixed) break;
+      } catch {
+        if (prefixed) throw new Error(`Thread ${threadId} not found in account ${accountId}`);
+      }
+    }
+  } finally {
+    if (previous && previous !== getCurrentAccountId()) {
+      await callOp("switch_account", { accountId: previous }).catch(() => undefined);
+    }
+  }
+
+  if (!found) process.stderr.write(`Thread ${threadId} not found in selected scope\n`);
 }
 
 // ── REPL entry ───────────────────────────────────────────────────────
@@ -218,115 +490,139 @@ export async function runConsole(options: ConsoleOptions = {}): Promise<void> {
     terminal: process.stdin.isTTY,
   });
 
-  rl.on("close", () => {
-    process.exit(0);
-  });
+  let scope: BrowseScope = { kind: "single", accountId: getCurrentAccountId() };
+  const setScope = (next: BrowseScope) => {
+    scope = next;
+  };
 
   const promptStr = (): string => {
-    const accountId = getCurrentAccountId();
-    return pc.cyan(accountId ? `gmail[${accountId}]> ` : "gmail> ");
+    return pc.cyan(`gmail[${scopeLabel(scope)}]> `);
   };
 
-  const loop = (): void => {
-    rl.question(promptStr(), async (line) => {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        loop();
-        return;
-      }
+  const maybePrompt = () => {
+    if (process.stdin.isTTY && typeof rl.prompt === "function") {
+      rl.setPrompt?.(promptStr());
+      rl.prompt();
+    }
+  };
 
-      const { cmd, args } = parseConsoleInput(trimmed);
-      const cmdLower = cmd.toLowerCase();
+  const processLine = async (line: string): Promise<void> => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
 
-      // Built-in intercepts first — these don't go through commander.
-      if (cmdLower === "help" || cmdLower === "?") {
-        printLegend(write);
-        loop();
-        return;
-      }
-      if (cmdLower === "clear" || cmdLower === "cls") {
-        process.stdout.write("\x1b[2J\x1b[H");
-        loop();
-        return;
-      }
-      if (cmdLower === "quit" || cmdLower === "q" || cmdLower === "exit") {
-        rl.close();
-        return;
-      }
-      if (cmdLower === "tools") {
-        try {
-          await listTools();
-        } catch (err) {
-          process.stderr.write(`Error: ${(err as Error).message}\n`);
-        }
-        process.stdout.write("\n");
-        loop();
-        return;
-      }
-      if (cmdLower === "raw") {
-        try {
-          await runRawCommand(args);
-        } catch (err) {
-          process.stderr.write(`Error: ${(err as Error).message}\n`);
-        }
-        process.stdout.write("\n");
-        loop();
-        return;
-      }
-      if (cmdLower === "accounts") {
-        try {
-          await listAccountsInSession();
-        } catch (err) {
-          process.stderr.write(`Error: ${(err as Error).message}\n`);
-        }
-        process.stdout.write("\n");
-        loop();
-        return;
-      }
-      if (cmdLower === "switch" || cmdLower === "sw") {
-        try {
-          await switchAccountInSession(args);
-        } catch (err) {
-          process.stderr.write(`Error: ${(err as Error).message}\n`);
-        }
-        process.stdout.write("\n");
-        loop();
-        return;
-      }
+    const { cmd, args } = parseConsoleInput(trimmed);
+    const cmdLower = cmd.toLowerCase();
 
-      // Route to commander. Rebuild the program per line so option defaults
-      // don't leak between calls (Commander v14 caveat).
-      const resolvedCmd = rewriteAlias(cmdLower);
-      const argv = ["node", "gmail", resolvedCmd, ...args];
-
-      process.env.GMAIL_CLI_REPL = "1";
+    // Built-in intercepts first — these don't go through commander.
+    if (cmdLower === "help" || cmdLower === "?") {
+      printLegend(write);
+      return;
+    }
+    if (cmdLower === "clear" || cmdLower === "cls") {
+      process.stdout.write("\x1b[2J\x1b[H");
+      return;
+    }
+    if (cmdLower === "quit" || cmdLower === "q" || cmdLower === "exit") {
+      rl.close();
+      return;
+    }
+    if (cmdLower === "tools") {
       try {
-        const program = buildProgram();
-        program.exitOverride(); // throw instead of process.exit on commander errors
-        await program.parseAsync(argv);
+        await listTools();
       } catch (err) {
-        const e = err as { code?: string; message?: string };
-        // CommanderError carries code/exitCode; surface the message but stay alive.
-        if (e.code?.startsWith("commander.")) {
-          // Help and version exits also come through here — those are not
-          // errors. Quiet them unless they actually carry a message.
-          if (
-            e.code !== "commander.help" &&
-            e.code !== "commander.helpDisplayed" &&
-            e.code !== "commander.version"
-          ) {
-            process.stderr.write(`Error: ${e.message ?? e.code}\n`);
-          }
-        } else {
-          process.stderr.write(`Error: ${e.message ?? String(err)}\n`);
-        }
-      } finally {
-        delete process.env.GMAIL_CLI_REPL;
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
       }
       process.stdout.write("\n");
-      loop();
-    });
+      return;
+    }
+    if (cmdLower === "raw") {
+      try {
+        await runRawCommand(args);
+      } catch (err) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+      }
+      process.stdout.write("\n");
+      return;
+    }
+    if (cmdLower === "accounts") {
+      process.stdout.write(`Browse scope: ${scopeLabel(scope)}\n`);
+      try {
+        await listAccountsInSession();
+      } catch (err) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+      }
+      process.stdout.write("\n");
+      return;
+    }
+    if (cmdLower === "scope") {
+      try {
+        await handleScopeCommand(args, process.stdin.isTTY === true, () => scope, setScope);
+      } catch (err) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+      }
+      process.stdout.write("\n");
+      return;
+    }
+    if (cmdLower === "switch" || cmdLower === "sw") {
+      try {
+        await switchAccountInSession(args, setScope);
+      } catch (err) {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+      }
+      process.stdout.write("\n");
+      return;
+    }
+
+    // Route to commander. Rebuild the program per line so option defaults
+    // don't leak between calls (Commander v14 caveat).
+    const resolvedCmd = rewriteAlias(cmdLower);
+    const handled = await runCombinedReadCommand(scope, resolvedCmd, args);
+    if (handled) {
+      process.stdout.write("\n");
+      return;
+    }
+    const argv = ["node", "gmail", resolvedCmd, ...args];
+
+    process.env.GMAIL_CLI_REPL = "1";
+    try {
+      const program = buildProgram();
+      program.exitOverride(); // throw instead of process.exit on commander errors
+      await program.parseAsync(argv);
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      // CommanderError carries code/exitCode; surface the message but stay alive.
+      if (e.code?.startsWith("commander.")) {
+        // Help and version exits also come through here — those are not
+        // errors. Quiet them unless they actually carry a message.
+        if (
+          e.code !== "commander.help" &&
+          e.code !== "commander.helpDisplayed" &&
+          e.code !== "commander.version"
+        ) {
+          process.stderr.write(`Error: ${e.message ?? e.code}\n`);
+        }
+      } else {
+        process.stderr.write(`Error: ${e.message ?? String(err)}\n`);
+      }
+    } finally {
+      delete process.env.GMAIL_CLI_REPL;
+    }
+    process.stdout.write("\n");
   };
 
-  loop();
+  let lineQueue = Promise.resolve();
+  rl.on("line", (line) => {
+    lineQueue = lineQueue
+      .then(() => processLine(line))
+      .catch((err) => {
+        process.stderr.write(`Error: ${(err as Error).message}\n`);
+      })
+      .finally(maybePrompt);
+    return lineQueue;
+  });
+  rl.on("close", () => {
+    // EOF/close is a normal console termination path. Do not process.exit()
+    // here; callers/tests can own lifecycle and outstanding queued work.
+  });
+  maybePrompt();
 }

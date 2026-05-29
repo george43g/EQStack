@@ -6,10 +6,11 @@ import type { Theme } from "../themes/index.js";
 interface Props {
   list: AccountList | null;
   cursor: number;
+  selectedIds?: string[];
   theme: Theme;
 }
 
-function AccountSwitcherImpl({ list, cursor, theme }: Props) {
+function AccountSwitcherImpl({ list, cursor, selectedIds = [], theme }: Props) {
   return (
     <Box
       flexDirection="column"
@@ -29,23 +30,35 @@ function AccountSwitcherImpl({ list, cursor, theme }: Props) {
           <Text color={theme.warning}>{`No accounts. Run \`gmail account auth <id>\`.`}</Text>
         </Box>
       ) : (
-        list.accounts.map((a, i) => {
-          const selected = i === cursor;
-          const marker = a.isActive ? "*" : a.isDefault ? "d" : " ";
-          const email = a.emailAddress ? `  ${a.emailAddress}` : "";
-          return (
-            <Text
-              key={a.id}
-              color={selected ? theme.selectedFg : theme.fg}
-              backgroundColor={selected ? theme.selectedBg : undefined}
-            >
-              {`${marker} ${a.id}${email}`}
-            </Text>
-          );
-        })
+        <>
+          <Text
+            color={cursor === 0 ? theme.selectedFg : theme.fg}
+            backgroundColor={cursor === 0 ? theme.selectedBg : undefined}
+          >
+            all All accounts
+          </Text>
+          {list.accounts.map((a, i) => {
+            const row = i + 1;
+            const selected = row === cursor;
+            const checked = selectedIds.includes(a.id);
+            const marker = checked ? "x" : a.isActive ? "*" : a.isDefault ? "d" : " ";
+            const email = a.emailAddress ? `  ${a.emailAddress}` : "";
+            return (
+              <Text
+                key={a.id}
+                color={selected ? theme.selectedFg : theme.fg}
+                backgroundColor={selected ? theme.selectedBg : undefined}
+              >
+                {`${marker} ${a.id}${email}`}
+              </Text>
+            );
+          })}
+        </>
       )}
       <Box marginTop={1}>
-        <Text color={theme.dim}>{`[j/k] navigate  [Enter] switch  [Esc] close`}</Text>
+        <Text
+          color={theme.dim}
+        >{`[j/k] navigate  [Space] select  [Enter] apply  [Esc] close`}</Text>
       </Box>
     </Box>
   );
