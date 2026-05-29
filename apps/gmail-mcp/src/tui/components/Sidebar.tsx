@@ -26,8 +26,12 @@ function SidebarImpl({ labels, cursor, focused, selectedLabelId, theme }: Props)
         Labels
       </Text>
       <Box height={1} />
-      {items.length === 0 ? (
+      {labels === null ? (
         <Text color={theme.dim}>(loading)</Text>
+      ) : items.length === 0 ? (
+        // Empty-but-defined labels means cross-account scope is active —
+        // labels are per-account, so there's no unified list to show.
+        <Text color={theme.dim}>(no labels — pick one account)</Text>
       ) : (
         items.map((label, i) => {
           const selected = focused && i === cursor;
