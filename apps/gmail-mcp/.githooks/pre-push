@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Pre-push drift guard for VHS-driven TUI screenshots.
+#
+# Contract:
+#  1. Look at the files included in the push range.
+#  2. If any `src/tui/**`, `fixtures/gmail/**`, or `scripts/screenshots/*.tape`
+#     is in the diff AND JetBrains Mono is installed AND we're on macOS,
+#     run `pnpm screenshots` to regenerate `docs/screenshots/`.
+#  3. If regeneration produces any working-tree diff under
+#     `docs/screenshots/`, abort the push and surface the stale files so
+#     the operator can commit them.
+#  4. Skip silently on non-macOS contributors (CI is the safety net for
+#     Linux/Windows pushes).
+#
+# Activated by `prepare`/manual install:
+#   git config core.hooksPath .githooks
+
+set -euo pipefail
+
+if [[ "$(uname)" != "Darwin" ]]; then
+  exit 0
+fi
+
+# `git diff @{push}..HEAD` is the canonical "what am I about to push"
+# range when the branch has an upstream. Fall back to the last 10 commits
+# for initial pushes / detached scenarios.
+CHANGED_FILES=$(git diff --name-only "@{push}..HEAD" 2>/dev/null \
+  || git diff --name-only "HEAD~10..HEAD" 2>/dev/null \
+  || echo "")
+
+# Which paths actually matter for the screenshots?
+RELEVANT=$(echo "$CHANGED_FILES" | grep -E '^(src/tui/|fixtures/gmail/|scripts/screenshots/.*\.tape$)' || true)
+
+if [[ -z "$RELEVANT" ]]; then
+  exit 0
+fi
+
+# JetBrains Mono is required for the renders to match the committed PNGs.
+if ! fc-list 2>/dev/null | grep -qi 'jetbrains mono'; then
+  echo "⚠ pre-push: TUI / fixture / tape changes detected, but JetBrains Mono is missing."
+  echo "  Install with: brew install --cask font-jetbrains-mono"
+  echo "  Push proceeding — CI will catch any drift."
+  exit 0
+fi
+
+# vhs needs to be on PATH too.
+if ! command -v vhs >/dev/null 2>&1; then
+  echo "⚠ pre-push: vhs not installed locally."
+  echo "  Install with: brew install vhs ttyd ffmpeg"
+  echo "  Push proceeding — CI will catch any drift."
+  exit 0
+fi
+
+echo "→ pre-push: regenerating docs/screenshots/ via pnpm screenshots…"
+if ! pnpm screenshots >/dev/null 2>&1; then
+  echo ""
+  echo "✗ pre-push: pnpm screenshots failed. Re-run interactively to debug:"
+  echo "    pnpm screenshots"
+  exit 1
+fi
+
+DIRTY=$(git status --porcelain -- docs/screenshots/ | head -1)
+if [[ -n "$DIRTY" ]]; then
+  echo ""
+  echo "✗ pre-push: screenshots are stale. Regeneration produced new content:"
+  echo ""
+  git status --short -- docs/screenshots/
+  echo ""
+  echo "  Commit the regenerated outputs and re-push:"
+  echo "    git add docs/screenshots/"
+  echo "    git commit -m 'docs: regenerate screenshots'"
+  echo "    git push"
+  exit 1
+fi
+
+echo "✓ screenshots in sync."
