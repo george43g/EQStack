@@ -1,0 +1,124 @@
+name: Screenshots
+
+# Regenerates the VHS-driven TUI screenshots whenever a relevant input
+# changes. Two modes:
+#
+#   • push (or workflow_dispatch): regenerate, auto-commit any drift to
+#     docs/screenshots/ with [skip ci]. Owner of the truth.
+#   • pull_request: regenerate + `git diff --exit-code` against
+#     docs/screenshots/ — fail the check on drift so reviewers see when a
+#     TUI / fixture change needs a corresponding screenshot bump.
+#
+# Adapted from mcp-cli-starter-template/apps/scaffolder/src/phases/
+# 12-ci-release/lib/.github/workflows/screenshots.yml — base layout +
+# auto-commit dance is theirs; the drift-check on PRs + JetBrains Mono
+# install + fixture-mode env wiring is local.
+
+on:
+  push:
+    branches: [main, experimental, "george43/improvements"]
+    paths:
+      - "src/tui/**"
+      - "fixtures/gmail/**"
+      - "scripts/screenshots/**"
+      - "docs/screenshots/**"
+      - ".github/workflows/screenshots.yml"
+  pull_request:
+    paths:
+      - "src/tui/**"
+      - "fixtures/gmail/**"
+      - "scripts/screenshots/**"
+      - "docs/screenshots/**"
+      - ".github/workflows/screenshots.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    # On PRs from forks we have no write access — skip the auto-commit
+    # branch entirely. The drift-check still runs and fails the check
+    # so the contributor knows to regenerate locally.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+          run_install: false
+
+      - name: Install pnpm deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install VHS (pinned)
+        # Pin to a known good release so renders are deterministic across
+        # runs. Bump the version here + scripts/screenshots/README.md in
+        # lockstep when upgrading.
+        env:
+          VHS_VERSION: "0.11.0"
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/charmbracelet/vhs/releases/download/v${VHS_VERSION}/vhs_${VHS_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin --strip-components=1 "vhs_${VHS_VERSION}_Linux_x86_64/vhs"
+          vhs --version
+
+      - name: Install ttyd + ffmpeg + JetBrains Mono
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ttyd ffmpeg fonts-jetbrains-mono
+          fc-cache -f
+          fc-list | grep -i 'jetbrains mono' | head -1
+
+      - name: Build the CLI (so VHS captures the real bin)
+        run: pnpm build
+
+      - name: Regenerate screenshots
+        run: |
+          set -euo pipefail
+          bash scripts/screenshots/prepare-fake-editor.sh
+          mkdir -p docs/screenshots
+          for f in scripts/screenshots/*.tape; do
+            echo "▶ $f"
+            vhs "$f"
+          done
+
+      - name: Diff-gate (pull_request)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          if ! git diff --exit-code -- docs/screenshots/; then
+            echo ""
+            echo "✗ Screenshots drift detected. Regenerate locally and commit:"
+            echo "    pnpm screenshots"
+            echo "    git add docs/screenshots/"
+            echo "    git commit -m 'docs: regenerate screenshots'"
+            exit 1
+          fi
+          echo "✓ Screenshots in sync."
+
+      - name: Commit regenerated screenshots (push / workflow_dispatch)
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ -n "$(git status --porcelain -- docs/screenshots/)" ]]; then
+            git add docs/screenshots/
+            git commit -m "chore(screenshots): regenerate via VHS [skip ci]"
+            git push
+          else
+            echo "No screenshot changes to commit."
+          fi
