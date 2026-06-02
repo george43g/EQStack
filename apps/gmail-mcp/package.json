@@ -24,6 +24,8 @@
     "test:e2e": "vitest --config tests/e2e/vitest.config.ts run",
     "stress": "tsx scripts/stress-mcp.ts",
     "gen-usage": "tsx scripts/gen-usage.ts",
+    "screenshots": "fc-list | grep -qi 'jetbrains mono' || { echo 'Install: brew install --cask font-jetbrains-mono'; exit 1; }; pnpm build && for f in scripts/screenshots/*.tape; do echo \"▶ $f\"; vhs \"$f\"; done",
+    "screenshots:check": "pnpm screenshots && git diff --exit-code -- docs/screenshots/",
     "verify": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:e2e && pnpm run gen-usage -- --check",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build"
