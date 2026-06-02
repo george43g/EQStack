@@ -15,7 +15,7 @@ Set Height 800
 Set Padding 20
 Set TypingSpeed 60ms
 
-Type "GMAIL_FIXTURE_MODE=1 GMAIL_FIXTURE_DIR=./fixtures/gmail GMAIL_ACCOUNT=work node dist/cli/index.js tui"
+Type "GMAIL_TUI_STATIC_STATS=1 GMAIL_FIXTURE_MODE=1 GMAIL_FIXTURE_DIR=./fixtures/gmail GMAIL_ACCOUNT=work node dist/cli/index.js tui"
 Enter
 Sleep 3s
 

@@ -59,7 +59,10 @@ if ! pnpm screenshots >/dev/null 2>&1; then
   exit 1
 fi
 
-DIRTY=$(git status --porcelain -- docs/screenshots/ | head -1)
+# Only PNGs are drift-gated. workflow-demo.gif jitters between runs
+# because of VHS's GIF encoder timing; we regenerate it but don't fail
+# on it. screenshots:check uses the same exclusion via pathspec.
+DIRTY=$(git status --porcelain -- 'docs/screenshots/*.png' | head -1)
 if [[ -n "$DIRTY" ]]; then
   echo ""
   echo "✗ pre-push: screenshots are stale. Regeneration produced new content:"

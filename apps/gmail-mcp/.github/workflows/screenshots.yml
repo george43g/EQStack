@@ -99,7 +99,11 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
-          if ! git diff --exit-code -- docs/screenshots/; then
+          # Only PNGs are drift-gated. workflow-demo.gif jitters between
+          # runs because of VHS's GIF encoder timing. It still gets
+          # auto-committed on push so the README's animated demo stays
+          # current; we just don't fail PRs on its jitter.
+          if ! git diff --exit-code -- 'docs/screenshots/*.png'; then
             echo ""
             echo "✗ Screenshots drift detected. Regenerate locally and commit:"
             echo "    pnpm screenshots"

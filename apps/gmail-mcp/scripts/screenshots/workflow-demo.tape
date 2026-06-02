@@ -16,7 +16,7 @@ Set TypingSpeed 70ms
 Set Framerate 24
 Set PlaybackSpeed 1.0
 
-Type "GMAIL_FIXTURE_MODE=1 GMAIL_FIXTURE_DIR=./fixtures/gmail GMAIL_ACCOUNT=work node dist/cli/index.js tui"
+Type "GMAIL_TUI_STATIC_STATS=1 GMAIL_FIXTURE_MODE=1 GMAIL_FIXTURE_DIR=./fixtures/gmail GMAIL_ACCOUNT=work node dist/cli/index.js tui"
 Enter
 Sleep 2500ms
 

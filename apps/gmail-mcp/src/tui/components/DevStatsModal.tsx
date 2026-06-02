@@ -8,6 +8,13 @@ interface Props {
   theme: Theme;
 }
 
+// Screenshot mode: `GMAIL_TUI_STATIC_STATS=1` masks the volatile rows
+// (heap / RSS / uptime / loop p99 / tool calls / cache / renders) with
+// "—" so the VHS screenshot tape produces a byte-stable PNG. Stable rows
+// (status / theme / editor) still render their real values.
+const STATIC = process.env.GMAIL_TUI_STATIC_STATS === "1";
+const MASK = STATIC ? "—" : null;
+
 function DevStatsModalImpl({ stats, theme }: Props) {
   return (
     <Box
@@ -25,26 +32,49 @@ function DevStatsModalImpl({ stats, theme }: Props) {
         <Text color={theme.dim}>(collecting…)</Text>
       ) : (
         <>
-          <Row label="status" value={stats.health.status} theme={theme} />
-          <Row label="uptime" value={`${stats.health.uptime_s.toFixed(0)} s`} theme={theme} />
-          <Row label="heap" value={`${stats.health.heap_mb.toFixed(1)} MB`} theme={theme} />
-          <Row label="rss" value={`${stats.health.rss_mb.toFixed(1)} MB`} theme={theme} />
+          {/* In STATIC mode pin the status to "healthy" — the real value
+              swings between runs if the watchdog sees a transient event-loop
+              spike, which would re-flap the screenshot drift gate. */}
+          <Row label="status" value={STATIC ? "healthy" : stats.health.status} theme={theme} />
+          <Row
+            label="uptime"
+            value={MASK ?? `${stats.health.uptime_s.toFixed(0)} s`}
+            theme={theme}
+          />
+          <Row
+            label="heap"
+            value={MASK ?? `${stats.health.heap_mb.toFixed(1)} MB`}
+            theme={theme}
+          />
+          <Row
+            label="rss"
+            value={MASK ?? `${stats.health.rss_mb.toFixed(1)} MB`}
+            theme={theme}
+          />
           <Row
             label="loop p99"
-            value={`${stats.health.event_loop_p99_ms.toFixed(0)} ms`}
+            value={MASK ?? `${stats.health.event_loop_p99_ms.toFixed(0)} ms`}
             theme={theme}
           />
-          <Row label="tool calls" value={String(stats.health.tool_calls)} theme={theme} />
-          <Row label="errors" value={String(stats.health.recent_errors)} theme={theme} />
+          <Row
+            label="tool calls"
+            value={MASK ?? String(stats.health.tool_calls)}
+            theme={theme}
+          />
+          <Row label="errors" value={MASK ?? String(stats.health.recent_errors)} theme={theme} />
           <Row
             label="cache"
-            value={`${stats.cacheEntries} entries / ${(stats.cacheBytes / 1024).toFixed(0)} KB`}
+            value={
+              MASK ?? `${stats.cacheEntries} entries / ${(stats.cacheBytes / 1024).toFixed(0)} KB`
+            }
             theme={theme}
           />
-          <Row label="renders" value={String(stats.renderCount)} theme={theme} />
+          <Row label="renders" value={MASK ?? String(stats.renderCount)} theme={theme} />
           <Row label="theme" value={stats.themeName} theme={theme} />
           <Row label="editor" value={stats.editor} theme={theme} />
-          {stats.health.issues.length > 0 ? (
+          {/* STATIC mode suppresses the issues list too — its membership is
+              event-loop-state-dependent and would flap the screenshot gate. */}
+          {!STATIC && stats.health.issues.length > 0 ? (
             <Box marginTop={1} flexDirection="column">
               <Text color={theme.warning}>issues:</Text>
               {stats.health.issues.map((i) => (
