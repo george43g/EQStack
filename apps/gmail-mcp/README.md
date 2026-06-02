@@ -33,6 +33,17 @@ A Model Context Protocol (MCP) server for Gmail integration in Claude Desktop wi
 ![](https://badge.mcpx.dev?type=server 'MCP Server')
 
 
+## Screenshots
+
+![gmail tui — workflow demo](docs/screenshots/workflow-demo.gif)
+
+The animated demo above shows `gmail tui` booting against the fixture
+corpus, opening a thread, swapping accounts, and toggling the dev-stats
+overlay. The full gallery (theme picker, compose flow, account
+switcher, per-pane stills) lives in [`docs/SCREENSHOTS.md`](docs/SCREENSHOTS.md);
+regenerate locally with `pnpm screenshots`.
+
+
 ## Features
 
 - Send emails with subject, content, **attachments**, and recipients
