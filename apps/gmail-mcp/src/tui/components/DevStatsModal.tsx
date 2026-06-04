@@ -47,26 +47,14 @@ function DevStatsModalImpl({ stats, theme }: Props) {
             value={MASK ?? `${stats.health.uptime_s.toFixed(0)} s`}
             theme={theme}
           />
-          <Row
-            label="heap"
-            value={MASK ?? `${stats.health.heap_mb.toFixed(1)} MB`}
-            theme={theme}
-          />
-          <Row
-            label="rss"
-            value={MASK ?? `${stats.health.rss_mb.toFixed(1)} MB`}
-            theme={theme}
-          />
+          <Row label="heap" value={MASK ?? `${stats.health.heap_mb.toFixed(1)} MB`} theme={theme} />
+          <Row label="rss" value={MASK ?? `${stats.health.rss_mb.toFixed(1)} MB`} theme={theme} />
           <Row
             label="loop p99"
             value={MASK ?? `${stats.health.event_loop_p99_ms.toFixed(0)} ms`}
             theme={theme}
           />
-          <Row
-            label="tool calls"
-            value={MASK ?? String(stats.health.tool_calls)}
-            theme={theme}
-          />
+          <Row label="tool calls" value={MASK ?? String(stats.health.tool_calls)} theme={theme} />
           <Row label="errors" value={MASK ?? String(stats.health.recent_errors)} theme={theme} />
           <Row
             label="cache"

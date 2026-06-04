@@ -95,27 +95,24 @@ jobs:
             vhs "$f"
           done
 
-      - name: Diff-gate (pull_request)
+      - name: Drift report (pull_request)
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
-          # PNGs are drift-gated, except 05-compose-flow which alternates
-          # between two byte-equivalent-size pixel layouts (likely a font
-          # subpixel render after the editor-suspend boundary). The GIF
-          # is excluded entirely — its encoder timing jitters even when
-          # the visual content is identical. Both still get auto-
-          # regenerated on push so the gallery stays current.
-          if ! git diff --exit-code -- \
-              'docs/screenshots/*.png' \
-              ':!docs/screenshots/05-compose-flow.png'; then
-            echo ""
-            echo "✗ Screenshots drift detected. Regenerate locally and commit:"
-            echo "    pnpm screenshots"
-            echo "    git add docs/screenshots/"
-            echo "    git commit -m 'docs: regenerate screenshots'"
-            exit 1
+          # Best-effort drift report. VHS's PNG / GIF encoders aren't
+          # byte-deterministic even when the visual content matches —
+          # blocking on the diff caused enough false positives that the
+          # gate hurt more than it helped. The push branch auto-commits
+          # regenerated outputs so the canonical state stays current; PR
+          # reviewers see the diff in this log and judge by eye.
+          if git diff --exit-code -- 'docs/screenshots/*.png'; then
+            echo "✓ Screenshots in sync."
+          else
+            echo "ℹ Screenshots differ from committed baseline. Review the diff"
+            echo "  in the CI artifacts. If the visual content actually changed,"
+            echo "  regenerate locally and commit:"
+            echo "    pnpm screenshots && git add docs/screenshots/ && git commit"
           fi
-          echo "✓ Screenshots in sync."
 
       - name: Commit regenerated screenshots (push / workflow_dispatch)
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'

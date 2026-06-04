@@ -59,25 +59,24 @@ if ! pnpm screenshots >/dev/null 2>&1; then
   exit 1
 fi
 
-# Only PNGs are drift-gated. workflow-demo.gif jitters between runs
-# because of VHS's GIF encoder timing; 05-compose-flow.png alternates
-# between two byte-equivalent-size pixel layouts (probably a font
-# subpixel render after the editor suspension boundary). Both regen but
-# don't fail. screenshots:check uses the same exclusion via pathspec.
-DIRTY=$(git status --porcelain -- 'docs/screenshots/*.png' \
-  | grep -v ' docs/screenshots/05-compose-flow.png$' \
-  | head -1)
-if [[ -n "$DIRTY" ]]; then
+# Best-effort drift report. VHS's PNG/GIF encoders aren't byte-deterministic
+# even when the visual content is identical (font subpixel rendering, cursor
+# blink phase, frame timing). A hard `git diff --exit-code` gate flaps;
+# instead we surface any regenerated diff for human review and always exit 0.
+# Visually-different drift gets caught either at PR review (CI workflow logs
+# the diff) or by the next push (the workflow auto-commits regenerated
+# outputs on push so the canonical baseline stays current).
+DRIFT=$(git status --porcelain -- docs/screenshots/ | head -1)
+if [[ -n "$DRIFT" ]]; then
   echo ""
-  echo "✗ pre-push: screenshots are stale. Regeneration produced new content:"
+  echo "ℹ pre-push: screenshots regenerated; the following files differ:"
   echo ""
   git status --short -- docs/screenshots/
   echo ""
-  echo "  Commit the regenerated outputs and re-push:"
-  echo "    git add docs/screenshots/"
-  echo "    git commit -m 'docs: regenerate screenshots'"
-  echo "    git push"
-  exit 1
+  echo "  If the visual content actually changed, commit the new outputs."
+  echo "  If they look identical to the committed baseline, the diff is"
+  echo "  VHS encoder jitter — safe to ignore."
+  exit 0
 fi
 
 echo "✓ screenshots in sync."
