@@ -28,8 +28,14 @@ function DevStatsModalImpl({ stats, theme }: Props) {
       <Text color={theme.accent} bold>
         Dev stats
       </Text>
-      {!stats ? (
+      {/* Under STATIC mode we always render the table layout — even on the
+          first paint when the 1Hz hook hasn't populated yet — so the
+          screenshot never alternates between the "(collecting…)" state
+          and the loaded state depending on which React tick lands first. */}
+      {!stats && !STATIC ? (
         <Text color={theme.dim}>(collecting…)</Text>
+      ) : !stats ? (
+        <StaticPlaceholder theme={theme} />
       ) : (
         <>
           {/* In STATIC mode pin the status to "healthy" — the real value
@@ -88,6 +94,26 @@ function DevStatsModalImpl({ stats, theme }: Props) {
         <Text color={theme.dim}>{`press ~ or :stats to close`}</Text>
       </Box>
     </Box>
+  );
+}
+
+/** Pre-populate the Row layout with mask values so the screenshot is
+    layout-stable from the very first render. Only rendered in STATIC mode. */
+function StaticPlaceholder({ theme }: { theme: Theme }) {
+  return (
+    <>
+      <Row label="status" value="healthy" theme={theme} />
+      <Row label="uptime" value="—" theme={theme} />
+      <Row label="heap" value="—" theme={theme} />
+      <Row label="rss" value="—" theme={theme} />
+      <Row label="loop p99" value="—" theme={theme} />
+      <Row label="tool calls" value="—" theme={theme} />
+      <Row label="errors" value="—" theme={theme} />
+      <Row label="cache" value="—" theme={theme} />
+      <Row label="renders" value="—" theme={theme} />
+      <Row label="theme" value="default" theme={theme} />
+      <Row label="editor" value="vi" theme={theme} />
+    </>
   );
 }
 

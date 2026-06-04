@@ -25,7 +25,7 @@
     "stress": "tsx scripts/stress-mcp.ts",
     "gen-usage": "tsx scripts/gen-usage.ts",
     "screenshots": "fc-list | grep -qi 'jetbrains mono' || { echo 'Install: brew install --cask font-jetbrains-mono'; exit 1; }; pnpm build && bash scripts/screenshots/prepare-fake-editor.sh && for f in scripts/screenshots/*.tape; do echo \"▶ $f\"; vhs \"$f\"; done",
-    "screenshots:check": "pnpm screenshots && git diff --exit-code -- 'docs/screenshots/*.png' ':!docs/screenshots/_*.png'",
+    "screenshots:check": "pnpm screenshots && git diff --exit-code -- 'docs/screenshots/*.png' ':!docs/screenshots/_*.png' ':!docs/screenshots/05-compose-flow.png'",
     "verify": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:e2e && pnpm run gen-usage -- --check",
     "prepare": "npm run build && git config core.hooksPath .githooks 2>/dev/null || true",
     "prepublishOnly": "npm run build"

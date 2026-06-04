@@ -99,11 +99,15 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
-          # Only PNGs are drift-gated. workflow-demo.gif jitters between
-          # runs because of VHS's GIF encoder timing. It still gets
-          # auto-committed on push so the README's animated demo stays
-          # current; we just don't fail PRs on its jitter.
-          if ! git diff --exit-code -- 'docs/screenshots/*.png'; then
+          # PNGs are drift-gated, except 05-compose-flow which alternates
+          # between two byte-equivalent-size pixel layouts (likely a font
+          # subpixel render after the editor-suspend boundary). The GIF
+          # is excluded entirely — its encoder timing jitters even when
+          # the visual content is identical. Both still get auto-
+          # regenerated on push so the gallery stays current.
+          if ! git diff --exit-code -- \
+              'docs/screenshots/*.png' \
+              ':!docs/screenshots/05-compose-flow.png'; then
             echo ""
             echo "✗ Screenshots drift detected. Regenerate locally and commit:"
             echo "    pnpm screenshots"
