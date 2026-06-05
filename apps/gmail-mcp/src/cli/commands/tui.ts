@@ -5,6 +5,7 @@
 // then, this subcommand prints a clear "not yet implemented" message.
 
 import { Command } from "commander";
+import { exitCli } from "../runtime.js";
 
 export function buildTuiCommand(): Command {
   const cmd = new Command("tui");
@@ -15,7 +16,7 @@ export function buildTuiCommand(): Command {
         process.stderr.write(
           "TUI not yet implemented. See docs/phase-d-tui-plan.md for the implementation plan.\n",
         );
-        process.exit(0);
+        exitCli(0);
       }
       await mod.runTui();
     } catch (err) {
@@ -24,10 +25,10 @@ export function buildTuiCommand(): Command {
         process.stderr.write(
           "TUI not yet implemented. See docs/phase-d-tui-plan.md for the implementation plan.\n",
         );
-        process.exit(0);
+        exitCli(0);
       }
       process.stderr.write(`Error: ${e.message}\n`);
-      process.exit(1);
+      exitCli(1);
     }
   });
   return cmd;

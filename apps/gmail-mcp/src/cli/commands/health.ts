@@ -6,6 +6,7 @@
 
 import { Command } from "commander";
 import { formatHealthText, snapshotHealth } from "../../robustness/index.js";
+import { exitCli } from "../runtime.js";
 
 export interface HealthCommandOptions {
   json?: boolean;
@@ -27,7 +28,7 @@ export function buildHealthCommand(): Command {
         process.stdout.write(`${formatHealthText(snapshot)}\n`);
       }
       const ok = snapshot.status === "healthy";
-      process.exit(ok ? 0 : 1);
+      exitCli(ok ? 0 : 1);
     });
   return cmd;
 }

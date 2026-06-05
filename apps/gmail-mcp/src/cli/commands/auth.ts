@@ -5,6 +5,7 @@
 // with a direct pointer to the replacement command.
 
 import { Command } from "commander";
+import { exitCli } from "../runtime.js";
 
 export function buildAuthCommand(): Command {
   const cmd = new Command("auth");
@@ -25,7 +26,7 @@ Use:
     )
     .action(() => {
       process.stderr.write("gmail auth has moved. Use gmail account instead.\n");
-      process.exit(1);
+      exitCli(1);
     });
   return cmd;
 }

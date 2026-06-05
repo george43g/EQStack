@@ -19,6 +19,7 @@ import {
   validateAccountId,
 } from "../../core/accounts.js";
 import { type AccountAuthCommandOptions, runAccountAuthCommand } from "../account-auth.js";
+import { exitCli } from "../runtime.js";
 
 type AccountAuthCliOptions = Omit<AccountAuthCommandOptions, "account">;
 
@@ -42,7 +43,7 @@ Examples:
         return;
       }
       cmd.outputHelp();
-      process.exit(3);
+      exitCli(3);
     });
 
   cmd
@@ -88,7 +89,7 @@ Examples:
         process.stdout.write(`Default account set to "${m.defaultAccount}".\n`);
       } catch (err) {
         process.stderr.write(`Error: ${(err as Error).message}\n`);
-        process.exit(err instanceof AccountNotFoundError ? 2 : 3);
+        exitCli(err instanceof AccountNotFoundError ? 2 : 3);
       }
     });
 
@@ -117,7 +118,7 @@ Examples:
         process.stdout.write(`Account "${id}" removed.\n`);
       } catch (err) {
         process.stderr.write(`Error: ${(err as Error).message}\n`);
-        process.exit(err instanceof AccountNotFoundError ? 2 : 3);
+        exitCli(err instanceof AccountNotFoundError ? 2 : 3);
       }
     });
 
@@ -146,7 +147,7 @@ Examples:
       } catch (err) {
         const e = err as Error & { code?: string };
         process.stderr.write(`Error: ${e.message}\n`);
-        process.exit(e.code === "INVALID_SCOPE" ? 3 : 2);
+        exitCli(e.code === "INVALID_SCOPE" ? 3 : 2);
       }
     });
 
@@ -174,7 +175,7 @@ Examples:
         }
       } catch (err) {
         process.stderr.write(`Error: ${(err as Error).message}\n`);
-        process.exit(err instanceof AccountNotFoundError ? 2 : 3);
+        exitCli(err instanceof AccountNotFoundError ? 2 : 3);
       }
     });
 
@@ -189,7 +190,7 @@ Examples:
         process.stdout.write(`Account "${oldId}" renamed to "${newId}".\n`);
       } catch (err) {
         process.stderr.write(`Error: ${(err as Error).message}\n`);
-        process.exit(err instanceof AccountNotFoundError ? 2 : 3);
+        exitCli(err instanceof AccountNotFoundError ? 2 : 3);
       }
     });
 

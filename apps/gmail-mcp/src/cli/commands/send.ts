@@ -5,7 +5,7 @@
 // --in-reply-to, --html.
 
 import { Command } from "commander";
-import { resolveBodyInput, runCliOp } from "../runtime.js";
+import { exitCli, resolveBodyInput, runCliOp } from "../runtime.js";
 
 interface SendOptions {
   to?: string;
@@ -129,7 +129,7 @@ export function buildReplyAllCommand(): Command {
           process.stderr.write(
             "Error: --body is required (use '-' for stdin, '@file' to read from disk)\n",
           );
-          process.exit(3);
+          exitCli(3);
         }
         await runCliOp(
           "reply_all",

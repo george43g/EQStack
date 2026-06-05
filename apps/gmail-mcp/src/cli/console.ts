@@ -499,7 +499,16 @@ export async function runConsole(options: ConsoleOptions = {}): Promise<void> {
     return pc.cyan(`gmail[${scopeLabel(scope)}]> `);
   };
 
+  // Track readline closure so `.finally(maybePrompt)` doesn't try to write
+  // a new prompt after `exit` / `q` / EOF closed the interface (which would
+  // throw ERR_USE_AFTER_CLOSE from inside readline.Interface.resume).
+  let closed = false;
+  rl.on("close", () => {
+    closed = true;
+  });
+
   const maybePrompt = () => {
+    if (closed) return;
     if (process.stdin.isTTY && typeof rl.prompt === "function") {
       rl.setPrompt?.(promptStr());
       rl.prompt();
@@ -589,20 +598,32 @@ export async function runConsole(options: ConsoleOptions = {}): Promise<void> {
       program.exitOverride(); // throw instead of process.exit on commander errors
       await program.parseAsync(argv);
     } catch (err) {
-      const e = err as { code?: string; message?: string };
-      // CommanderError carries code/exitCode; surface the message but stay alive.
-      if (e.code?.startsWith("commander.")) {
+      const e = err as { code?: string; message?: string; replExit?: boolean };
+      // `exitCli()` from runtime.ts throws this sentinel under GMAIL_CLI_REPL.
+      // The handler has already written any diagnostic to stderr; we silently
+      // swallow so the prompt cleanly returns. This is what unblocks `h`,
+      // `account check`, etc. from killing the console.
+      if (e.replExit === true) {
+        // no-op
+      } else if (e.code?.startsWith("commander.")) {
         // Help and version exits also come through here — those are not
         // errors. Quiet them unless they actually carry a message.
+        // Commander also writes the same message to stderr itself; suppress
+        // our duplicate "Error: …" line for unknownCommand/missingArgument
+        // so the user sees one diagnostic, not two.
         if (
           e.code !== "commander.help" &&
           e.code !== "commander.helpDisplayed" &&
-          e.code !== "commander.version"
+          e.code !== "commander.version" &&
+          e.code !== "commander.unknownCommand" &&
+          e.code !== "commander.unknownOption" &&
+          e.code !== "commander.missingArgument" &&
+          e.code !== "commander.excessArguments"
         ) {
           process.stderr.write(`Error: ${e.message ?? e.code}\n`);
         }
       } else {
-        process.stderr.write(`Error: ${e.message ?? String(err)}\n`);
+        process.stderr.write(`Error: ${e?.message ?? String(err)}\n`);
       }
     } finally {
       delete process.env.GMAIL_CLI_REPL;

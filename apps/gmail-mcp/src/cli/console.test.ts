@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isBuiltinCommand, parseConsoleInput, rewriteAlias } from "./console.js";
-import { runCliOp } from "./runtime.js";
+import { exitCli, runCliOp } from "./runtime.js";
 
 describe("parseConsoleInput", () => {
   it("splits a simple command line on whitespace", () => {
@@ -131,6 +131,29 @@ describe("runCliOp REPL-mode flag", () => {
     );
     expect(exitCalls.length).toBe(1);
   });
+
+  it("exitCli throws replExit sentinel in REPL mode instead of process.exit", () => {
+    // The actual production bug we just fixed: handlers like `health` called
+    // process.exit directly, killing the console. exitCli now throws a tagged
+    // Error under REPL mode so commander's parseAsync rejects and the console
+    // catch keeps the loop alive.
+    process.env.GMAIL_CLI_REPL = "1";
+    try {
+      exitCli(0);
+      throw new Error("exitCli should have thrown");
+    } catch (err) {
+      const e = err as Error & { exitCode?: number; replExit?: boolean };
+      expect(e.replExit).toBe(true);
+      expect(e.exitCode).toBe(0);
+    }
+    expect(exitCalls).toEqual([]); // no process.exit
+  });
+
+  it("exitCli still calls process.exit in CLI mode", () => {
+    delete process.env.GMAIL_CLI_REPL;
+    expect(() => exitCli(3)).toThrow(/^__exit_called__:3$/);
+    expect(exitCalls).toEqual([3]);
+  });
 });
 
 // ── runConsole legend + REPL-driven built-ins ────────────────────────────
@@ -194,6 +217,57 @@ describe("runConsole legend + REPL built-ins (11.7, 11.11, 11.12)", () => {
     vi.doUnmock("node:readline");
     vi.doUnmock("./runtime.js");
     vi.resetModules();
+  });
+
+  it("`exit` closes readline and the next maybePrompt cycle no-ops cleanly", async () => {
+    // Regression: prior to the `closed` flag in runConsole, calling
+    // `rl.close()` from the `exit` built-in raced with the `.finally(maybePrompt)`
+    // chain — readline would throw ERR_USE_AFTER_CLOSE from inside .resume().
+    // The mock below mirrors that contract: prompt() throws if called after
+    // close(), and close() fires registered close handlers.
+    let closeHandler: (() => void) | null = null;
+    let isClosed = false;
+    vi.resetModules();
+    vi.doMock("node:readline", () => ({
+      createInterface: () => ({
+        on: (event: string, handler: (line?: string) => void | Promise<void>) => {
+          if (event === "line") {
+            queueMicrotask(async () => {
+              while (queuedLines.length > 0) {
+                await handler(queuedLines.shift());
+              }
+              doneResolve?.();
+            });
+          } else if (event === "close") {
+            closeHandler = handler as () => void;
+          }
+        },
+        prompt: () => {
+          if (isClosed) {
+            throw Object.assign(new Error("readline was closed"), {
+              code: "ERR_USE_AFTER_CLOSE",
+            });
+          }
+        },
+        setPrompt: () => {},
+        close: () => {
+          isClosed = true;
+          closeHandler?.();
+        },
+      }),
+    }));
+
+    queuedLines.push("exit");
+    queuedLines.push("h"); // would crash on the post-close maybePrompt without the fix
+    const { runConsole } = await import("./console.js");
+    await runConsole({ write: () => {} });
+    await donePromise;
+    await new Promise((r) => setTimeout(r, 20));
+
+    // No ERR_USE_AFTER_CLOSE should have escaped to stderr.
+    const stderrText = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(stderrText).not.toMatch(/ERR_USE_AFTER_CLOSE/);
+    expect(stderrText).not.toMatch(/readline was closed/);
   });
 
   it("(11.7) renders the legend with section headers via the `write` injector", async () => {

@@ -167,6 +167,33 @@ export async function runCliOp(
   process.exit(outcome.isError ? 1 : 0);
 }
 
+/**
+ * REPL-aware replacement for `process.exit(code)` inside commander
+ * subcommand action handlers. In REPL mode (`GMAIL_CLI_REPL=1`) it throws a
+ * sentinel so commander's `parseAsync` rejects and the console's catch
+ * keeps the REPL alive. In CLI mode it terminates the process as before.
+ *
+ * Why this exists: handlers that called `process.exit` directly (e.g.
+ * `health`, `account`, `send` usage errors) killed the entire console when
+ * invoked from `gmail console`. `runCliOp` already guards its own exits,
+ * but handlers that bypass `runCliOp` (synchronous local commands, error
+ * branches that exit before dispatching) need this helper.
+ *
+ * The thrown error message is intentionally empty — the diagnostic has
+ * already been written to stderr by the handler before the exit, so the
+ * console catch shouldn't double-print. The `replExit` tag lets callers
+ * distinguish "REPL exit cue" from real exceptions if they care.
+ */
+export function exitCli(code: number): never {
+  if (process.env.GMAIL_CLI_REPL === "1") {
+    const e = new Error("") as Error & { exitCode: number; replExit: true };
+    e.exitCode = code;
+    e.replExit = true;
+    throw e;
+  }
+  process.exit(code);
+}
+
 // ---------------------------------------------------------------------------
 // Typed in-process op invocation (Pre-TUI Step 2)
 // ---------------------------------------------------------------------------
