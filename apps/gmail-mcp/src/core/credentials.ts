@@ -165,12 +165,25 @@ export async function loadCredentials(opts: LoadOptions = {}): Promise<LoadedCre
     };
   }
 
-  // 3. File. Account-aware path resolution:
-  //    - GMAIL_CREDENTIALS_PATH override always wins (operator opt-in).
-  //    - Otherwise, if an accountId is supplied, resolve the per-account file
-  //      (and run the migration shim from the legacy path if needed).
-  //    - Otherwise, fall back to the legacy single-account file.
-  let credPath: string | undefined = env.GMAIL_CREDENTIALS_PATH ?? opts.fallbackPath;
+  // 3. File. Account-aware path resolution. Precedence (first hit wins):
+  //    a. GMAIL_CREDENTIALS_PATH override (operator opt-in — always wins).
+  //    b. Per-account file at <configDir>/accounts/<id>/credentials.json
+  //       when accountId is supplied. Runs the M1 migration shim from the
+  //       legacy path if accountId is "default" and the per-account file
+  //       is missing but the legacy file exists.
+  //    c. opts.fallbackPath — only when accountId is genuinely unset
+  //       (unmigrated single-account user with no manifest).
+  //    d. Legacy <configDir>/credentials.json — last resort.
+  //
+  //    Why this order: prior versions used (a) → fallbackPath → per-account,
+  //    which meant bootstrapSession's fallbackPath (the legacy file) silently
+  //    shadowed per-account credentials for every multi-account user. That
+  //    made every API call hit whatever mailbox the legacy file's tokens
+  //    pointed at, while the session still claimed to be on the manifest's
+  //    default account. The fix puts per-account resolution ahead of
+  //    fallbackPath so multi-account users get the right file and unmigrated
+  //    users (accountId undefined) still hit the fallback as before.
+  let credPath: string | undefined = env.GMAIL_CREDENTIALS_PATH;
   if (!credPath) {
     if (opts.accountId) {
       credPath = getAccountCredentialsPath(opts.accountId, env);
@@ -184,6 +197,8 @@ export async function loadCredentials(opts: LoadOptions = {}): Promise<LoadedCre
         // that a downgrade to a single-account release still works.
         runDefaultAccountMigration(env, credPath);
       }
+    } else if (opts.fallbackPath) {
+      credPath = opts.fallbackPath;
     } else {
       credPath = getCredentialsPath(env);
     }

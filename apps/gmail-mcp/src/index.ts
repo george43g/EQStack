@@ -25,11 +25,12 @@
 //   - `callMcpTool`           — in-process dispatcher access. Initialised by
 //                                main() OR bootstrapSession().
 
+import fs from "node:fs";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { OAuth2Client } from "google-auth-library";
 import { type gmail_v1, google } from "googleapis";
-import { resolveActiveAccount } from "./core/accounts.js";
+import { getAccountCredentialsPath, resolveActiveAccount } from "./core/accounts.js";
 import { loadOAuthKeys } from "./core/auth-flow.js";
 import { getConfigDir, getCredentialsPath, getOAuthPath } from "./core/config-paths.js";
 import { loadCredentials as coreLoadCredentials } from "./core/credentials.js";
@@ -46,6 +47,7 @@ import {
   info as logInfo,
   logShutdown,
   logStartup,
+  warn as logWarn,
   registerCleanup,
   shutdown,
   startHeapMonitor,
@@ -223,6 +225,21 @@ export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<Ses
     });
     oauth2Client.setCredentials(loaded.credentials.tokens);
     if (loaded.credentials.scopes) authorizedScopes = loaded.credentials.scopes;
+    // Warn when a legacy <configDir>/credentials.json shadows a per-account
+    // file the user is no longer reading from. Common after migrating from
+    // single- to multi-account: the legacy file lingers and used to be loaded
+    // by mistake (prior versions of the loader). Surfacing it lets the user
+    // delete it; not fatal.
+    if (accountId && loaded.source === "file") {
+      const perAccountPath = getAccountCredentialsPath(accountId, env);
+      if (loaded.locator === perAccountPath && fs.existsSync(credentialsPath)) {
+        logWarn("legacy credentials.json shadowed by per-account file", {
+          legacy: credentialsPath,
+          perAccount: perAccountPath,
+          account: accountId,
+        });
+      }
+    }
   } catch (err) {
     const e = err as { source?: string; name?: string; message?: string };
     if (e.name === "CredentialLoadError" && e.source === "file") {

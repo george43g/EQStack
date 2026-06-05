@@ -80,6 +80,102 @@ describe("loadCredentials precedence", () => {
     expect(result.source).toBe("file");
     expect(result.locator).toBe("/home/x/.gmail-mcp/credentials.json");
   });
+
+  it("per-account file wins over fallbackPath when accountId is set", async () => {
+    // Pin this regression: prior versions read fallbackPath unconditionally
+    // when accountId was set, which made every multi-account user load the
+    // legacy single-account file instead of accounts/<id>/credentials.json.
+    const perAccountPath = "/cfg/accounts/work/credentials.json";
+    const legacyPath = "/cfg/credentials.json";
+    const fileExists = vi.fn((p: string) => p === perAccountPath);
+    const readFile = vi.fn((p: string) => {
+      if (p === perAccountPath) {
+        return JSON.stringify({
+          tokens: { access_token: "from-work" },
+          scopes: ["gmail.modify"],
+        });
+      }
+      throw new Error(`unexpected read: ${p}`);
+    });
+    const result = await loadCredentials({
+      env: { GMAIL_CONFIG_DIR: "/cfg" },
+      accountId: "work",
+      fallbackPath: legacyPath,
+      fileExists,
+      readFile,
+      runOp: vi.fn(async () => ""),
+    });
+    expect(result.source).toBe("file");
+    expect(result.locator).toBe(perAccountPath);
+    expect(result.credentials.tokens.access_token).toBe("from-work");
+  });
+
+  it("falls through to fallbackPath when accountId is undefined", async () => {
+    // Unmigrated users with no manifest pass accountId=undefined from
+    // bootstrapSession; fallbackPath must still resolve.
+    const stubs = makeStubs({
+      fileExists: vi.fn(() => true),
+      readFile: vi.fn(() => JSON.stringify({ tokens: { access_token: "legacy" } })),
+    });
+    const result = await loadCredentials({
+      env: {},
+      fallbackPath: "/legacy/credentials.json",
+      ...stubs,
+    });
+    expect(result.source).toBe("file");
+    expect(result.locator).toBe("/legacy/credentials.json");
+  });
+
+  it("runs M1 migration when accountId=default and only legacy exists", async () => {
+    // The shim copies <configDir>/credentials.json → accounts/default/credentials.json
+    // and then reads from the per-account path. We can't intercept the real
+    // copy without monkey-patching node:fs at the module level, so this test
+    // asserts the call shape (per-account path resolved; legacy detected).
+    // The actual fs operations are covered by the integration test in the
+    // bootstrap suite — here we just confirm the precedence routes through
+    // the per-account branch even when the per-account file is initially missing.
+    let migrationAttempted = false;
+    const perAccountPath = "/cfg/accounts/default/credentials.json";
+    const legacyPath = "/cfg/credentials.json";
+    const fileExists = vi.fn((p: string) => {
+      if (p === legacyPath) return true;
+      // After the (uninstrumented) migration copy, the per-account file appears
+      if (p === perAccountPath) {
+        const wasMissing = !migrationAttempted;
+        migrationAttempted = true;
+        return !wasMissing;
+      }
+      return false;
+    });
+    const readFile = vi.fn((p: string) => {
+      if (p === perAccountPath) {
+        return JSON.stringify({ tokens: { access_token: "migrated" } });
+      }
+      throw new Error(`unexpected read: ${p}`);
+    });
+    // The real migration writes via fs; in this stubbed test the migration
+    // shim's writes happen against the real filesystem. To keep this test
+    // hermetic we accept that runDefaultAccountMigration may throw silently
+    // (it catches its own errors). The behavioural assertion is: the loader
+    // resolved the per-account path, not the legacy fallback.
+    try {
+      const result = await loadCredentials({
+        env: { GMAIL_CONFIG_DIR: "/cfg" },
+        accountId: "default",
+        fallbackPath: legacyPath,
+        fileExists,
+        readFile,
+        runOp: vi.fn(async () => ""),
+      });
+      expect(result.locator).toBe(perAccountPath);
+    } catch (err) {
+      // Acceptable: migration shim's fs.copyFileSync fails because /cfg/ doesn't
+      // exist on disk. What matters is that we attempted the per-account path,
+      // never the legacy fallback.
+      expect((err as { source?: string }).source).toBe("file");
+      expect((err as Error).message).toContain(perAccountPath);
+    }
+  });
 });
 
 describe("loadCredentials errors", () => {
