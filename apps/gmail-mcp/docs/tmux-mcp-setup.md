@@ -46,25 +46,54 @@ Open `~/.claude.json`, locate the `mcpServers` object, and add:
 
     "tmux-rust": {
       "command": "/opt/homebrew/bin/tmux-mcp-rs",
-      "args": [
-        "--shell-type", "zsh",
-        "--socket", "/tmp/tmux-rust.sock"
-      ]
-    },
-
-    "tmux": {
-      "command": "npx",
-      "args": ["-y", "tmux-mcp", "--shell-type=zsh", "--socket=/tmp/tmux-node.sock"]
+      "args": ["--shell-type", "zsh"]
     }
   }
 }
 ```
 
-Why separate sockets: running both servers in parallel against the
-default tmux socket (`/tmp/tmux-${UID}/default`) means each gets a
-different view of the same world and the benchmark conflates server
-overhead with shared-state contention. Per-server sockets give each
-its own isolated tmux server process — clean A/B.
+**The watch-along UX is the reason we drop the explicit `--socket`.**
+`tmux-mcp-rs` accepts `--socket <path>` and we could isolate its
+sessions on `/tmp/tmux-rust.sock`, but then attaching from a second
+shell requires the long form `tmux -S /tmp/tmux-rust.sock attach -t
+<name>` — easy to forget. Letting the MCP fall through to tmux's
+default socket (`/tmp/tmux-<uid>/default` on Linux,
+`/private/tmp/tmux-<uid>/default` on macOS) means a plain
+`tmux attach -t <name>` works from any shell. Cost: the agent's
+sessions share the daemon with whatever tmux work you already have
+running. Mitigation: the agent uses uniquely-named sessions, so name
+collisions are extremely unlikely.
+
+**Why we dropped the Node `tmux` MCP entirely:** the benchmark in
+[`docs/tmux-mcp-bench.md`](./tmux-mcp-bench.md) showed `tmux-mcp-rs`
+beats `tmux-mcp` (Node) by 59× on cold start, 16× on RSS, and 4× on
+tool surface (55 vs 13 tools, including `send-keys`, buffer ops, and
+layout controls the Node version lacks). Per-call latency is roughly
+even. Net: `tmux-mcp-rs` is the right default; keep `tmux` in the
+wiring only if you specifically need its different stable interface.
+
+## Watch the agent drive tmux
+
+After applying the wiring above and restarting Claude Code, the
+rust MCP creates sessions on your default tmux socket. From any
+shell:
+
+```sh
+tmux list-sessions               # see the sessions the agent is using
+tmux attach -t <name>            # attach read-only watchers via tmux's
+                                 # multi-client model
+```
+
+To stay strictly read-only (avoid accidentally sending input):
+
+```sh
+tmux attach -t <name> -r         # `-r` = read-only client
+```
+
+If you prefer keeping the agent's sessions on a dedicated socket
+(say you want to keep your main tmux server pristine), put
+`--socket /tmp/tmux-rust.sock` back in the args and attach with
+`tmux -S /tmp/tmux-rust.sock attach -t <name>`.
 
 Adjust `--shell-type` to match your default (`bash` / `zsh` / `fish`).
 
