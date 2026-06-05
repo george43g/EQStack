@@ -33,6 +33,29 @@ export function isAuthError(err: unknown): boolean {
   return false;
 }
 
+/**
+ * Detects Gmail API 404s, which arrive as either `err.code === 404`,
+ * `err.status === 404`, or `err.errors?.[0]?.reason === "notFound"`. Used to
+ * rewrap "entity not found" with the active account id so callers (humans
+ * and sub-agents) can self-diagnose IDs pasted from the wrong mailbox.
+ */
+export function isNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as {
+    code?: number | string;
+    status?: number;
+    message?: string;
+    errors?: Array<{ reason?: string }>;
+  };
+  if (e.code === 404 || e.status === 404) return true;
+  if (typeof e.code === "string" && e.code === "404") return true;
+  if (Array.isArray(e.errors) && e.errors.some((x) => x?.reason === "notFound")) return true;
+  // googleapis surfaces a bare "Not Found" message for some operations.
+  const msg = (e.message ?? "").toLowerCase();
+  if (msg === "not found" || msg.startsWith("not found")) return true;
+  return false;
+}
+
 function isInvalidGrant(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const msg = ((err as { message?: string }).message ?? "").toLowerCase();
@@ -86,6 +109,38 @@ export async function wrapToolError(
         {
           type: "text",
           text: `${toolName} failed: ${message} — ${hint}`,
+        },
+      ],
+    };
+  }
+
+  // 404s are particularly confusing without account context: a message or
+  // thread id valid in account A returns bare "Not Found" when the active
+  // session is on account B. Surface the active account so the user (or a
+  // sub-agent) knows where the lookup was scoped and how to switch. For
+  // thread-specific tools we also flag the common messageId-vs-threadId
+  // mix-up — `read_email` returns a `threadId` field that callers should
+  // use here.
+  if (isNotFoundError(err)) {
+    const accountId = getCurrentAccountId();
+    const scope = accountId ? `account "${accountId}"` : "the active account";
+    const isThreadOp = toolName === "get_thread" || toolName === "modify_thread";
+    let hint: string;
+    if (!accountId) {
+      hint = "no active account is configured — run `gmail account auth <id>` to set one up";
+    } else if (isThreadOp) {
+      hint =
+        "verify the id is a threadId, not a messageId (use `read <id>` to fetch its `threadId` field). If the id is correct, it may belong to a different mailbox — `accounts` + `sw <id>` to switch.";
+    } else {
+      hint =
+        "list accounts with `accounts` and switch with `sw <id>` if the id belongs to a different mailbox";
+    }
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: `${toolName} failed: no such message/thread in ${scope} — ${hint}`,
         },
       ],
     };
