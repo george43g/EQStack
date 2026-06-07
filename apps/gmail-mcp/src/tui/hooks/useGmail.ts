@@ -210,3 +210,17 @@ export function modifyEmail(
 export function deleteEmail(messageId: string, signal?: AbortSignal): Promise<unknown> {
   return callOp("delete_email", { messageId }, signal);
 }
+
+export function modifyThread(
+  args: { threadId: string; addLabelIds?: string[]; removeLabelIds?: string[] },
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return callOp("modify_thread", args, signal);
+}
+
+export function getOrCreateLabel(
+  name: string,
+  signal?: AbortSignal,
+): Promise<{ id: string; name: string; created?: boolean }> {
+  return callOp("get_or_create_label", { name }, signal);
+}

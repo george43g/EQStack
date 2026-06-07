@@ -9,8 +9,9 @@ import { CommandPalette } from "./components/CommandPalette.js";
 import { ConfirmModal } from "./components/ConfirmModal.js";
 import { DevStatsModal } from "./components/DevStatsModal.js";
 import { HelpBar } from "./components/HelpBar.js";
+import { HelpModal } from "./components/HelpModal.js";
+import { LabelOverlay } from "./components/LabelOverlay.js";
 import { MessagePane } from "./components/MessagePane.js";
-import { ModalRow, ModalScreen } from "./components/ModalScreen.js";
 import { SearchBar } from "./components/SearchBar.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { StatusBar } from "./components/StatusBar.js";
@@ -22,7 +23,7 @@ import { accountScopedCacheKey, defaultCacheBytes, LruCache } from "./hooks/useC
 import { useDevStats } from "./hooks/useDevStats.js";
 import { createEditorOpener, resolveEditor } from "./hooks/useEditor.js";
 import * as gmail from "./hooks/useGmail.js";
-import { defaultBindings, resolveKey } from "./keymap.js";
+import { resolveKey } from "./keymap.js";
 import { type Action, initialState, reducer } from "./reducer.js";
 import { listThemeNames, loadTheme, type Theme } from "./themes/index.js";
 
@@ -216,6 +217,40 @@ export function App({ initialTheme, config }: Props) {
 
   // Input dispatcher — vim-modal. Insert / command modes feed the overlay.
   useInput((input, key) => {
+    // Help modal: text input feeds the fuzzy filter, j/k navigates filtered
+    // hits, Esc clears filter then closes, ?/Enter close. Highest priority
+    // because it shadows all normal-mode bindings while open.
+    if (state.showHelp) {
+      if (key.escape) {
+        // Esc clears the filter first (sesh-style); a second Esc closes help.
+        if (state.helpFilter.length > 0) {
+          dispatch({ type: "HELP_RESET" });
+        } else {
+          dispatch({ type: "TOGGLE_HELP" });
+        }
+        return;
+      }
+      if (input === "?" || key.return) {
+        dispatch({ type: "TOGGLE_HELP" });
+        return;
+      }
+      if (key.backspace || key.delete) {
+        dispatch({ type: "HELP_FILTER_BACKSPACE" });
+        return;
+      }
+      if (state.helpFilter.length > 0 && (input === "j" || key.downArrow)) {
+        dispatch({ type: "HELP_CURSOR_MOVE", payload: +1 });
+        return;
+      }
+      if (state.helpFilter.length > 0 && (input === "k" || key.upArrow)) {
+        dispatch({ type: "HELP_CURSOR_MOVE", payload: -1 });
+        return;
+      }
+      if (input && !key.ctrl) {
+        dispatch({ type: "HELP_FILTER_INPUT", payload: input });
+      }
+      return;
+    }
     // Confirm modal: y/n/Esc regardless of mode.
     if (state.overlay.kind === "confirm") {
       if (input === "y" || input === "Y") {
@@ -336,6 +371,9 @@ export function App({ initialTheme, config }: Props) {
     if (key.return) keyName = "Enter";
     else if (key.tab) keyName = "Tab";
     else if (key.escape) keyName = "Escape";
+    // Ctrl-prefixed keys are surfaced to the registry as "C-<lowercase>" so
+    // the keymap can declare them uniformly (e.g. `C-d` for half-page-down).
+    else if (key.ctrl && input) keyName = `C-${input.toLowerCase()}`;
     else if (input) keyName = input;
     if (!keyName) return;
 
@@ -369,7 +407,9 @@ export function App({ initialTheme, config }: Props) {
     <Box flexDirection="column" width="100%" height="100%">
       {centeredModalActive ? (
         <>
-          {state.showHelp ? <HelpOverlay theme={theme} /> : null}
+          {state.showHelp ? (
+            <HelpOverlay theme={theme} filter={state.helpFilter} cursor={state.helpCursor} />
+          ) : null}
           {state.overlay.kind === "confirm" ? (
             <ConfirmModal prompt={state.overlay.prompt} theme={theme} />
           ) : null}
@@ -420,6 +460,9 @@ export function App({ initialTheme, config }: Props) {
       {state.overlay.kind === "search" ? (
         <SearchBar text={state.overlay.text} theme={theme} />
       ) : null}
+      {state.overlay.kind === "label" ? (
+        <LabelOverlay mode={state.overlay.mode} text={state.overlay.text} theme={theme} />
+      ) : null}
       <StatusBar
         mode={state.mode}
         status={state.error ? `Error: ${state.error}` : state.status}
@@ -431,16 +474,8 @@ export function App({ initialTheme, config }: Props) {
   );
 }
 
-function HelpOverlay({ theme }: { theme: Theme }) {
-  return (
-    <ModalScreen theme={theme} title="Keybindings" footerHint="Press ? to close">
-      {defaultBindings.map((b) => (
-        <ModalRow key={b.keys} theme={theme}>
-          {`  ${b.keys.padEnd(8)} ${b.desc}`}
-        </ModalRow>
-      ))}
-    </ModalScreen>
-  );
+function HelpOverlay({ theme, filter, cursor }: { theme: Theme; filter: string; cursor: number }) {
+  return <HelpModal theme={theme} filter={filter} cursor={cursor} />;
 }
 
 function labelTitle(state: {
@@ -537,6 +572,13 @@ function runOverlay(state: import("./reducer.js").AppState, dispatch: (a: Action
     const raw = state.overlay.text.trim();
     dispatch({ type: "CLOSE_OVERLAY" });
     runExCommand(raw, state, dispatch);
+    return;
+  }
+  if (state.overlay.kind === "label") {
+    const labelName = state.overlay.text.trim();
+    const mode = state.overlay.mode;
+    dispatch({ type: "CLOSE_OVERLAY" });
+    if (labelName) runLabelMutation(labelName, mode, state, dispatch);
   }
 }
 
@@ -614,6 +656,29 @@ function runNormalCmd(
     case "cursor.bottom":
       dispatch({ type: "CURSOR_BOTTOM" });
       return;
+    case "cursor.middle":
+      dispatch({ type: "CURSOR_MIDDLE" });
+      return;
+    case "cursor.half-page-down":
+      dispatch({ type: "CURSOR_MOVE", payload: +halfPageStep() });
+      return;
+    case "cursor.half-page-up":
+      dispatch({ type: "CURSOR_MOVE", payload: -halfPageStep() });
+      return;
+    case "cursor.page-down":
+      dispatch({ type: "CURSOR_MOVE", payload: +pageStep() });
+      return;
+    case "cursor.page-up":
+      dispatch({ type: "CURSOR_MOVE", payload: -pageStep() });
+      return;
+    case "nav.folder.inbox":
+    case "nav.folder.sent":
+    case "nav.folder.drafts":
+    case "nav.folder.trash":
+    case "nav.folder.starred":
+    case "nav.folder.important":
+      gotoFolder(cmd.slice("nav.folder.".length), state, dispatch);
+      return;
     case "pane.open":
       if (state.focus === "threads") {
         dispatch({ type: "OPEN_THREAD" });
@@ -648,6 +713,26 @@ function runNormalCmd(
       return;
     case "ui.stats":
       dispatch({ type: "TOGGLE_STATS" });
+      return;
+    case "ui.cancel":
+      // Drop any half-typed buffered key, clear transient status. Esc in the
+      // empty-buffer case is a no-op (intentional — vim convention).
+      if (state.keyBuffer) dispatch({ type: "CLEAR_KEY_BUFFER" });
+      dispatch({ type: "SET_ERROR", payload: null });
+      dispatch({ type: "SET_STATUS", payload: "" });
+      return;
+    case "ui.preview-toggle":
+      // `z` is the vim-style "preview pane focus toggle". In our 3-pane
+      // model this means swap between the threads list and the open
+      // message; if no thread is open yet, this collapses to opening one.
+      if (state.thread) {
+        dispatch({
+          type: "SET_FOCUS",
+          payload: state.focus === "message" ? "threads" : "message",
+        });
+      } else if (state.focus === "threads") {
+        dispatch({ type: "OPEN_THREAD" });
+      }
       return;
     case "msg.compose":
       if (!ensureSingleScope(state, dispatch)) return;
@@ -698,6 +783,36 @@ function runNormalCmd(
     case "msg.read":
       if (!ensureSingleScope(state, dispatch)) return;
       toggleRead(state, dispatch);
+      return;
+    case "msg.archive":
+      if (!ensureSingleScope(state, dispatch)) return;
+      archiveCurrent(state, dispatch);
+      return;
+    case "msg.archive-thread":
+      if (!ensureSingleScope(state, dispatch)) return;
+      archiveThread(state, dispatch);
+      return;
+    case "msg.spam":
+      if (!ensureSingleScope(state, dispatch)) return;
+      markSpam(state, dispatch);
+      return;
+    case "msg.forward":
+      if (!ensureSingleScope(state, dispatch)) return;
+      requestForward(state, dispatch);
+      return;
+    case "msg.label.add":
+      if (!ensureSingleScope(state, dispatch)) return;
+      dispatch({ type: "OPEN_OVERLAY", payload: { kind: "label", mode: "add", text: "" } });
+      return;
+    case "msg.label.remove":
+      if (!ensureSingleScope(state, dispatch)) return;
+      dispatch({ type: "OPEN_OVERLAY", payload: { kind: "label", mode: "remove", text: "" } });
+      return;
+    case "clip.thread-id":
+      copyIdToClipboard("thread", state, dispatch);
+      return;
+    case "clip.message-id":
+      copyIdToClipboard("message", state, dispatch);
       return;
     default:
       return;
@@ -886,6 +1001,214 @@ function runHealthCheck(dispatch: (a: Action) => void) {
       dispatch({
         type: "SET_ERROR",
         payload: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
+// `halfPageStep` / `pageStep` derive their magnitude from the terminal
+// height, falling back to fixed sizes when the rows are unknown. List panes
+// take up roughly the full screen height, so `rows - 4` (status bar + help
+// bar + border) is a good page estimate. The actual cursor delta gets
+// clamped against the list bounds inside the reducer.
+function halfPageStep(): number {
+  const rows = process.stdout.rows || 24;
+  return Math.max(1, Math.floor((rows - 4) / 2));
+}
+function pageStep(): number {
+  const rows = process.stdout.rows || 24;
+  return Math.max(1, rows - 4);
+}
+
+function gotoFolder(
+  folder: string,
+  state: import("./reducer.js").AppState,
+  dispatch: (a: Action) => void,
+) {
+  // Gmail system label ids — pinned constants so we don't depend on the
+  // labels manifest being already loaded when the binding fires.
+  const labelId =
+    folder === "inbox"
+      ? "INBOX"
+      : folder === "sent"
+        ? "SENT"
+        : folder === "drafts"
+          ? "DRAFT"
+          : folder === "trash"
+            ? "TRASH"
+            : folder === "starred"
+              ? "STARRED"
+              : folder === "important"
+                ? "IMPORTANT"
+                : null;
+  if (!labelId) {
+    dispatch({ type: "SET_STATUS", payload: `Unknown folder: ${folder}` });
+    return;
+  }
+  dispatch({ type: "SELECT_LABEL", payload: labelId });
+  dispatch({ type: "SET_FOCUS", payload: "threads" });
+  triggerLabelLoad(labelId, state.scope, dispatch);
+}
+
+function archiveCurrent(state: import("./reducer.js").AppState, dispatch: (a: Action) => void) {
+  const msg = currentMessage(state);
+  if (!msg) {
+    dispatch({ type: "SET_STATUS", payload: "No message selected." });
+    return;
+  }
+  (async () => {
+    try {
+      await gmail.modifyEmail({ messageId: msg.messageId, removeLabelIds: ["INBOX"] });
+      dispatch({ type: "SET_STATUS", payload: "Archived." });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
+function archiveThread(state: import("./reducer.js").AppState, dispatch: (a: Action) => void) {
+  // Prefer the currently-open thread id; falls back to the message-level
+  // threadId when the open thread isn't loaded (rare).
+  const threadId = state.thread?.threadId ?? currentMessage(state)?.threadId ?? null;
+  if (!threadId) {
+    dispatch({ type: "SET_STATUS", payload: "No thread selected." });
+    return;
+  }
+  (async () => {
+    try {
+      await gmail.modifyThread({ threadId, removeLabelIds: ["INBOX"] });
+      dispatch({ type: "SET_STATUS", payload: "Thread archived." });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
+function markSpam(state: import("./reducer.js").AppState, dispatch: (a: Action) => void) {
+  const msg = currentMessage(state);
+  if (!msg) {
+    dispatch({ type: "SET_STATUS", payload: "No message selected." });
+    return;
+  }
+  (async () => {
+    try {
+      // Gmail's "move to spam" is `addLabelIds: SPAM` + remove INBOX.
+      await gmail.modifyEmail({
+        messageId: msg.messageId,
+        addLabelIds: ["SPAM"],
+        removeLabelIds: ["INBOX"],
+      });
+      dispatch({ type: "SET_STATUS", payload: "Marked as spam." });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
+function requestForward(state: import("./reducer.js").AppState, dispatch: (a: Action) => void) {
+  const msg = currentMessage(state);
+  if (!msg) {
+    dispatch({ type: "SET_STATUS", payload: "Open a thread before forwarding." });
+    return;
+  }
+  const quoted = quoteReplyBody(msg.from, msg.date, msg.body);
+  const subject = msg.subject.startsWith("Fwd:") ? msg.subject : `Fwd: ${msg.subject}`;
+  // Forward is structurally a fresh compose (no auto-recipient) but seeded
+  // with the original subject + quoted body. User fills To: in the editor.
+  const template = buildComposeTemplate({ subject, body: quoted });
+  dispatch({
+    type: "REQUEST_EDITOR",
+    payload: { kind: "compose", initialContent: template },
+  });
+}
+
+function runLabelMutation(
+  labelName: string,
+  mode: "add" | "remove",
+  state: import("./reducer.js").AppState,
+  dispatch: (a: Action) => void,
+) {
+  const msg = currentMessage(state);
+  if (!msg) {
+    dispatch({ type: "SET_STATUS", payload: "No message selected." });
+    return;
+  }
+  (async () => {
+    try {
+      if (mode === "add") {
+        // `get_or_create_label` returns the existing label or makes one.
+        const label = await gmail.getOrCreateLabel(labelName);
+        await gmail.modifyEmail({ messageId: msg.messageId, addLabelIds: [label.id] });
+        dispatch({
+          type: "SET_STATUS",
+          payload: `Added label "${label.name}".`,
+        });
+      } else {
+        // Resolve the existing label id by name; can't remove a label that
+        // doesn't exist, so surface a status if it's not found.
+        const target = state.labels?.user.find((l) => l.name === labelName);
+        if (!target) {
+          dispatch({ type: "SET_STATUS", payload: `Label not found: ${labelName}` });
+          return;
+        }
+        await gmail.modifyEmail({ messageId: msg.messageId, removeLabelIds: [target.id] });
+        dispatch({ type: "SET_STATUS", payload: `Removed label "${labelName}".` });
+      }
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
+function copyIdToClipboard(
+  kind: "thread" | "message",
+  state: import("./reducer.js").AppState,
+  dispatch: (a: Action) => void,
+) {
+  const msg = currentMessage(state);
+  const id = kind === "thread" ? (state.thread?.threadId ?? msg?.threadId) : msg?.messageId;
+  if (!id) {
+    dispatch({ type: "SET_STATUS", payload: `No ${kind} selected.` });
+    return;
+  }
+  (async () => {
+    try {
+      const { spawn } = await import("node:child_process");
+      // darwin-only — gracefully degrade elsewhere with a status message
+      // instead of throwing into the unhandled-rejection path.
+      if (process.platform !== "darwin") {
+        dispatch({
+          type: "SET_STATUS",
+          payload: `Clipboard not available on ${process.platform}; ${kind}Id: ${id}`,
+        });
+        return;
+      }
+      const child = spawn("pbcopy", [], { stdio: ["pipe", "ignore", "ignore"] });
+      child.stdin.write(id);
+      child.stdin.end();
+      child.on("exit", (code) => {
+        if (code === 0) {
+          dispatch({ type: "SET_STATUS", payload: `Copied ${kind}Id: ${id}` });
+        } else {
+          dispatch({ type: "SET_STATUS", payload: `pbcopy exited ${code}; ${kind}Id: ${id}` });
+        }
+      });
+    } catch (err) {
+      dispatch({
+        type: "SET_STATUS",
+        payload: `Clipboard error (${kind}Id: ${id}): ${err instanceof Error ? err.message : String(err)}`,
       });
     }
   })();

@@ -40,7 +40,8 @@ export type Overlay =
   | { kind: "search"; text: string }
   | { kind: "confirm"; prompt: string; pendingCmd: string }
   | { kind: "theme"; cursor: number }
-  | { kind: "account"; cursor: number; selectedIds?: string[] };
+  | { kind: "account"; cursor: number; selectedIds?: string[] }
+  | { kind: "label"; mode: "add" | "remove"; text: string };
 
 export interface AppState {
   mode: Mode;
@@ -57,6 +58,10 @@ export interface AppState {
   messageCursor: number;
   // Modal / overlay state
   showHelp: boolean;
+  /** Fuzzysort filter typed into the help modal. Empty = unfiltered grid. */
+  helpFilter: string;
+  /** Cursor row within the filtered hit list (used only when filter is non-empty). */
+  helpCursor: number;
   showStats: boolean;
   overlay: Overlay;
   // Active account chip + cached list for the switcher overlay
@@ -95,6 +100,8 @@ export const initialState: AppState = {
   thread: null,
   messageCursor: 0,
   showHelp: false,
+  helpFilter: "",
+  helpCursor: 0,
   showStats: false,
   overlay: { kind: "none" },
   account: null,
@@ -127,6 +134,11 @@ export type Action =
   | { type: "CURSOR_UP" }
   | { type: "CURSOR_TOP" }
   | { type: "CURSOR_BOTTOM" }
+  /** Generic cursor delta — used by half-page / page / [ / ] motions where
+      the magnitude is computed in App.tsx from the live terminal height. */
+  | { type: "CURSOR_MOVE"; payload: number }
+  /** Snap cursor to the middle of the current list — vim H/M/L's `M`. */
+  | { type: "CURSOR_MIDDLE" }
   | { type: "SELECT_LABEL"; payload: string }
   | { type: "OPEN_THREAD" }
   | { type: "CLOSE_PANE" }
@@ -139,7 +151,12 @@ export type Action =
   | { type: "OVERLAY_INPUT"; payload: string }
   | { type: "OVERLAY_BACKSPACE" }
   | { type: "REQUEST_EDITOR"; payload: NonNullable<AppState["pendingEditor"]> }
-  | { type: "CLEAR_EDITOR" };
+  | { type: "CLEAR_EDITOR" }
+  /** Help modal — fuzzy filter input + filtered-list cursor. */
+  | { type: "HELP_FILTER_INPUT"; payload: string }
+  | { type: "HELP_FILTER_BACKSPACE" }
+  | { type: "HELP_CURSOR_MOVE"; payload: number }
+  | { type: "HELP_RESET" };
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -216,7 +233,24 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       return state;
     case "TOGGLE_HELP":
-      return { ...state, showHelp: !state.showHelp };
+      // Closing help resets the filter + cursor so the next open is fresh.
+      return state.showHelp
+        ? { ...state, showHelp: false, helpFilter: "", helpCursor: 0 }
+        : { ...state, showHelp: true };
+    case "HELP_FILTER_INPUT":
+      return { ...state, helpFilter: state.helpFilter + action.payload, helpCursor: 0 };
+    case "HELP_FILTER_BACKSPACE":
+      return {
+        ...state,
+        helpFilter: state.helpFilter.slice(0, -1),
+        helpCursor: 0,
+      };
+    case "HELP_CURSOR_MOVE":
+      // App.tsx clamps the cursor against the current filtered hit count
+      // before dispatching this — the reducer just records the new value.
+      return { ...state, helpCursor: Math.max(0, state.helpCursor + action.payload) };
+    case "HELP_RESET":
+      return { ...state, helpFilter: "", helpCursor: 0 };
     case "QUIT":
       return { ...state, quit: true };
     case "APPEND_KEY":
@@ -226,19 +260,27 @@ export function reducer(state: AppState, action: Action): AppState {
     case "SET_THEME":
       return { ...state, themeName: action.payload };
     case "OPEN_OVERLAY":
-      // Search / command both enter insert mode. Confirm / theme stay in normal.
+      // Text-input overlays flip to insert mode so chars go into the buffer
+      // instead of triggering normal-mode bindings. Confirm / theme / account
+      // stay in normal — they have their own modal-aware input branches.
       return {
         ...state,
         overlay: action.payload,
         mode:
-          action.payload.kind === "command" || action.payload.kind === "search"
+          action.payload.kind === "command" ||
+          action.payload.kind === "search" ||
+          action.payload.kind === "label"
             ? "insert"
             : state.mode,
       };
     case "CLOSE_OVERLAY":
       return { ...state, overlay: { kind: "none" }, mode: "normal" };
     case "OVERLAY_INPUT":
-      if (state.overlay.kind === "command" || state.overlay.kind === "search") {
+      if (
+        state.overlay.kind === "command" ||
+        state.overlay.kind === "search" ||
+        state.overlay.kind === "label"
+      ) {
         return {
           ...state,
           overlay: { ...state.overlay, text: state.overlay.text + action.payload },
@@ -247,7 +289,9 @@ export function reducer(state: AppState, action: Action): AppState {
       return state;
     case "OVERLAY_BACKSPACE":
       if (
-        (state.overlay.kind === "command" || state.overlay.kind === "search") &&
+        (state.overlay.kind === "command" ||
+          state.overlay.kind === "search" ||
+          state.overlay.kind === "label") &&
         state.overlay.text.length > 0
       ) {
         return {
@@ -264,6 +308,10 @@ export function reducer(state: AppState, action: Action): AppState {
       if (state.overlay.kind === "theme") return overlayThemeCursor(state, -1);
       if (state.overlay.kind === "account") return overlayAccountCursor(state, -1);
       return moveCursor(state, -1);
+    case "CURSOR_MOVE":
+      return moveCursor(state, action.payload);
+    case "CURSOR_MIDDLE":
+      return setCursorAbs(state, "middle");
     case "REQUEST_EDITOR":
       return { ...state, pendingEditor: action.payload };
     case "CLEAR_EDITOR":
@@ -292,21 +340,24 @@ function moveCursor(state: AppState, delta: number): AppState {
   return state;
 }
 
-function setCursorAbs(state: AppState, pos: number | "end"): AppState {
+function setCursorAbs(state: AppState, pos: number | "end" | "middle"): AppState {
+  const resolve = (items: number) =>
+    pos === "end"
+      ? Math.max(0, items - 1)
+      : pos === "middle"
+        ? Math.floor(Math.max(0, items - 1) / 2)
+        : clamp(pos, 0, Math.max(0, items - 1));
   if (state.focus === "sidebar") {
     const items = (state.labels?.system.length ?? 0) + (state.labels?.user.length ?? 0);
-    const next = pos === "end" ? Math.max(0, items - 1) : clamp(pos, 0, Math.max(0, items - 1));
-    return { ...state, labelCursor: next };
+    return { ...state, labelCursor: resolve(items) };
   }
   if (state.focus === "threads") {
     const items = state.threads?.threads.length ?? 0;
-    const next = pos === "end" ? Math.max(0, items - 1) : clamp(pos, 0, Math.max(0, items - 1));
-    return { ...state, threadCursor: next };
+    return { ...state, threadCursor: resolve(items) };
   }
   if (state.focus === "message") {
     const items = state.thread?.messages.length ?? 0;
-    const next = pos === "end" ? Math.max(0, items - 1) : clamp(pos, 0, Math.max(0, items - 1));
-    return { ...state, messageCursor: next };
+    return { ...state, messageCursor: resolve(items) };
   }
   return state;
 }
