@@ -8,14 +8,17 @@ interface Props {
   theme: Theme;
 }
 
-// Context-sensitive footer. For Session 1 we just surface the most-used keys.
+// Context-sensitive footer. The drill ladder mirrors the keymap registry —
+// each focus exposes the bindings most useful at that depth.
 function HelpBarImpl({ focus, theme }: Props) {
   const hints =
-    focus === "message"
-      ? "[j/k] msg  [q] back  [r] reply  [R] reply-all  [?] help  [Q] quit"
-      : focus === "threads"
-        ? "[j/k] navigate  [Enter] open  [/] search  [:] command  [?] help  [Q] quit"
-        : "[j/k] label  [Enter] select  [Tab] focus next  [?] help  [Q] quit";
+    focus === "view"
+      ? "[h/Esc] back to messages  [r] reply  [R] reply-all  [a] archive  [y] copy id  [?] help"
+      : focus === "message"
+        ? "[j/k] msg  [l/Enter] open  [h/q] back to threads  [r] reply  [?] help"
+        : focus === "threads"
+          ? "[j/k] navigate  [l/Enter] open  [/] search  [:] command  [?] help  [Q] quit"
+          : "[j/k] label  [l/Enter] select  [Tab] focus next  [?] help  [Q] quit";
   void defaultBindings;
   return (
     <Box paddingX={1}>

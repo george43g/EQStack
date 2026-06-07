@@ -11,7 +11,11 @@ import type {
 } from "../tools.js";
 
 export type Mode = "normal" | "insert" | "command";
-export type Pane = "sidebar" | "threads" | "message";
+// Drill-down focus order (left → right): each step right (`l` / `pane.open`)
+// drills into the selected item; each step left (`h` / `pane.close`) returns
+// to the previous level. `message` is the compact list of messages within
+// the open thread (yazi-style); `view` is the full-body single message.
+export type Pane = "sidebar" | "threads" | "message" | "view";
 
 export type LabelList = z.infer<typeof ListEmailLabelsOutputSchema>;
 type BaseThreadList = z.infer<typeof ListInboxThreadsOutputSchema>;
@@ -213,10 +217,18 @@ export function reducer(state: AppState, action: Action): AppState {
     case "CURSOR_BOTTOM":
       return setCursorAbs(state, "end");
     case "SELECT_LABEL":
+      // Clear the previous label's thread list AND any open thread — without
+      // this, the auto-open-first-thread useEffect can race the label load
+      // and re-fetch (then SET_THREAD) the previous label's first thread,
+      // which flips focus back to message and shows stale content under a
+      // new label name.
       return {
         ...state,
         selectedLabelId: action.payload,
         threadCursor: 0,
+        threads: null,
+        thread: null,
+        messageCursor: 0,
         loading: true,
         status: "Loading…",
       };
@@ -224,7 +236,11 @@ export function reducer(state: AppState, action: Action): AppState {
       // Triggers an async fetch in App; reducer only flips focus + loading.
       return { ...state, loading: true, status: "Opening thread…" };
     case "CLOSE_PANE":
-      // From message → threads; from threads → sidebar. Final close in App.
+      // Drill-down inverse: view → message → threads → sidebar. Last step
+      // discards the loaded thread so re-opening fetches fresh state.
+      if (state.focus === "view") {
+        return { ...state, focus: "message" };
+      }
       if (state.focus === "message") {
         return { ...state, focus: "threads", thread: null };
       }
@@ -332,7 +348,10 @@ function moveCursor(state: AppState, delta: number): AppState {
     const next = clamp(state.threadCursor + delta, 0, Math.max(0, items - 1));
     return { ...state, threadCursor: next };
   }
-  if (state.focus === "message") {
+  if (state.focus === "message" || state.focus === "view") {
+    // `view` shares the message cursor — j/k in the single-message view
+    // pages between messages in the open thread, keeping the right pane in
+    // sync with the compact list to the left.
     const items = state.thread?.messages.length ?? 0;
     const next = clamp(state.messageCursor + delta, 0, Math.max(0, items - 1));
     return { ...state, messageCursor: next };
@@ -355,7 +374,7 @@ function setCursorAbs(state: AppState, pos: number | "end" | "middle"): AppState
     const items = state.threads?.threads.length ?? 0;
     return { ...state, threadCursor: resolve(items) };
   }
-  if (state.focus === "message") {
+  if (state.focus === "message" || state.focus === "view") {
     const items = state.thread?.messages.length ?? 0;
     return { ...state, messageCursor: resolve(items) };
   }

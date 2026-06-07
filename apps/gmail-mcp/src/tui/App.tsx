@@ -11,7 +11,8 @@ import { DevStatsModal } from "./components/DevStatsModal.js";
 import { HelpBar } from "./components/HelpBar.js";
 import { HelpModal } from "./components/HelpModal.js";
 import { LabelOverlay } from "./components/LabelOverlay.js";
-import { MessagePane } from "./components/MessagePane.js";
+import { MessageDetailPane } from "./components/MessageDetailPane.js";
+import { MessageListPane } from "./components/MessageListPane.js";
 import { SearchBar } from "./components/SearchBar.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { StatusBar } from "./components/StatusBar.js";
@@ -427,7 +428,10 @@ export function App({ initialTheme, config }: Props) {
           {state.showStats ? <DevStatsModal stats={stats} theme={theme} /> : null}
         </>
       ) : (
-        // Main 3-pane row
+        // Drill-down panes: Sidebar (always) | ThreadList | MessageListPane
+        // | MessageDetailPane. The two right-most appear progressively as
+        // the user drills via `l` / Enter (focus advances threads → message
+        // → view) and collapse with `h`.
         <Box flexDirection="row" flexGrow={1}>
           <Sidebar
             labels={state.labels}
@@ -436,14 +440,9 @@ export function App({ initialTheme, config }: Props) {
             selectedLabelId={state.selectedLabelId}
             theme={theme}
           />
-          {state.focus === "message" && state.thread ? (
-            <MessagePane
-              thread={state.thread}
-              cursor={state.messageCursor}
-              focused={state.focus === "message"}
-              theme={theme}
-            />
-          ) : (
+          {/* ThreadList is hidden once the user drills into a single message
+              view — frees the horizontal space for the body. */}
+          {state.focus !== "view" ? (
             <ThreadList
               threads={state.threads}
               cursor={state.threadCursor}
@@ -451,7 +450,28 @@ export function App({ initialTheme, config }: Props) {
               theme={theme}
               title={labelTitle(state)}
             />
-          )}
+          ) : null}
+          {state.thread ? (
+            <MessageListPane
+              thread={state.thread}
+              cursor={state.messageCursor}
+              focused={state.focus === "message"}
+              theme={theme}
+            />
+          ) : null}
+          {state.focus === "view" && state.thread ? (
+            // Force a remount whenever the cursor (or open thread) changes —
+            // Ink 7's diff renderer can leave cell artifacts when the pane's
+            // content shape shifts (message body lengths differ wildly),
+            // and a fresh mount guarantees a full repaint.
+            <MessageDetailPane
+              key={`view-${state.thread.threadId}-${state.messageCursor}`}
+              thread={state.thread}
+              cursor={state.messageCursor}
+              focused={true}
+              theme={theme}
+            />
+          ) : null}
         </Box>
       )}
       {state.overlay.kind === "command" ? (
@@ -682,6 +702,11 @@ function runNormalCmd(
     case "pane.open":
       if (state.focus === "threads") {
         dispatch({ type: "OPEN_THREAD" });
+      } else if (state.focus === "message") {
+        // Drill from the compact message list into the full single-message
+        // view. Cursor (messageCursor) is preserved so the right pane shows
+        // the message the user had highlighted.
+        dispatch({ type: "SET_FOCUS", payload: "view" });
       } else if (state.focus === "sidebar") {
         const items = state.labels ? [...state.labels.system, ...state.labels.user] : [];
         const label = items[state.labelCursor];
@@ -696,10 +721,19 @@ function runNormalCmd(
       dispatch({ type: "CLOSE_PANE" });
       return;
     case "pane.cycle":
+      // Tab cycles through every focusable pane in drill order.
       dispatch({
         type: "SET_FOCUS",
         payload:
-          state.focus === "sidebar" ? "threads" : state.focus === "threads" ? "message" : "sidebar",
+          state.focus === "sidebar"
+            ? "threads"
+            : state.focus === "threads"
+              ? state.thread
+                ? "message"
+                : "sidebar"
+              : state.focus === "message"
+                ? "view"
+                : "sidebar",
       });
       return;
     case "ui.help":
@@ -722,15 +756,14 @@ function runNormalCmd(
       dispatch({ type: "SET_STATUS", payload: "" });
       return;
     case "ui.preview-toggle":
-      // `z` is the vim-style "preview pane focus toggle". In our 3-pane
-      // model this means swap between the threads list and the open
-      // message; if no thread is open yet, this collapses to opening one.
-      if (state.thread) {
-        dispatch({
-          type: "SET_FOCUS",
-          payload: state.focus === "message" ? "threads" : "message",
-        });
-      } else if (state.focus === "threads") {
+      // `z` flicks between the compact message list and the full single-
+      // message view (the right-most drill panes). From the thread list,
+      // a fresh thread is opened so `z` is a one-key "jump to read".
+      if (state.focus === "view") {
+        dispatch({ type: "SET_FOCUS", payload: "message" });
+      } else if (state.focus === "message") {
+        dispatch({ type: "SET_FOCUS", payload: "view" });
+      } else if (state.focus === "threads" && !state.thread) {
         dispatch({ type: "OPEN_THREAD" });
       }
       return;
