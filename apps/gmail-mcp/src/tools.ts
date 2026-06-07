@@ -394,7 +394,18 @@ const ThreadMessageSummarySchema = z.object({
   date: z.string(),
   body: z.string(),
   labelIds: z.array(z.string()),
-  attachments: z.array(z.object({ filename: z.string(), mimeType: z.string(), size: z.number() })),
+  // `id` is the Gmail attachmentId — present whenever the message has a
+  // body.attachmentId on the part. Without this, callers had to issue a
+  // separate `read_email` per message to download attachments from a
+  // thread view (TUI and CLI both surface attachments per-message).
+  attachments: z.array(
+    z.object({
+      id: z.string().optional(),
+      filename: z.string(),
+      mimeType: z.string(),
+      size: z.number(),
+    }),
+  ),
 });
 
 export const GetThreadOutputSchema = z.object({

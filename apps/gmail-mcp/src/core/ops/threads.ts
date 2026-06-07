@@ -90,6 +90,7 @@ const getThread: Operation<unknown, GetThreadOutput> = {
         body,
         labelIds: msg.labelIds || [],
         attachments: attachments.map((a) => ({
+          id: a.id,
           filename: a.filename,
           mimeType: a.mimeType,
           size: a.size,
@@ -251,6 +252,7 @@ const getInboxWithThreads: Operation<unknown, GetInboxWithThreadsOutput> = {
             body,
             labelIds: msg.labelIds || [],
             attachments: attachments.map((a) => ({
+              id: a.id,
               filename: a.filename,
               mimeType: a.mimeType,
               size: a.size,

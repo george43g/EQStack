@@ -325,8 +325,10 @@ describe("get_inbox_with_threads handler", () => {
     expect(thread.threadId).toBe("t-full");
     expect(thread.messageCount).toBe(1);
     expect(thread.messages[0].body).toBe("expanded body");
+    // `id` is now included so callers can download attachments without
+    // re-fetching via read_email.
     expect(thread.messages[0].attachments).toEqual([
-      { filename: "report.pdf", mimeType: "application/pdf", size: 4242 },
+      { id: "att-1", filename: "report.pdf", mimeType: "application/pdf", size: 4242 },
     ]);
   });
 });
@@ -414,11 +416,13 @@ describe("collectAttachmentMeta (exercised via get_thread)", () => {
     expect(msg.attachments).toHaveLength(2);
     // Walk order is depth-first: nested first, then sibling top-level.
     expect(msg.attachments[0]).toEqual({
+      id: "att-deep",
       filename: "attachment-att-deep",
       mimeType: "application/octet-stream", // default fallback for empty mimeType
       size: 0,
     });
     expect(msg.attachments[1]).toEqual({
+      id: expect.any(String),
       filename: "top.bin",
       mimeType: "application/octet-stream",
       size: 7,
