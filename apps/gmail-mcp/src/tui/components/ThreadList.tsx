@@ -37,16 +37,18 @@ function ThreadListImpl({ threads, cursor, focused, theme, title }: Props) {
             "accountId" in t && t.accountId
               ? `[${t.accountId}${t.emailAddress ? ` ${t.emailAddress}` : ""}] `
               : "";
-          const subject = truncate(`${account}${t.latestMessage.subject || "(no subject)"}`, 60);
+          const subject = `${account}${t.latestMessage.subject || "(no subject)"}`;
           const dateStr = relativeDate(t.latestMessage.date);
           const indicator = t.messageCount > 1 ? `(${t.messageCount})` : "";
-          // Pad to a generous fixed total width so every cell inside the
-          // visible pane receives a write — `wrap="truncate"` clips back to
-          // the actual pane width. Without padding, Ink 7's diff renderer
-          // leaves prior-frame characters in unwritten cells (the same
-          // bleed bug the MessageDetailPane Row primitive defends against).
+          // Selected rows lead with an arrow marker so the focused row is
+          // unmistakable even on monochrome terminals or muted themes.
+          // Two-line rows would land more snippet preview but Ink 7's
+          // flex layout drops sibling text rows when the column is
+          // overfilled, so we hold at one row per thread; a scroll
+          // window + dense rows is a follow-up.
+          const cursorMark = selected ? "❯" : " ";
+          const raw = `${cursorMark} ${dateStr.padEnd(8)} ${from.padEnd(22)} ${subject} ${indicator}`;
           const ROW_TARGET = 120;
-          const raw = `${dateStr.padEnd(8)} ${from.padEnd(22)} ${subject} ${indicator}`;
           const padded = raw.padEnd(ROW_TARGET);
           return (
             <Text

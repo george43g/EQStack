@@ -135,7 +135,7 @@ function MessageDetailPaneImpl({ thread, cursor, focused, theme, bodyScroll }: P
         // pass `startIndex` so keys reflect the absolute line position
         // even when the user has scrolled — otherwise keys collide as
         // scroll moves a different slice of lines into the visible window.
-        bodyLineRows(msg.messageId, bodyLines, theme, paneInner, clampedScroll)
+        bodyLineRows(msg.messageId, bodyLines, theme, paneInner, clampedScroll, allBodyLines)
       )}
       {/* Attachments */}
       {msg.attachments.length > 0 ? (
@@ -182,19 +182,51 @@ function Row({
   );
 }
 
+// Quoted reply detection — RFC 5322 plain-text reply convention. Three
+// signals, evaluated left-to-right per line:
+//  1. Lines starting with one or more `>` (with optional whitespace) are
+//     literal quoted text — render dim.
+//  2. The "On <date>, <name> wrote:" boundary that delimits the
+//     forwarded/quoted block — render dim AND set quote mode for every
+//     subsequent line in the message (most clients quote-prefix, but
+//     iPhone Mail and a handful of others leave the quote unprefixed).
+//  3. Signature delimiters (`-- ` per RFC) and standalone "Sent from my
+//     iPhone" lines — dim but don't trip quote mode.
+function isQuoteMarker(line: string): boolean {
+  if (/^\s*>/.test(line)) return true;
+  if (/^On\s.+wrote:\s*$/.test(line)) return true;
+  return false;
+}
+function isQuoteBoundary(line: string): boolean {
+  return /^On\s.+wrote:\s*$/.test(line);
+}
+function isSignatureMarker(line: string): boolean {
+  if (/^--\s*$/.test(line)) return true;
+  if (/^Sent from my (iPhone|iPad|Android|Galaxy)/i.test(line)) return true;
+  return false;
+}
+
 function bodyLineRows(
   messageId: string,
   lines: string[],
   theme: Theme,
   width: number,
   startIndex: number,
+  allLines: string[],
 ): React.ReactNode {
-  // Absolute line index → key. Stable across scroll positions so React
-  // doesn't reshuffle DOM/Ink nodes when the user pages through the body.
+  // Compute the quote-mode prefix up to startIndex so the boundary
+  // detected on a line above the viewport still dims the visible lines.
+  let inQuote = false;
+  for (let i = 0; i < startIndex && i < allLines.length; i++) {
+    if (isQuoteBoundary(allLines[i])) inQuote = true;
+  }
   return lines.map((line, i) => {
     const key = `${messageId}:line-${startIndex + i}`;
+    // Update mode for THIS line first (the boundary line itself is dim).
+    if (isQuoteBoundary(line)) inQuote = true;
+    const dim = inQuote || isQuoteMarker(line) || isSignatureMarker(line);
     return (
-      <Row key={key} theme={theme} color={theme.fg} width={width}>
+      <Row key={key} theme={theme} color={dim ? theme.dim : theme.fg} width={width}>
         {line || " "}
       </Row>
     );
