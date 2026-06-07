@@ -24,6 +24,7 @@ import { accountScopedCacheKey, defaultCacheBytes, LruCache } from "./hooks/useC
 import { useDevStats } from "./hooks/useDevStats.js";
 import { createEditorOpener, resolveEditor } from "./hooks/useEditor.js";
 import * as gmail from "./hooks/useGmail.js";
+import { detectImageTerminal, openImagePreview } from "./hooks/useImagePreview.js";
 import { resolveKey } from "./keymap.js";
 import { type Action, initialState, reducer } from "./reducer.js";
 import { listThemeNames, loadTheme, type Theme } from "./themes/index.js";
@@ -443,7 +444,7 @@ export function App({ initialTheme, config }: Props) {
     if (state.keyBuffer) dispatch({ type: "CLEAR_KEY_BUFFER" });
     if (!cmd) return;
 
-    runNormalCmd(cmd, state, dispatch);
+    runNormalCmd(cmd, state, dispatch, setRawMode);
   });
 
   const accountChip = tuiScopeLabel(state.scope, state.account?.id ?? null);
@@ -718,6 +719,7 @@ function runNormalCmd(
   cmd: string,
   state: import("./reducer.js").AppState,
   dispatch: (a: Action) => void,
+  setRawMode?: (mode: boolean) => void,
 ) {
   switch (cmd) {
     case "app.quit":
@@ -920,7 +922,7 @@ function runNormalCmd(
       return;
     case "attach.preview":
       if (!ensureSingleScope(state, dispatch)) return;
-      previewFirstImage(state, dispatch);
+      previewFirstImage(state, dispatch, setRawMode);
       return;
     default:
       return;
@@ -1383,7 +1385,11 @@ function downloadAttachments(
 // names the downloaded file path so the user can open it manually. Inline
 // terminal-protocol image rendering (kitty/iTerm2/Ghostty) is a future
 // upgrade — requires Ink stdout suspension, similar to the editor hook.
-function previewFirstImage(state: import("./reducer.js").AppState, dispatch: (a: Action) => void) {
+function previewFirstImage(
+  state: import("./reducer.js").AppState,
+  dispatch: (a: Action) => void,
+  setRawMode?: (mode: boolean) => void,
+) {
   const msg = currentMessage(state);
   if (!msg) {
     dispatch({ type: "SET_STATUS", payload: "No message selected." });
@@ -1407,6 +1413,20 @@ function previewFirstImage(state: import("./reducer.js").AppState, dispatch: (a:
         filename: image.filename,
         savePath,
       });
+      // Prefer inline terminal preview when the host supports a graphics
+      // protocol (iTerm2 / kitty / Ghostty / WezTerm). Otherwise fall back to
+      // the macOS `open` command so the user still sees the image without
+      // leaving the workflow.
+      if (detectImageTerminal()) {
+        const previewResult = await openImagePreview({
+          imagePath: result.path,
+          setRawMode,
+        });
+        if (previewResult === "shown") {
+          dispatch({ type: "SET_STATUS", payload: `Previewed ${result.path}` });
+          return;
+        }
+      }
       if (process.platform === "darwin") {
         const { spawn } = await import("node:child_process");
         spawn("open", [result.path], { detached: true, stdio: "ignore" }).unref();
