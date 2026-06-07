@@ -45,6 +45,10 @@ export function App({ initialTheme, config }: Props) {
   const { exit } = useApp();
   const { setRawMode } = useStdin();
   const fetchingThread = useRef<string | null>(null);
+  // Pagination guard: tracks the pageToken currently being fetched in the
+  // background. Prevents double-fetching the same page when the effect
+  // re-runs as state changes during the in-flight request.
+  const lazyFetchingPageToken = useRef<string | null>(null);
   const openEditorRef = useRef(createEditorOpener(setRawMode));
   const threadCacheRef = useRef(
     new LruCache<gmail.ScopedThreadView>(config.cacheMB * 1024 * 1024 || defaultCacheBytes()),
@@ -197,6 +201,65 @@ export function App({ initialTheme, config }: Props) {
       abort.abort();
     };
   }, [state.focus, state.loading, state.threadCursor, state.threads, state.scope, state.account]);
+
+  // Lazy-load next page when the thread cursor approaches the end of the
+  // loaded list AND Gmail handed us a nextPageToken. Single-account scopes
+  // only — cross-account pagination would interleave inboxes unpredictably.
+  //
+  // Guard via a ref keyed by pageToken so re-renders during the in-flight
+  // fetch (caused by the SET_LOADING_MORE dispatch we make ourselves) do
+  // not start a parallel fetch. NO abort controller is used here — once
+  // a page fetch starts, it always runs to completion; the result lands
+  // in whatever the active state is at that point. Account switches still
+  // need to be handled cleanly: when scope changes, threads is reset to
+  // null by the SET_SCOPE reducer, so the late-arriving APPEND_THREADS
+  // would just no-op via the "APPEND with no base" branch.
+  useEffect(() => {
+    if (state.scope.kind !== "single") return;
+    if (state.loading) return;
+    const list = state.threads;
+    if (!list || !list.nextPageToken) return;
+    const total = list.threads.length;
+    if (total === 0) return;
+    // Trigger fetch when the user is within the last 10 items of the loaded
+    // window. With a 50-thread page this means a fetch fires once the user
+    // is browsing #40 — leaves headroom so the next page is usually ready
+    // before the user gets to the bottom.
+    const LAZY_TRIGGER_DISTANCE = 10;
+    if (state.threadCursor < total - LAZY_TRIGGER_DISTANCE) return;
+    const token = list.nextPageToken;
+    if (lazyFetchingPageToken.current === token) return;
+    lazyFetchingPageToken.current = token;
+    dispatch({ type: "SET_LOADING_MORE", payload: true });
+    const initialResultSizeEstimate = list.resultSizeEstimate;
+    (async () => {
+      try {
+        const next = await gmail.listInboxThreadsForScope(state.scope, {
+          query: state.lastThreadsQuery,
+          maxResults: 50,
+          pageToken: token,
+        });
+        dispatch({ type: "APPEND_THREADS", payload: next });
+        const merged = total + next.threads.length;
+        const more = next.nextPageToken
+          ? initialResultSizeEstimate
+            ? ` · ~${initialResultSizeEstimate} estimated`
+            : " · more available"
+          : "";
+        dispatch({ type: "SET_STATUS", payload: `${merged} threads${more}` });
+      } catch (err) {
+        dispatch({ type: "SET_LOADING_MORE", payload: false });
+        dispatch({
+          type: "SET_ERROR",
+          payload: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        if (lazyFetchingPageToken.current === token) {
+          lazyFetchingPageToken.current = null;
+        }
+      }
+    })();
+  }, [state.threadCursor, state.threads, state.loading, state.scope, state.lastThreadsQuery]);
 
   // Editor suspension — runs whenever pendingEditor flips on.
   useEffect(() => {
@@ -570,9 +633,16 @@ function HelpOverlay({ theme, filter, cursor }: { theme: Theme; filter: string; 
 
 function labelTitle(state: {
   selectedLabelId: string;
-  threads: { resultCount: number } | null;
+  threads: {
+    resultCount: number;
+    nextPageToken?: string;
+    resultSizeEstimate?: number;
+  } | null;
+  loadingMore: boolean;
 }): string {
   const count = state.threads?.resultCount ?? 0;
+  const estimate = state.threads?.resultSizeEstimate;
+  const more = state.threads?.nextPageToken;
   const niceName =
     state.selectedLabelId === "INBOX"
       ? "Inbox"
@@ -583,7 +653,12 @@ function labelTitle(state: {
           : state.selectedLabelId === "DRAFT"
             ? "Drafts"
             : state.selectedLabelId;
-  return `${niceName}  (${count})`;
+  const suffix = state.loadingMore
+    ? " · loading…"
+    : more && estimate && estimate > count
+      ? ` / ~${estimate}`
+      : "";
+  return `${niceName}  (${count}${suffix})`;
 }
 
 function tuiScopeLabel(
@@ -607,11 +682,29 @@ async function reloadScope(
   ]);
   dispatch({ type: "SET_LABELS", payload: labels });
   dispatch({ type: "SET_THREADS", payload: threads });
+  dispatch({ type: "SET_LAST_THREADS_QUERY", payload: query });
   if (accounts) {
     dispatch({ type: "SET_ACCOUNT", payload: accounts.active });
     dispatch({ type: "SET_ACCOUNT_LIST", payload: accounts });
   }
-  dispatch({ type: "SET_STATUS", payload: `${threads.resultCount} threads` });
+  dispatch({ type: "SET_STATUS", payload: formatThreadCountStatus(threads) });
+}
+
+// Status-bar text: "50 threads · 350 estimated" if pagination's still open,
+// just "50 threads" otherwise.
+function formatThreadCountStatus(threads: {
+  resultCount: number;
+  nextPageToken?: string;
+  resultSizeEstimate?: number;
+}): string {
+  if (
+    threads.nextPageToken &&
+    threads.resultSizeEstimate &&
+    threads.resultSizeEstimate > threads.resultCount
+  ) {
+    return `${threads.resultCount} threads · ~${threads.resultSizeEstimate} estimated`;
+  }
+  return `${threads.resultCount} threads`;
 }
 
 function triggerLabelLoad(
@@ -624,7 +717,8 @@ function triggerLabelLoad(
     try {
       const threads = await gmail.listInboxThreadsForScope(scope, { query, maxResults: 50 });
       dispatch({ type: "SET_THREADS", payload: threads });
-      dispatch({ type: "SET_STATUS", payload: `${threads.resultCount} threads` });
+      dispatch({ type: "SET_LAST_THREADS_QUERY", payload: query });
+      dispatch({ type: "SET_STATUS", payload: formatThreadCountStatus(threads) });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       dispatch({ type: "SET_ERROR", payload: msg });
@@ -643,7 +737,16 @@ function runSearch(
     try {
       const threads = await gmail.listInboxThreadsForScope(scope, { query, maxResults: 50 });
       dispatch({ type: "SET_THREADS", payload: threads });
-      dispatch({ type: "SET_STATUS", payload: `${threads.resultCount} matches` });
+      dispatch({ type: "SET_LAST_THREADS_QUERY", payload: query });
+      dispatch({
+        type: "SET_STATUS",
+        payload:
+          threads.nextPageToken &&
+          threads.resultSizeEstimate &&
+          threads.resultSizeEstimate > threads.resultCount
+            ? `${threads.resultCount} matches · ~${threads.resultSizeEstimate} estimated`
+            : `${threads.resultCount} matches`,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       dispatch({ type: "SET_ERROR", payload: msg });

@@ -57,6 +57,17 @@ export interface AppState {
   // Thread list pane
   threads: ThreadList | null;
   threadCursor: number;
+  /** Background-fetch state for paginated thread lists. The TUI loads one
+      page (~50 threads) by default; when the cursor approaches the end
+      AND nextPageToken is non-null, the next page is fetched and the
+      result is appended via APPEND_THREADS. `loadingMore` guards against
+      reentry. `resultSizeEstimate` is Gmail's server-side count for the
+      query — surfaced in the title as "X / ~Y" so the user can see they
+      haven't seen everything yet. */
+  loadingMore: boolean;
+  /** Last query used to fetch threads — needed so APPEND_NEXT_PAGE can
+      re-use it when fetching the next page. */
+  lastThreadsQuery: string;
   // Message reader pane
   thread: ThreadView | null;
   messageCursor: number;
@@ -119,6 +130,8 @@ export const initialState: AppState = {
   themeName: "default",
   status: "Loading inbox…",
   loading: true,
+  loadingMore: false,
+  lastThreadsQuery: "in:inbox",
   error: null,
   quit: false,
   keyBuffer: "",
@@ -128,6 +141,11 @@ export const initialState: AppState = {
 export type Action =
   | { type: "SET_LABELS"; payload: LabelList }
   | { type: "SET_THREADS"; payload: ThreadList }
+  /** Append a fetched-on-scroll next page onto the existing threads list,
+      replacing nextPageToken and updating resultSizeEstimate. */
+  | { type: "APPEND_THREADS"; payload: ThreadList }
+  | { type: "SET_LOADING_MORE"; payload: boolean }
+  | { type: "SET_LAST_THREADS_QUERY"; payload: string }
   | { type: "SET_THREAD"; payload: ThreadView }
   | { type: "SET_ACCOUNT"; payload: AccountList["active"] | null }
   | { type: "SET_ACCOUNT_LIST"; payload: AccountList | null }
@@ -188,7 +206,30 @@ export function reducer(state: AppState, action: Action): AppState {
         threads: action.payload,
         threadCursor: 0,
         loading: false,
+        loadingMore: false,
       };
+    case "APPEND_THREADS": {
+      if (!state.threads) {
+        // Should not happen — APPEND assumes a base list — but be safe.
+        return {
+          ...state,
+          threads: action.payload,
+          loadingMore: false,
+        };
+      }
+      const merged: ThreadList = {
+        ...state.threads,
+        resultCount: state.threads.threads.length + action.payload.threads.length,
+        threads: [...state.threads.threads, ...action.payload.threads],
+        nextPageToken: action.payload.nextPageToken,
+        resultSizeEstimate: action.payload.resultSizeEstimate ?? state.threads.resultSizeEstimate,
+      };
+      return { ...state, threads: merged, loadingMore: false };
+    }
+    case "SET_LOADING_MORE":
+      return { ...state, loadingMore: action.payload };
+    case "SET_LAST_THREADS_QUERY":
+      return { ...state, lastThreadsQuery: action.payload };
     case "SET_THREAD":
       return {
         ...state,

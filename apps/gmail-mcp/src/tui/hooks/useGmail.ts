@@ -41,12 +41,16 @@ export function listLabels(signal?: AbortSignal): Promise<LabelList> {
 }
 
 export function listInboxThreads(
-  opts: { query?: string; maxResults?: number } = {},
+  opts: { query?: string; maxResults?: number; pageToken?: string } = {},
   signal?: AbortSignal,
 ): Promise<ThreadList> {
   return callOp<ThreadList>(
     "list_inbox_threads",
-    { query: opts.query, maxResults: opts.maxResults ?? 50 },
+    {
+      query: opts.query,
+      maxResults: opts.maxResults ?? 50,
+      ...(opts.pageToken ? { pageToken: opts.pageToken } : {}),
+    },
     signal,
   );
 }
@@ -64,7 +68,7 @@ export async function listLabelsForScope(
 
 export async function listInboxThreadsForScope(
   scope: BrowseScope,
-  opts: { query?: string; maxResults?: number } = {},
+  opts: { query?: string; maxResults?: number; pageToken?: string } = {},
   signal?: AbortSignal,
 ): Promise<ScopedThreadList> {
   if (scope.kind === "single") {
@@ -93,6 +97,10 @@ export async function listInboxThreadsForScope(
         })),
       );
     }
+    // Cross-account pagination is not supported — nextPageToken is
+    // per-account and combining them would interleave inboxes in unstable
+    // ways. The caller's UI just shows the per-account union of first
+    // pages; for deep browsing the user picks a single account.
     return { resultCount: threads.length, threads };
   });
 }

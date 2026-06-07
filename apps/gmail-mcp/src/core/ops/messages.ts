@@ -94,7 +94,7 @@ const searchEmails: Operation<unknown, SearchEmailsOutput> = {
   outputSchema: SearchEmailsOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify"],
   handler: async (input, ctx) => {
-    const args = input as { query: string; maxResults?: number };
+    const args = input as { query: string; maxResults?: number; pageToken?: string };
     await rateLimitAcquire();
     const response = await withRetry(
       () =>
@@ -102,6 +102,7 @@ const searchEmails: Operation<unknown, SearchEmailsOutput> = {
           userId: "me",
           q: args.query,
           maxResults: args.maxResults || 10,
+          ...(args.pageToken ? { pageToken: args.pageToken } : {}),
         }),
       { label: "gmail_messages_list" },
     );
@@ -125,6 +126,17 @@ const searchEmails: Operation<unknown, SearchEmailsOutput> = {
       }),
     );
 
+    const structured: SearchEmailsOutput = {
+      resultCount: results.length,
+      results,
+    };
+    if (response.data.nextPageToken) {
+      structured.nextPageToken = response.data.nextPageToken;
+    }
+    if (typeof response.data.resultSizeEstimate === "number") {
+      structured.resultSizeEstimate = response.data.resultSizeEstimate;
+    }
+
     return {
       content: [
         {
@@ -134,10 +146,7 @@ const searchEmails: Operation<unknown, SearchEmailsOutput> = {
             .join("\n"),
         },
       ],
-      structuredContent: {
-        resultCount: results.length,
-        results,
-      },
+      structuredContent: structured,
     };
   },
 };

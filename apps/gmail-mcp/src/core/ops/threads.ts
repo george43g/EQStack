@@ -116,11 +116,12 @@ const listInboxThreads: Operation<unknown, ListInboxThreadsOutput> = {
   outputSchema: ListInboxThreadsOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify"],
   handler: async (input, ctx) => {
-    const args = input as { query?: string; maxResults?: number };
+    const args = input as { query?: string; maxResults?: number; pageToken?: string };
     const threadsResponse = await ctx.gmail.users.threads.list({
       userId: "me",
       q: args.query || "in:inbox",
       maxResults: args.maxResults || 50,
+      ...(args.pageToken ? { pageToken: args.pageToken } : {}),
     });
 
     const threads = threadsResponse.data.threads || [];
@@ -152,7 +153,16 @@ const listInboxThreads: Operation<unknown, ListInboxThreadsOutput> = {
       }),
     );
 
-    const structured = { resultCount: threadDetails.length, threads: threadDetails };
+    const structured: ListInboxThreadsOutput = {
+      resultCount: threadDetails.length,
+      threads: threadDetails,
+    };
+    if (threadsResponse.data.nextPageToken) {
+      structured.nextPageToken = threadsResponse.data.nextPageToken;
+    }
+    if (typeof threadsResponse.data.resultSizeEstimate === "number") {
+      structured.resultSizeEstimate = threadsResponse.data.resultSizeEstimate;
+    }
     return {
       content: [{ type: "text", text: JSON.stringify(structured, null, 2) }],
       structuredContent: structured,

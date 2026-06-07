@@ -40,6 +40,14 @@ function ThreadListImpl({ threads, cursor, focused, theme, title }: Props) {
           const subject = truncate(`${account}${t.latestMessage.subject || "(no subject)"}`, 60);
           const dateStr = relativeDate(t.latestMessage.date);
           const indicator = t.messageCount > 1 ? `(${t.messageCount})` : "";
+          // Pad to a generous fixed total width so every cell inside the
+          // visible pane receives a write — `wrap="truncate"` clips back to
+          // the actual pane width. Without padding, Ink 7's diff renderer
+          // leaves prior-frame characters in unwritten cells (the same
+          // bleed bug the MessageDetailPane Row primitive defends against).
+          const ROW_TARGET = 120;
+          const raw = `${dateStr.padEnd(8)} ${from.padEnd(22)} ${subject} ${indicator}`;
+          const padded = raw.padEnd(ROW_TARGET);
           return (
             <Text
               key={t.threadId}
@@ -47,7 +55,7 @@ function ThreadListImpl({ threads, cursor, focused, theme, title }: Props) {
               backgroundColor={selected ? theme.selectedBg : undefined}
               wrap="truncate"
             >
-              {`${dateStr.padEnd(8)} ${from.padEnd(22)} ${subject} ${indicator}`}
+              {padded}
             </Text>
           );
         })

@@ -33,7 +33,19 @@ export const ReadEmailSchema = z.object({
 
 export const SearchEmailsSchema = z.object({
   query: z.string().describe("Gmail search query (e.g., 'from:example@gmail.com')"),
-  maxResults: z.number().optional().describe("Maximum number of results to return"),
+  maxResults: z
+    .number()
+    .int()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe(
+      "Maximum messages to return in this page (hard ceiling: 500 per Gmail API). Paginate via pageToken for more.",
+    ),
+  pageToken: z
+    .string()
+    .optional()
+    .describe("Continuation token from a prior response's nextPageToken."),
 });
 
 export const ModifyEmailSchema = z.object({
@@ -272,9 +284,18 @@ export const ListInboxThreadsSchema = z.object({
     .describe("Gmail search query (default: 'in:inbox')"),
   maxResults: z
     .number()
+    .int()
+    .min(1)
+    .max(500)
     .optional()
     .default(50)
-    .describe("Maximum number of threads to return (default: 50)"),
+    .describe(
+      "Maximum threads to return in this page (default: 50, hard ceiling: 500 per Gmail API). MCP callers: do NOT pass values close to 500 unless you genuinely need them — each thread fans out to a metadata.get RPC. Paginate via pageToken instead.",
+    ),
+  pageToken: z
+    .string()
+    .optional()
+    .describe("Continuation token from a prior response's nextPageToken. Omit for the first page."),
 });
 
 export const GetInboxWithThreadsSchema = z.object({
@@ -367,6 +388,10 @@ const SearchEmailResultSchema = z.object({
 export const SearchEmailsOutputSchema = z.object({
   resultCount: z.number(),
   results: z.array(SearchEmailResultSchema),
+  /** Continuation token; pass back as pageToken for the next page. */
+  nextPageToken: z.string().optional(),
+  /** Gmail's server-side estimate of the total result-set size. */
+  resultSizeEstimate: z.number().optional(),
 });
 
 export const ReadEmailOutputSchema = z.object({
@@ -429,6 +454,13 @@ const ThreadSummarySchema = z.object({
 export const ListInboxThreadsOutputSchema = z.object({
   resultCount: z.number(),
   threads: z.array(ThreadSummarySchema),
+  /** Gmail's nextPageToken — pass this back as pageToken to fetch the next
+      page. Absent or empty string means the result set is exhausted. */
+  nextPageToken: z.string().optional(),
+  /** Gmail's resultSizeEstimate — best-effort total count for the query
+      across all pages (server-side estimate, not exact). Used by the TUI
+      header to show "X of ~Y" before all pages have been fetched. */
+  resultSizeEstimate: z.number().optional(),
 });
 
 export const GetInboxWithThreadsOutputSchema = z.object({
