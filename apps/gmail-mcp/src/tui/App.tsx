@@ -914,6 +914,14 @@ function runNormalCmd(
     case "clip.message-id":
       copyIdToClipboard("message", state, dispatch);
       return;
+    case "attach.download":
+      if (!ensureSingleScope(state, dispatch)) return;
+      downloadAttachments(state, dispatch);
+      return;
+    case "attach.preview":
+      if (!ensureSingleScope(state, dispatch)) return;
+      previewFirstImage(state, dispatch);
+      return;
     default:
       return;
   }
@@ -1309,6 +1317,110 @@ function copyIdToClipboard(
       dispatch({
         type: "SET_STATUS",
         payload: `Clipboard error (${kind}Id: ${id}): ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  })();
+}
+
+// Download EVERY attachment on the currently-selected message into a
+// per-message subdirectory of ~/Downloads. Filename collisions across
+// messages stay isolated; collisions WITHIN a single message keep the
+// original name (Gmail rarely sends two attachments with the same name).
+function downloadAttachments(
+  state: import("./reducer.js").AppState,
+  dispatch: (a: Action) => void,
+) {
+  const msg = currentMessage(state);
+  if (!msg) {
+    dispatch({ type: "SET_STATUS", payload: "No message selected." });
+    return;
+  }
+  if (msg.attachments.length === 0) {
+    dispatch({ type: "SET_STATUS", payload: "No attachments on this message." });
+    return;
+  }
+  // Collect ids first — `get_thread` exposes them on each attachment
+  // (the schema fix earlier in this branch added the optional `id` field).
+  // Attachments without an id are skipped with a status warning.
+  const idable = msg.attachments.filter((a): a is { id: string } & typeof a => "id" in a && !!a.id);
+  if (idable.length === 0) {
+    dispatch({
+      type: "SET_STATUS",
+      payload: "Attachments are listed but Gmail returned no attachmentIds — re-open the thread.",
+    });
+    return;
+  }
+  (async () => {
+    try {
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const savePath = path.join(os.homedir(), "Downloads", `gmail-${msg.messageId}`);
+      const results = await Promise.all(
+        idable.map((a) =>
+          gmail.downloadAttachment({
+            messageId: msg.messageId,
+            attachmentId: a.id,
+            filename: a.filename,
+            savePath,
+          }),
+        ),
+      );
+      dispatch({
+        type: "SET_STATUS",
+        payload: `Downloaded ${results.length} file(s) to ${savePath}`,
+      });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
+// Open the first image attachment with the system viewer. macOS `open` is
+// used today — gracefully degrades elsewhere with a status message that
+// names the downloaded file path so the user can open it manually. Inline
+// terminal-protocol image rendering (kitty/iTerm2/Ghostty) is a future
+// upgrade — requires Ink stdout suspension, similar to the editor hook.
+function previewFirstImage(state: import("./reducer.js").AppState, dispatch: (a: Action) => void) {
+  const msg = currentMessage(state);
+  if (!msg) {
+    dispatch({ type: "SET_STATUS", payload: "No message selected." });
+    return;
+  }
+  const image = msg.attachments.find((a) => a.mimeType.startsWith("image/") && "id" in a && a.id) as
+    | ({ id: string } & (typeof msg.attachments)[number])
+    | undefined;
+  if (!image) {
+    dispatch({ type: "SET_STATUS", payload: "No image attachment on this message." });
+    return;
+  }
+  (async () => {
+    try {
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const savePath = path.join(os.homedir(), "Downloads", `gmail-${msg.messageId}`);
+      const result = await gmail.downloadAttachment({
+        messageId: msg.messageId,
+        attachmentId: image.id,
+        filename: image.filename,
+        savePath,
+      });
+      if (process.platform === "darwin") {
+        const { spawn } = await import("node:child_process");
+        spawn("open", [result.path], { detached: true, stdio: "ignore" }).unref();
+        dispatch({ type: "SET_STATUS", payload: `Opening ${result.path}` });
+      } else {
+        dispatch({
+          type: "SET_STATUS",
+          payload: `Saved ${result.path} — open with your image viewer (${process.platform} preview not wired)`,
+        });
+      }
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: err instanceof Error ? err.message : String(err),
       });
     }
   })();

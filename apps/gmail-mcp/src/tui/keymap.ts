@@ -86,6 +86,18 @@ export const defaultBindings: KeyBinding[] = [
   // Misc — clipboard + small utilities.
   { keys: "y", cmd: "clip.thread-id", desc: "Copy threadId to clipboard", category: "Misc" },
   { keys: "Y", cmd: "clip.message-id", desc: "Copy messageId to clipboard", category: "Misc" },
+  {
+    keys: "d",
+    cmd: "attach.download",
+    desc: "Download all attachments to ~/Downloads",
+    category: "Misc",
+  },
+  {
+    keys: "i",
+    cmd: "attach.preview",
+    desc: "Open first image attachment (system viewer)",
+    category: "Misc",
+  },
 ];
 
 /** Resolve a key (possibly with buffered prefix) to a command id, or null. */

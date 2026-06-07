@@ -13,7 +13,7 @@ interface Props {
 function HelpBarImpl({ focus, theme }: Props) {
   const hints =
     focus === "view"
-      ? "[h/Esc] back to messages  [r] reply  [R] reply-all  [a] archive  [y] copy id  [?] help"
+      ? "[h] back  [j/k/Ctrl-d/u] scroll  [r] reply  [d] download  [i] preview img  [?] help"
       : focus === "message"
         ? "[j/k] msg  [l/Enter] open  [h/q] back to threads  [r] reply  [?] help"
         : focus === "threads"

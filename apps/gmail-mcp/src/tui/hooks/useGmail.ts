@@ -224,3 +224,17 @@ export function getOrCreateLabel(
 ): Promise<{ id: string; name: string; created?: boolean }> {
   return callOp("get_or_create_label", { name }, signal);
 }
+
+export function downloadAttachment(
+  args: { messageId: string; attachmentId: string; savePath?: string; filename?: string },
+  signal?: AbortSignal,
+): Promise<{
+  status: "saved";
+  path: string;
+  filename: string;
+  size: number;
+  messageId: string;
+  attachmentId: string;
+}> {
+  return callOp("download_attachment", args, signal);
+}
