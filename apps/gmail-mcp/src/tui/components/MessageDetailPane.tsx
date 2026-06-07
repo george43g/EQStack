@@ -9,6 +9,8 @@ interface Props {
   cursor: number;
   focused: boolean;
   theme: Theme;
+  /** Number of body lines hidden above the visible window (j/k/Ctrl-d scroll). */
+  bodyScroll: number;
 }
 
 // Full-body single-message view — the rightmost drill-down pane. Renders
@@ -25,9 +27,14 @@ interface Props {
 const SIDEBAR_COLS = 22;
 const MESSAGE_LIST_COLS = 56;
 
-function MessageDetailPaneImpl({ thread, cursor, focused, theme }: Props) {
+function MessageDetailPaneImpl({ thread, cursor, focused, theme, bodyScroll }: Props) {
   const { stdout } = useStdout();
   const terminalCols = stdout?.columns ?? 180;
+  // Reserve ~9 rows for borders + header block + spacer + status bar + helpbar.
+  // The remaining vertical real estate is the body viewport. With a 50-row
+  // terminal that's typically 41 body lines visible at once.
+  const terminalRows = stdout?.rows ?? 50;
+  const bodyViewportRows = Math.max(6, terminalRows - 9);
   // Pad generously past the visible pane width — truncate clips to the
   // actual visible cells. The `…` ellipsis appears at the row end but every
   // interior cell still gets a bg-coloured write, so prior-frame content
@@ -71,7 +78,19 @@ function MessageDetailPaneImpl({ thread, cursor, focused, theme }: Props) {
   const senderHue = senderColor(theme, msg.from);
   const fromAddr = normalize(msg.from);
   const fromName = senderDisplayName(msg.from);
-  const bodyLines = (msg.body || "").split(/\r?\n/);
+  const allBodyLines = (msg.body || "").split(/\r?\n/);
+  const totalBodyLines = allBodyLines.length;
+  // Clamp the scroll: if the message has shrunk under us, snap to the last
+  // possible "page-top" rather than rendering past the end.
+  const maxScroll = Math.max(0, totalBodyLines - bodyViewportRows);
+  const clampedScroll = Math.min(Math.max(0, bodyScroll), maxScroll);
+  const bodyLines = allBodyLines.slice(clampedScroll, clampedScroll + bodyViewportRows);
+  // Scroll indicator — shown only when the body actually overflows. Mirrors
+  // vim's `↓ <line>/<total>` status line; less.
+  const scrollIndicator =
+    totalBodyLines > bodyViewportRows
+      ? ` · body ${clampedScroll + 1}–${Math.min(clampedScroll + bodyLines.length, totalBodyLines)} / ${totalBodyLines}`
+      : "";
   return (
     <Box
       flexDirection="column"
@@ -95,7 +114,7 @@ function MessageDetailPaneImpl({ thread, cursor, focused, theme }: Props) {
         {msg.subject || "(no subject)"}
       </Row>
       <Row theme={theme} color={theme.dim} width={paneInner}>
-        {`Message ${idx + 1} of ${thread.messages.length}${accountTag}`}
+        {`Message ${idx + 1} of ${thread.messages.length}${accountTag}${scrollIndicator}`}
       </Row>
       <Row theme={theme} color={senderHue} width={paneInner}>
         {`From: ${fromName} <${fromAddr}>`}
@@ -112,8 +131,11 @@ function MessageDetailPaneImpl({ thread, cursor, focused, theme }: Props) {
       ) : (
         // Stable key: messageId-scoped offset. Body lines for a given
         // message render in a fixed order, so `${messageId}:<offset>` is
-        // stable across rerenders without falling back to the index.
-        bodyLineRows(msg.messageId, bodyLines, theme, paneInner)
+        // stable across rerenders without falling back to the index. We
+        // pass `startIndex` so keys reflect the absolute line position
+        // even when the user has scrolled — otherwise keys collide as
+        // scroll moves a different slice of lines into the visible window.
+        bodyLineRows(msg.messageId, bodyLines, theme, paneInner, clampedScroll)
       )}
       {/* Attachments */}
       {msg.attachments.length > 0 ? (
@@ -165,15 +187,12 @@ function bodyLineRows(
   lines: string[],
   theme: Theme,
   width: number,
+  startIndex: number,
 ): React.ReactNode {
-  // Linear scan tracking the byte offset of each line — stable across
-  // rerenders for a given message body. The offset includes one byte for the
-  // newline we split on, so two identical lines at different positions get
-  // distinct keys.
-  let offset = 0;
-  return lines.map((line) => {
-    const key = `${messageId}:${offset}`;
-    offset += line.length + 1;
+  // Absolute line index → key. Stable across scroll positions so React
+  // doesn't reshuffle DOM/Ink nodes when the user pages through the body.
+  return lines.map((line, i) => {
+    const key = `${messageId}:line-${startIndex + i}`;
     return (
       <Row key={key} theme={theme} color={theme.fg} width={width}>
         {line || " "}

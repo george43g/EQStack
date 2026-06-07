@@ -60,6 +60,10 @@ export interface AppState {
   // Message reader pane
   thread: ThreadView | null;
   messageCursor: number;
+  /** Vertical scroll offset (in body lines) within the open single-message view.
+      Zero means "top of body"; bumped by j/k/Ctrl-d/Ctrl-u while focus="view".
+      Reset to 0 whenever the user switches messages (messageCursor changes). */
+  bodyScroll: number;
   // Modal / overlay state
   showHelp: boolean;
   /** Fuzzysort filter typed into the help modal. Empty = unfiltered grid. */
@@ -103,6 +107,7 @@ export const initialState: AppState = {
   threadCursor: 0,
   thread: null,
   messageCursor: 0,
+  bodyScroll: 0,
   showHelp: false,
   helpFilter: "",
   helpCursor: 0,
@@ -160,7 +165,11 @@ export type Action =
   | { type: "HELP_FILTER_INPUT"; payload: string }
   | { type: "HELP_FILTER_BACKSPACE" }
   | { type: "HELP_CURSOR_MOVE"; payload: number }
-  | { type: "HELP_RESET" };
+  | { type: "HELP_RESET" }
+  /** Body scroll inside MessageDetailPane — payload is a line-count delta. */
+  | { type: "BODY_SCROLL"; payload: number }
+  /** Snap body scroll to a specific offset; pos "end" means bottom of body. */
+  | { type: "BODY_SCROLL_ABS"; payload: number | "end" };
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -178,6 +187,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         thread: action.payload,
         messageCursor: 0,
+        bodyScroll: 0,
         focus: "message",
       };
     case "SET_ACCOUNT":
@@ -267,6 +277,14 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, helpCursor: Math.max(0, state.helpCursor + action.payload) };
     case "HELP_RESET":
       return { ...state, helpFilter: "", helpCursor: 0 };
+    case "BODY_SCROLL":
+      // App.tsx clamps against the actual body line count before dispatch.
+      return { ...state, bodyScroll: Math.max(0, state.bodyScroll + action.payload) };
+    case "BODY_SCROLL_ABS":
+      return {
+        ...state,
+        bodyScroll: action.payload === "end" ? Number.MAX_SAFE_INTEGER : action.payload,
+      };
     case "QUIT":
       return { ...state, quit: true };
     case "APPEND_KEY":
@@ -348,14 +366,15 @@ function moveCursor(state: AppState, delta: number): AppState {
     const next = clamp(state.threadCursor + delta, 0, Math.max(0, items - 1));
     return { ...state, threadCursor: next };
   }
-  if (state.focus === "message" || state.focus === "view") {
-    // `view` shares the message cursor — j/k in the single-message view
-    // pages between messages in the open thread, keeping the right pane in
-    // sync with the compact list to the left.
+  if (state.focus === "message") {
     const items = state.thread?.messages.length ?? 0;
     const next = clamp(state.messageCursor + delta, 0, Math.max(0, items - 1));
-    return { ...state, messageCursor: next };
+    return { ...state, messageCursor: next, bodyScroll: 0 };
   }
+  // `view` focus: j/k scrolls the body, NOT the message cursor. To switch
+  // messages while in view, the user `h` back to the list. This matches
+  // vim's "open file in window → arrows scroll inside, navigate files via
+  // the file list pane".
   return state;
 }
 
@@ -374,9 +393,9 @@ function setCursorAbs(state: AppState, pos: number | "end" | "middle"): AppState
     const items = state.threads?.threads.length ?? 0;
     return { ...state, threadCursor: resolve(items) };
   }
-  if (state.focus === "message" || state.focus === "view") {
+  if (state.focus === "message") {
     const items = state.thread?.messages.length ?? 0;
-    return { ...state, messageCursor: resolve(items) };
+    return { ...state, messageCursor: resolve(items), bodyScroll: 0 };
   }
   return state;
 }

@@ -28,6 +28,12 @@ import { resolveKey } from "./keymap.js";
 import { type Action, initialState, reducer } from "./reducer.js";
 import { listThemeNames, loadTheme, type Theme } from "./themes/index.js";
 
+// Eager-load debounce: too short and we flood the API on cursor-spam (10j);
+// too long and the user doesn't perceive the prefetch. 250ms matches the
+// common "pause vs scroll" threshold used by file managers (ranger / yazi)
+// and feels instantaneous when the user actually opens the thread.
+const EAGER_FETCH_DELAY_MS = 250;
+
 interface Props {
   initialTheme: Theme;
   config: TuiConfig;
@@ -136,6 +142,57 @@ export function App({ initialTheme, config }: Props) {
       }
     })();
   }, [state.loading, state.focus, state.threadCursor, state.threads, state.scope, state.account]);
+
+  // Eager pre-fetch: when the user lingers on a thread row for >250ms, kick
+  // off a background fetch so pressing Enter / l is instant. Aborts cleanly
+  // if the cursor moves before the timer fires OR before the fetch resolves
+  // (the LRU cache absorbs the result if it arrives, but the focused thread
+  // by then may have changed).
+  //
+  // Only fires when the user is BROWSING (focus="threads", not loading).
+  // The cache key is scoped per account so a switch between accounts keeps
+  // both pre-fetches independent.
+  useEffect(() => {
+    if (state.focus !== "threads" || state.loading) return;
+    const t = state.threads?.threads[state.threadCursor];
+    if (!t) return;
+    const accountId =
+      t.accountId ?? (state.scope.kind === "single" ? state.scope.accountId : state.account?.id);
+    const cacheKey = accountScopedCacheKey(accountId, t.threadId);
+    // Already cached or in-flight → nothing to do.
+    if (threadCacheRef.current.has(cacheKey)) return;
+    if (fetchingThread.current === cacheKey) return;
+
+    const abort = new AbortController();
+    const timer = setTimeout(() => {
+      // Re-check inside the timer — cursor may have moved between schedule
+      // and fire (React batches state updates), and the cleanup may not have
+      // run yet for the trailing tick.
+      if (abort.signal.aborted) return;
+      if (threadCacheRef.current.has(cacheKey)) return;
+      if (fetchingThread.current === cacheKey) return;
+      (async () => {
+        try {
+          const thread = await gmail.getThreadForScope(t.threadId, accountId, abort.signal);
+          if (abort.signal.aborted) return;
+          // Park in the cache — DO NOT dispatch SET_THREAD: that would flip
+          // focus to "message" without the user's consent. The next pane.open
+          // for this id hits the cache and lands instantly.
+          threadCacheRef.current.put(cacheKey, thread);
+        } catch {
+          // Eager fetches are best-effort; silently swallow errors (the user
+          // hasn't committed to opening this thread yet, so an error here
+          // would be noise). If they do press Enter, the foreground effect
+          // will refetch and surface the error properly.
+        }
+      })();
+    }, EAGER_FETCH_DELAY_MS);
+
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [state.focus, state.loading, state.threadCursor, state.threads, state.scope, state.account]);
 
   // Editor suspension — runs whenever pendingEditor flips on.
   useEffect(() => {
@@ -460,16 +517,18 @@ export function App({ initialTheme, config }: Props) {
             />
           ) : null}
           {state.focus === "view" && state.thread ? (
-            // Force a remount whenever the cursor (or open thread) changes —
-            // Ink 7's diff renderer can leave cell artifacts when the pane's
-            // content shape shifts (message body lengths differ wildly),
-            // and a fresh mount guarantees a full repaint.
+            // Force a remount whenever the message switches — Ink 7's diff
+            // renderer leaves cell artifacts when the pane's content shape
+            // shifts and a fresh mount guarantees a full repaint. Scroll
+            // intentionally NOT in the key — that would unmount on every
+            // j/k tick and lose render performance / scroll smoothness.
             <MessageDetailPane
               key={`view-${state.thread.threadId}-${state.messageCursor}`}
               thread={state.thread}
               cursor={state.messageCursor}
               focused={true}
               theme={theme}
+              bodyScroll={state.bodyScroll}
             />
           ) : null}
         </Box>
@@ -665,31 +724,39 @@ function runNormalCmd(
       dispatch({ type: "QUIT" });
       return;
     case "cursor.down":
-      dispatch({ type: "CURSOR_DOWN" });
+      if (state.focus === "view") dispatch({ type: "BODY_SCROLL", payload: +1 });
+      else dispatch({ type: "CURSOR_DOWN" });
       return;
     case "cursor.up":
-      dispatch({ type: "CURSOR_UP" });
+      if (state.focus === "view") dispatch({ type: "BODY_SCROLL", payload: -1 });
+      else dispatch({ type: "CURSOR_UP" });
       return;
     case "cursor.top":
-      dispatch({ type: "CURSOR_TOP" });
+      if (state.focus === "view") dispatch({ type: "BODY_SCROLL_ABS", payload: 0 });
+      else dispatch({ type: "CURSOR_TOP" });
       return;
     case "cursor.bottom":
-      dispatch({ type: "CURSOR_BOTTOM" });
+      if (state.focus === "view") dispatch({ type: "BODY_SCROLL_ABS", payload: "end" });
+      else dispatch({ type: "CURSOR_BOTTOM" });
       return;
     case "cursor.middle":
       dispatch({ type: "CURSOR_MIDDLE" });
       return;
     case "cursor.half-page-down":
-      dispatch({ type: "CURSOR_MOVE", payload: +halfPageStep() });
+      if (state.focus === "view") dispatch({ type: "BODY_SCROLL", payload: +halfPageStep() });
+      else dispatch({ type: "CURSOR_MOVE", payload: +halfPageStep() });
       return;
     case "cursor.half-page-up":
-      dispatch({ type: "CURSOR_MOVE", payload: -halfPageStep() });
+      if (state.focus === "view") dispatch({ type: "BODY_SCROLL", payload: -halfPageStep() });
+      else dispatch({ type: "CURSOR_MOVE", payload: -halfPageStep() });
       return;
     case "cursor.page-down":
-      dispatch({ type: "CURSOR_MOVE", payload: +pageStep() });
+      if (state.focus === "view") dispatch({ type: "BODY_SCROLL", payload: +pageStep() });
+      else dispatch({ type: "CURSOR_MOVE", payload: +pageStep() });
       return;
     case "cursor.page-up":
-      dispatch({ type: "CURSOR_MOVE", payload: -pageStep() });
+      if (state.focus === "view") dispatch({ type: "BODY_SCROLL", payload: -pageStep() });
+      else dispatch({ type: "CURSOR_MOVE", payload: -pageStep() });
       return;
     case "nav.folder.inbox":
     case "nav.folder.sent":
