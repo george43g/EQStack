@@ -17,6 +17,7 @@ export const nerdTheme: Theme = {
   selectedFg: "#1c1c1c",
   selectedBg: "#00d7ff",
   sidebarBg: "#1c1c1c",
+  modalBg: "#262626",
   statusBarBg: "#262626",
   statusBarFg: "#e0e0e0",
   helpBarFg: "#7f7f7f",

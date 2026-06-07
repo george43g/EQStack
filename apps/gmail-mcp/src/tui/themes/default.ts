@@ -13,6 +13,7 @@ export const defaultTheme: Theme = {
   selectedFg: "black",
   selectedBg: "cyan",
   sidebarBg: "black",
+  modalBg: "black",
   statusBarBg: "blue",
   statusBarFg: "white",
   helpBarFg: "gray",

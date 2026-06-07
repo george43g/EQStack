@@ -13,6 +13,7 @@ export const draculaTheme: Theme = {
   selectedFg: "#282a36",
   selectedBg: "#bd93f9",
   sidebarBg: "#282a36",
+  modalBg: "#44475a",
   statusBarBg: "#44475a",
   statusBarFg: "#f8f8f2",
   helpBarFg: "#6272a4",

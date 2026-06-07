@@ -13,6 +13,7 @@ export const monoTheme: Theme = {
   selectedFg: "black",
   selectedBg: "white",
   sidebarBg: "black",
+  modalBg: "black",
   statusBarBg: "white",
   statusBarFg: "black",
   helpBarFg: "gray",

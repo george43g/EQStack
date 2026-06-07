@@ -13,6 +13,7 @@ export const nordTheme: Theme = {
   selectedFg: "#2e3440",
   selectedBg: "#88c0d0",
   sidebarBg: "#3b4252",
+  modalBg: "#434c5e",
   statusBarBg: "#3b4252",
   statusBarFg: "#e5e9f0",
   helpBarFg: "#4c566a",

@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 import { memo } from "react";
 import type { DevStats } from "../hooks/useDevStats.js";
 import type { Theme } from "../themes/index.js";
+import { ModalScreen } from "./ModalScreen.js";
 
 interface Props {
   stats: DevStats | null;
@@ -17,23 +18,11 @@ const MASK = STATIC ? "—" : null;
 
 function DevStatsModalImpl({ stats, theme }: Props) {
   return (
-    <Box
-      flexDirection="column"
-      paddingX={1}
-      paddingY={1}
-      borderStyle="round"
-      borderColor={theme.accent}
-      width={40}
-    >
-      <Text color={theme.accent} bold>
-        Dev stats
-      </Text>
-      {/* Under STATIC mode we always render the table layout — even on the
-          first paint when the 1Hz hook hasn't populated yet — so the
-          screenshot never alternates between the "(collecting…)" state
-          and the loaded state depending on which React tick lands first. */}
+    <ModalScreen theme={theme} title="Dev stats" footerHint="press ~ or :stats to close">
       {!stats && !STATIC ? (
-        <Text color={theme.dim}>(collecting…)</Text>
+        <Text color={theme.dim} backgroundColor={theme.modalBg}>
+          (collecting…)
+        </Text>
       ) : !stats ? (
         <StaticPlaceholder theme={theme} />
       ) : (
@@ -70,18 +59,19 @@ function DevStatsModalImpl({ stats, theme }: Props) {
               event-loop-state-dependent and would flap the screenshot gate. */}
           {!STATIC && stats.health.issues.length > 0 ? (
             <Box marginTop={1} flexDirection="column">
-              <Text color={theme.warning}>issues:</Text>
+              <Text color={theme.warning} backgroundColor={theme.modalBg}>
+                issues:
+              </Text>
               {stats.health.issues.map((i) => (
-                <Text key={i} color={theme.warning}>{`  ${i}`}</Text>
+                <Text key={i} color={theme.warning} backgroundColor={theme.modalBg}>
+                  {`  ${i}`}
+                </Text>
               ))}
             </Box>
           ) : null}
         </>
       )}
-      <Box marginTop={1}>
-        <Text color={theme.dim}>{`press ~ or :stats to close`}</Text>
-      </Box>
-    </Box>
+    </ModalScreen>
   );
 }
 
@@ -106,11 +96,15 @@ function StaticPlaceholder({ theme }: { theme: Theme }) {
 }
 
 function Row({ label, value, theme }: { label: string; value: string; theme: Theme }) {
+  // Nested <Text> chunks share the parent's backgroundColor, so every cell on
+  // the row writes a modalBg-coloured space — no bleed.
   return (
-    <Box flexDirection="row">
-      <Text color={theme.dim}>{`${label.padEnd(11)} `}</Text>
-      <Text color={theme.fg}>{value}</Text>
-    </Box>
+    <Text backgroundColor={theme.modalBg}>
+      <Text color={theme.dim} backgroundColor={theme.modalBg}>{`${label.padEnd(11)} `}</Text>
+      <Text color={theme.fg} backgroundColor={theme.modalBg}>
+        {value}
+      </Text>
+    </Text>
   );
 }
 

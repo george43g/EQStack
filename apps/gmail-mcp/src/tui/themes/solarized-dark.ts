@@ -13,6 +13,7 @@ export const solarizedDarkTheme: Theme = {
   selectedFg: "#002b36",
   selectedBg: "#268bd2",
   sidebarBg: "#073642",
+  modalBg: "#073642",
   statusBarBg: "#073642",
   statusBarFg: "#93a1a1",
   helpBarFg: "#586e75",

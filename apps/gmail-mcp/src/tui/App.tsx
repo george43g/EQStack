@@ -1,7 +1,7 @@
 // Root TUI component. Owns the reducer + input dispatcher + async data loads.
 // Stays focused on wiring — heavy lifting lives in hooks/components.
 
-import { Box, Text, useApp, useInput, useStdin } from "ink";
+import { Box, useApp, useInput, useStdin } from "ink";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { type AccountChangedPayload, sessionEvents } from "../core/session.js";
 import { AccountSwitcher } from "./components/AccountSwitcher.js";
@@ -10,6 +10,7 @@ import { ConfirmModal } from "./components/ConfirmModal.js";
 import { DevStatsModal } from "./components/DevStatsModal.js";
 import { HelpBar } from "./components/HelpBar.js";
 import { MessagePane } from "./components/MessagePane.js";
+import { ModalRow, ModalScreen } from "./components/ModalScreen.js";
 import { SearchBar } from "./components/SearchBar.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { StatusBar } from "./components/StatusBar.js";
@@ -351,56 +352,74 @@ export function App({ initialTheme, config }: Props) {
 
   const accountChip = tuiScopeLabel(state.scope, state.account?.id ?? null);
 
+  // Centered modals take over the main view region — the 3-pane row is hidden
+  // while one is active. Without takeover, Ink's diff renderer leaves the
+  // panes' previous-frame cells visible behind the modal (`<Box>` in Ink 7
+  // ignores `backgroundColor`, so a bordered box without takeover bleeds).
+  // CommandPalette + SearchBar are bottom-bar overlays — they coexist with
+  // the 3-pane row and are unaffected.
+  const centeredModalActive =
+    state.showHelp ||
+    state.showStats ||
+    state.overlay.kind === "confirm" ||
+    state.overlay.kind === "theme" ||
+    state.overlay.kind === "account";
+
   return (
     <Box flexDirection="column" width="100%" height="100%">
-      {/* Main 3-pane row */}
-      <Box flexDirection="row" flexGrow={1}>
-        <Sidebar
-          labels={state.labels}
-          cursor={state.labelCursor}
-          focused={state.focus === "sidebar"}
-          selectedLabelId={state.selectedLabelId}
-          theme={theme}
-        />
-        {state.focus === "message" && state.thread ? (
-          <MessagePane
-            thread={state.thread}
-            cursor={state.messageCursor}
-            focused={state.focus === "message"}
+      {centeredModalActive ? (
+        <>
+          {state.showHelp ? <HelpOverlay theme={theme} /> : null}
+          {state.overlay.kind === "confirm" ? (
+            <ConfirmModal prompt={state.overlay.prompt} theme={theme} />
+          ) : null}
+          {state.overlay.kind === "theme" ? (
+            <ThemePicker cursor={state.overlay.cursor} current={state.themeName} theme={theme} />
+          ) : null}
+          {state.overlay.kind === "account" ? (
+            <AccountSwitcher
+              list={state.accountList}
+              cursor={state.overlay.cursor}
+              selectedIds={state.overlay.selectedIds}
+              theme={theme}
+            />
+          ) : null}
+          {state.showStats ? <DevStatsModal stats={stats} theme={theme} /> : null}
+        </>
+      ) : (
+        // Main 3-pane row
+        <Box flexDirection="row" flexGrow={1}>
+          <Sidebar
+            labels={state.labels}
+            cursor={state.labelCursor}
+            focused={state.focus === "sidebar"}
+            selectedLabelId={state.selectedLabelId}
             theme={theme}
           />
-        ) : (
-          <ThreadList
-            threads={state.threads}
-            cursor={state.threadCursor}
-            focused={state.focus === "threads"}
-            theme={theme}
-            title={labelTitle(state)}
-          />
-        )}
-      </Box>
-      {state.showHelp ? <HelpOverlay theme={theme} /> : null}
-      {state.overlay.kind === "confirm" ? (
-        <ConfirmModal prompt={state.overlay.prompt} theme={theme} />
-      ) : null}
-      {state.overlay.kind === "theme" ? (
-        <ThemePicker cursor={state.overlay.cursor} current={state.themeName} theme={theme} />
-      ) : null}
+          {state.focus === "message" && state.thread ? (
+            <MessagePane
+              thread={state.thread}
+              cursor={state.messageCursor}
+              focused={state.focus === "message"}
+              theme={theme}
+            />
+          ) : (
+            <ThreadList
+              threads={state.threads}
+              cursor={state.threadCursor}
+              focused={state.focus === "threads"}
+              theme={theme}
+              title={labelTitle(state)}
+            />
+          )}
+        </Box>
+      )}
       {state.overlay.kind === "command" ? (
         <CommandPalette text={state.overlay.text} theme={theme} />
       ) : null}
       {state.overlay.kind === "search" ? (
         <SearchBar text={state.overlay.text} theme={theme} />
       ) : null}
-      {state.overlay.kind === "account" ? (
-        <AccountSwitcher
-          list={state.accountList}
-          cursor={state.overlay.cursor}
-          selectedIds={state.overlay.selectedIds}
-          theme={theme}
-        />
-      ) : null}
-      {state.showStats ? <DevStatsModal stats={stats} theme={theme} /> : null}
       <StatusBar
         mode={state.mode}
         status={state.error ? `Error: ${state.error}` : state.status}
@@ -414,23 +433,13 @@ export function App({ initialTheme, config }: Props) {
 
 function HelpOverlay({ theme }: { theme: Theme }) {
   return (
-    <Box
-      flexDirection="column"
-      paddingX={1}
-      paddingY={1}
-      borderStyle="single"
-      borderColor={theme.accent}
-    >
-      <Text color={theme.accent} bold>
-        Keybindings
-      </Text>
+    <ModalScreen theme={theme} title="Keybindings" footerHint="Press ? to close">
       {defaultBindings.map((b) => (
-        <Text key={b.keys} color={theme.fg}>
+        <ModalRow key={b.keys} theme={theme}>
           {`  ${b.keys.padEnd(8)} ${b.desc}`}
-        </Text>
+        </ModalRow>
       ))}
-      <Text color={theme.dim}>{`  Press ? to close`}</Text>
-    </Box>
+    </ModalScreen>
   );
 }
 

@@ -13,6 +13,7 @@ export const gruvboxTheme: Theme = {
   selectedFg: "#282828",
   selectedBg: "#fabd2f",
   sidebarBg: "#3c3836",
+  modalBg: "#504945",
   statusBarBg: "#3c3836",
   statusBarFg: "#ebdbb2",
   helpBarFg: "#928374",

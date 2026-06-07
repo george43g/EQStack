@@ -1,6 +1,7 @@
-import { Box, Text } from "ink";
+import { Box } from "ink";
 import { memo } from "react";
 import type { Theme } from "../themes/index.js";
+import { ModalRow, ModalScreen } from "./ModalScreen.js";
 
 interface Props {
   prompt: string;
@@ -9,23 +10,18 @@ interface Props {
 
 function ConfirmModalImpl({ prompt, theme }: Props) {
   return (
-    <Box
-      flexDirection="column"
-      paddingX={2}
-      paddingY={1}
-      borderStyle="double"
+    <ModalScreen
+      theme={theme}
+      title="Confirm"
       borderColor={theme.warning}
+      borderStyle="double"
+      footerHint="[y] yes   [n / Esc] no"
     >
-      <Text color={theme.warning} bold>
-        Confirm
-      </Text>
-      <Box marginTop={1}>
-        <Text color={theme.fg}>{prompt}</Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text color={theme.dim}>{`[y] yes   [n / Esc] no`}</Text>
-      </Box>
-    </Box>
+      <Box height={1} />
+      <ModalRow theme={theme} color={theme.warning}>
+        {prompt}
+      </ModalRow>
+    </ModalScreen>
   );
 }
 

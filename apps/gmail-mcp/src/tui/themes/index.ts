@@ -17,6 +17,11 @@ export interface Theme {
   selectedFg: string;
   selectedBg: string;
   sidebarBg: string;
+  /** Background fill used by centered modals (Help / Theme / Stats / Confirm /
+      Account). Ink 7 only honors `backgroundColor` on `<Text>`, so every
+      modal row paints this colour explicitly via `<ModalRow>` to ensure
+      every cell is written and no underlying pane bleeds through. */
+  modalBg: string;
   statusBarBg: string;
   statusBarFg: string;
   helpBarFg: string;
