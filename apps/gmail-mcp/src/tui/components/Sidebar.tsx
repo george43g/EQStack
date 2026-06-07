@@ -17,6 +17,7 @@ function SidebarImpl({ labels, cursor, focused, selectedLabelId, theme }: Props)
     <Box
       flexDirection="column"
       width={24}
+      flexShrink={0}
       paddingX={1}
       paddingY={1}
       borderStyle="single"

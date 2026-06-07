@@ -97,7 +97,7 @@ describe("reducer", () => {
     expect(s.labelCursor).toBe(2); // 3 items, index 2
   });
 
-  it("CLOSE_PANE walks message → threads → sidebar", () => {
+  it("CLOSE_PANE walks message → threads → sidebar without clearing the open thread", () => {
     let s: AppState = {
       ...initialState,
       focus: "message",
@@ -105,13 +105,53 @@ describe("reducer", () => {
     };
     s = reducer(s, { type: "CLOSE_PANE" });
     expect(s.focus).toBe("threads");
-    expect(s.thread).toBeNull();
+    // Thread is preserved so the user can browse the list with the
+    // currently-opened email still visible in the detail pane.
+    expect(s.thread?.threadId).toBe("t1");
     s = reducer(s, { type: "CLOSE_PANE" });
     expect(s.focus).toBe("sidebar");
+    expect(s.thread?.threadId).toBe("t1");
     s = reducer(s, { type: "CLOSE_PANE" });
     // Sidebar is the leftmost; further CLOSE_PANE is a no-op so the user
     // doesn't accidentally trigger a quit by mashing q.
     expect(s.focus).toBe("sidebar");
+  });
+
+  it("MSG_CURSOR_MOVE walks messages independently of focus, resetting bodyScroll", () => {
+    const s: AppState = {
+      ...initialState,
+      focus: "view",
+      bodyScroll: 42,
+      thread: {
+        threadId: "t",
+        messageCount: 3,
+        messages: [{ messageId: "m1" }, { messageId: "m2" }, { messageId: "m3" }],
+      } as AppState["thread"],
+      messageCursor: 0,
+    };
+    const next = reducer(s, { type: "MSG_CURSOR_MOVE", payload: +1 });
+    expect(next.messageCursor).toBe(1);
+    expect(next.bodyScroll).toBe(0);
+    // Clamps at end
+    const end = reducer({ ...s, messageCursor: 2 }, { type: "MSG_CURSOR_MOVE", payload: +5 });
+    expect(end.messageCursor).toBe(2);
+  });
+
+  it("THREAD_CURSOR_MOVE walks the thread list independently of focus", () => {
+    const s: AppState = {
+      ...initialState,
+      focus: "view",
+      threads: {
+        resultCount: 3,
+        threads: [{ threadId: "a" }, { threadId: "b" }, { threadId: "c" }],
+      } as AppState["threads"],
+      threadCursor: 0,
+    };
+    const next = reducer(s, { type: "THREAD_CURSOR_MOVE", payload: +2 });
+    expect(next.threadCursor).toBe(2);
+    // Clamps at 0
+    const back = reducer({ ...next }, { type: "THREAD_CURSOR_MOVE", payload: -10 });
+    expect(back.threadCursor).toBe(0);
   });
 
   it("QUIT sets the quit flag for the App to read", () => {

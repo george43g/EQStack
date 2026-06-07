@@ -34,8 +34,16 @@ export const defaultBindings: KeyBinding[] = [
   { keys: "H", cmd: "cursor.top", desc: "High (top of list)", category: "Movement" },
   { keys: "M", cmd: "cursor.middle", desc: "Middle of list", category: "Movement" },
   { keys: "L", cmd: "cursor.bottom", desc: "Low (bottom of list)", category: "Movement" },
-  { keys: "[", cmd: "cursor.up", desc: "Previous thread", category: "Movement" },
-  { keys: "]", cmd: "cursor.down", desc: "Next thread", category: "Movement" },
+  // Per-level navigation that works regardless of pane focus. The drill
+  // model still applies for `j`/`k`/`l`/`h` — but these dedicated cursors
+  // let the user step messages or threads while the detail pane stays
+  // visible. Mirrors a power-user model where j/k = "smallest unit"
+  // (line/body), arrows = "medium unit" (message), [/] = "largest unit"
+  // (thread).
+  { keys: "Up", cmd: "msg.cursor.up", desc: "Previous message in thread", category: "Movement" },
+  { keys: "Down", cmd: "msg.cursor.down", desc: "Next message in thread", category: "Movement" },
+  { keys: "[", cmd: "thread.prev", desc: "Previous thread (auto-open)", category: "Movement" },
+  { keys: "]", cmd: "thread.next", desc: "Next thread (auto-open)", category: "Movement" },
 
   // Panes — focus + open/close conventions reused from vim window control.
   { keys: "h", cmd: "pane.close", desc: "Collapse current pane", category: "Panes" },
@@ -59,6 +67,7 @@ export const defaultBindings: KeyBinding[] = [
   { keys: "gt", cmd: "nav.folder.trash", desc: "Go to Trash", category: "Folders" },
   { keys: "gS", cmd: "nav.folder.starred", desc: "Go to Starred", category: "Folders" },
   { keys: "gI", cmd: "nav.folder.important", desc: "Go to Important", category: "Folders" },
+  { keys: "ga", cmd: "ui.account", desc: "Open account switcher", category: "Folders" },
 
   // Actions — Gmail-side state changes on the currently-selected message
   // (or its containing thread for archive/star).

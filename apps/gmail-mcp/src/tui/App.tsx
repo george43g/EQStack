@@ -111,8 +111,11 @@ export function App({ initialTheme, config }: Props) {
   }, []);
 
   // Handle pending thread open — cache hit returns instantly; miss fetches.
+  // Triggered by OPEN_THREAD (from `pane.open` in threads focus OR from
+  // `[`/`]` thread.prev/next in any focus). The focus gate is intentionally
+  // omitted so adjacent-thread navigation works while reading a message.
   useEffect(() => {
-    if (!state.loading || state.focus !== "threads") return;
+    if (!state.loading) return;
     const t = state.threads?.threads[state.threadCursor];
     if (!t) return;
     const accountId =
@@ -142,7 +145,7 @@ export function App({ initialTheme, config }: Props) {
         fetchingThread.current = null;
       }
     })();
-  }, [state.loading, state.focus, state.threadCursor, state.threads, state.scope, state.account]);
+  }, [state.loading, state.threadCursor, state.threads, state.scope, state.account]);
 
   // Eager pre-fetch: when the user lingers on a thread row for >250ms, kick
   // off a background fetch so pressing Enter / l is instant. Aborts cleanly
@@ -430,6 +433,12 @@ export function App({ initialTheme, config }: Props) {
     if (key.return) keyName = "Enter";
     else if (key.tab) keyName = "Tab";
     else if (key.escape) keyName = "Escape";
+    // Arrow keys surface as named tokens so the keymap can bind them to
+    // focus-bypassing cursor moves (msg.cursor.* / thread.* etc).
+    else if (key.upArrow) keyName = "Up";
+    else if (key.downArrow) keyName = "Down";
+    else if (key.leftArrow) keyName = "Left";
+    else if (key.rightArrow) keyName = "Right";
     // Ctrl-prefixed keys are surfaced to the registry as "C-<lowercase>" so
     // the keymap can declare them uniformly (e.g. `C-d` for half-page-down).
     else if (key.ctrl && input) keyName = `C-${input.toLowerCase()}`;
@@ -486,10 +495,15 @@ export function App({ initialTheme, config }: Props) {
           {state.showStats ? <DevStatsModal stats={stats} theme={theme} /> : null}
         </>
       ) : (
-        // Drill-down panes: Sidebar (always) | ThreadList | MessageListPane
-        // | MessageDetailPane. The two right-most appear progressively as
-        // the user drills via `l` / Enter (focus advances threads → message
-        // → view) and collapse with `h`.
+        // Drill-down panes always co-exist once a thread is opened so the
+        // user never loses context when stepping back through focus levels:
+        //
+        //   Sidebar | ThreadList | MessageListPane (if thread) | Detail (if thread)
+        //
+        // Focus only changes which pane shows the highlight border and
+        // which one consumes j/k. The detail stays visible whether the
+        // user is reviewing the thread list, picking a message, or
+        // scrolling inside the message body.
         <Box flexDirection="row" flexGrow={1}>
           <Sidebar
             labels={state.labels}
@@ -498,17 +512,13 @@ export function App({ initialTheme, config }: Props) {
             selectedLabelId={state.selectedLabelId}
             theme={theme}
           />
-          {/* ThreadList is hidden once the user drills into a single message
-              view — frees the horizontal space for the body. */}
-          {state.focus !== "view" ? (
-            <ThreadList
-              threads={state.threads}
-              cursor={state.threadCursor}
-              focused={state.focus === "threads"}
-              theme={theme}
-              title={labelTitle(state)}
-            />
-          ) : null}
+          <ThreadList
+            threads={state.threads}
+            cursor={state.threadCursor}
+            focused={state.focus === "threads"}
+            theme={theme}
+            title={labelTitle(state)}
+          />
           {state.thread ? (
             <MessageListPane
               thread={state.thread}
@@ -517,7 +527,7 @@ export function App({ initialTheme, config }: Props) {
               theme={theme}
             />
           ) : null}
-          {state.focus === "view" && state.thread ? (
+          {state.thread ? (
             // Force a remount whenever the message switches — Ink 7's diff
             // renderer leaves cell artifacts when the pane's content shape
             // shifts and a fresh mount guarantees a full repaint. Scroll
@@ -527,7 +537,7 @@ export function App({ initialTheme, config }: Props) {
               key={`view-${state.thread.threadId}-${state.messageCursor}`}
               thread={state.thread}
               cursor={state.messageCursor}
-              focused={true}
+              focused={state.focus === "view"}
               theme={theme}
               bodyScroll={state.bodyScroll}
             />
@@ -759,6 +769,32 @@ function runNormalCmd(
     case "cursor.page-up":
       if (state.focus === "view") dispatch({ type: "BODY_SCROLL", payload: -pageStep() });
       else dispatch({ type: "CURSOR_MOVE", payload: -pageStep() });
+      return;
+    case "msg.cursor.up":
+      // Arrows ALWAYS step the message cursor when a thread is loaded —
+      // regardless of focus — so the user can walk through a thread while
+      // reading without changing panes. Falls back to focus-based cursor
+      // when no thread is open (still useful in sidebar / thread list).
+      if (state.thread) dispatch({ type: "MSG_CURSOR_MOVE", payload: -1 });
+      else dispatch({ type: "CURSOR_UP" });
+      return;
+    case "msg.cursor.down":
+      if (state.thread) dispatch({ type: "MSG_CURSOR_MOVE", payload: +1 });
+      else dispatch({ type: "CURSOR_DOWN" });
+      return;
+    case "thread.prev":
+    case "thread.next": {
+      // [ / ] browse adjacent threads from any focus. Moves the thread
+      // cursor AND auto-loads the new thread so the detail pane updates
+      // immediately. Cached threads return instantly via the eager cache.
+      if (!state.threads || state.threads.threads.length === 0) return;
+      const delta = cmd === "thread.next" ? +1 : -1;
+      dispatch({ type: "THREAD_CURSOR_MOVE", payload: delta });
+      dispatch({ type: "OPEN_THREAD" });
+      return;
+    }
+    case "ui.account":
+      openAccountSwitcher(state, dispatch);
       return;
     case "nav.folder.inbox":
     case "nav.folder.sent":

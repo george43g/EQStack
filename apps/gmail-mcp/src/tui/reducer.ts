@@ -169,7 +169,14 @@ export type Action =
   /** Body scroll inside MessageDetailPane — payload is a line-count delta. */
   | { type: "BODY_SCROLL"; payload: number }
   /** Snap body scroll to a specific offset; pos "end" means bottom of body. */
-  | { type: "BODY_SCROLL_ABS"; payload: number | "end" };
+  | { type: "BODY_SCROLL_ABS"; payload: number | "end" }
+  /** Focus-bypassing message-cursor delta. Used by ↑/↓ arrows so the user
+      can step through messages within a thread regardless of the current
+      pane focus. Resets bodyScroll. */
+  | { type: "MSG_CURSOR_MOVE"; payload: number }
+  /** Focus-bypassing thread-cursor delta. Used by `[`/`]` so the user can
+      browse adjacent threads without first refocusing the thread list. */
+  | { type: "THREAD_CURSOR_MOVE"; payload: number };
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -246,13 +253,17 @@ export function reducer(state: AppState, action: Action): AppState {
       // Triggers an async fetch in App; reducer only flips focus + loading.
       return { ...state, loading: true, status: "Opening thread…" };
     case "CLOSE_PANE":
-      // Drill-down inverse: view → message → threads → sidebar. Last step
-      // discards the loaded thread so re-opening fetches fresh state.
+      // Drill-down inverse: view → message → threads → sidebar. The loaded
+      // thread is preserved across focus moves — the detail/message panes
+      // stay rendered so the user can browse the thread list with the
+      // currently-opened email still visible. The thread is only cleared
+      // when the user opens a different one (auto-fetch in App.tsx) or
+      // changes label/account (SELECT_LABEL / SET_SCOPE clear it).
       if (state.focus === "view") {
         return { ...state, focus: "message" };
       }
       if (state.focus === "message") {
-        return { ...state, focus: "threads", thread: null };
+        return { ...state, focus: "threads" };
       }
       if (state.focus === "threads") {
         return { ...state, focus: "sidebar" };
@@ -285,6 +296,16 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         bodyScroll: action.payload === "end" ? Number.MAX_SAFE_INTEGER : action.payload,
       };
+    case "MSG_CURSOR_MOVE": {
+      const items = state.thread?.messages.length ?? 0;
+      const next = clamp(state.messageCursor + action.payload, 0, Math.max(0, items - 1));
+      return { ...state, messageCursor: next, bodyScroll: 0 };
+    }
+    case "THREAD_CURSOR_MOVE": {
+      const items = state.threads?.threads.length ?? 0;
+      const next = clamp(state.threadCursor + action.payload, 0, Math.max(0, items - 1));
+      return { ...state, threadCursor: next };
+    }
     case "QUIT":
       return { ...state, quit: true };
     case "APPEND_KEY":

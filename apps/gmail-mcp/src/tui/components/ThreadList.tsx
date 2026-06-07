@@ -32,21 +32,22 @@ function ThreadListImpl({ threads, cursor, focused, theme, title }: Props) {
       ) : (
         threads.threads.map((t, i) => {
           const selected = focused && i === cursor;
-          const from = truncate(t.latestMessage.from, 24);
+          const from = truncate(senderName(t.latestMessage.from), 22);
           const account =
             "accountId" in t && t.accountId
               ? `[${t.accountId}${t.emailAddress ? ` ${t.emailAddress}` : ""}] `
               : "";
-          const subject = truncate(`${account}${t.latestMessage.subject || "(no subject)"}`, 50);
+          const subject = truncate(`${account}${t.latestMessage.subject || "(no subject)"}`, 60);
           const dateStr = relativeDate(t.latestMessage.date);
-          const indicator = t.messageCount > 1 ? `(${t.messageCount})` : "   ";
+          const indicator = t.messageCount > 1 ? `(${t.messageCount})` : "";
           return (
             <Text
               key={t.threadId}
               color={selected ? theme.selectedFg : theme.fg}
               backgroundColor={selected ? theme.selectedBg : undefined}
+              wrap="truncate"
             >
-              {`${dateStr.padEnd(10)}  ${from.padEnd(24)}  ${subject.padEnd(50)} ${indicator}`}
+              {`${dateStr.padEnd(8)} ${from.padEnd(22)} ${subject} ${indicator}`}
             </Text>
           );
         })
@@ -58,6 +59,14 @@ function ThreadListImpl({ threads, cursor, focused, theme, title }: Props) {
 function truncate(s: string, n: number): string {
   if (s.length <= n) return s;
   return `${s.slice(0, Math.max(0, n - 1))}…`;
+}
+
+// Strip the `<addr>` half of an RFC-5322 `Name <addr>` form so the thread
+// row leads with the human-readable name. Falls back to the raw address
+// when no name is present (still useful for noreply-style senders).
+function senderName(raw: string): string {
+  const m = raw.match(/^\s*"?([^"<]+?)"?\s*<[^>]+>\s*$/);
+  return m ? m[1].trim() : raw.trim();
 }
 
 function relativeDate(raw: string): string {

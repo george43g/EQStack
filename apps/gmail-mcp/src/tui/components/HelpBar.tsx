@@ -13,12 +13,12 @@ interface Props {
 function HelpBarImpl({ focus, theme }: Props) {
   const hints =
     focus === "view"
-      ? "[h] back  [j/k/Ctrl-d/u] scroll  [r] reply  [d] download  [i] preview img  [?] help"
+      ? "[j/k] scroll  [↑/↓] msg  [[/]] thread  [h] back  [r] reply  [d] dl  [?] help"
       : focus === "message"
-        ? "[j/k] msg  [l/Enter] open  [h/q] back to threads  [r] reply  [?] help"
+        ? "[j/k] msg  [↑/↓] msg  [[/]] thread  [l] read  [h] back  [r] reply  [?] help"
         : focus === "threads"
-          ? "[j/k] navigate  [l/Enter] open  [/] search  [:] command  [?] help  [Q] quit"
-          : "[j/k] label  [l/Enter] select  [Tab] focus next  [?] help  [Q] quit";
+          ? "[j/k] thread  [l/Enter] open  [[/]] adjacent  [/] search  [:] cmd  [?] help"
+          : "[j/k] label  [l/Enter] select  [Tab] focus next  [ga] account  [?] help";
   void defaultBindings;
   return (
     <Box paddingX={1}>
