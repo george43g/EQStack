@@ -77,16 +77,18 @@ cmd health help="Run the health_check canary (no Gmail API calls)" {
 	flag --json help="Output JSON instead of human-readable text"
 }
 cmd inbox help="Shortcut: list recent inbox threads (alias for `threads list -q in:inbox`)" {
-	flag "-n --max" help="Max threads (default: 10)" {
+	flag "-n --max" help="Max threads — 0 = stream all up to 5000 (default: 10)" {
 		arg <MAX>
 	}
+	flag --all help="Stream every page (shorthand for max = 0)"
 	flag --json help="Emit typed JSON"
-	arg "[max]" help="Max threads (positional shortcut; e.g. `inbox 5`)" required=#false
+	arg "[max]" help="Max threads — 0 = stream all up to 5000 (default: 10)" required=#false
 }
 cmd search help="Search emails (Gmail query syntax — e.g. 'from:foo newer_than:7d')" {
-	flag "-n --max" help="Max results (default: 25)" default="25" {
+	flag "-n --max" help="Max results — 0 = stream all pages up to 5000 (default: 25)" default="25" {
 		arg <MAX>
 	}
+	flag --all help="Stream every page (shorthand for --max 0)"
 	flag --json help="Emit typed JSON instead of human text"
 	arg <query> help="Gmail search query"
 }
@@ -99,9 +101,10 @@ cmd threads subcommand_required=#true help="Thread-level operations (groups of r
 		flag "-q --query" help="Gmail search query (default: in:inbox)" {
 			arg <QUERY>
 		}
-		flag "-n --max" help="Max results (default: 25)" default="25" {
+		flag "-n --max" help="Max results — 0 = stream all pages up to 5000 (default: 25)" default="25" {
 			arg <MAX>
 		}
+		flag --all help="Stream every page (shorthand for --max 0)"
 		flag --json help="Emit typed JSON"
 	}
 	cmd get help="Fetch a thread's messages" {

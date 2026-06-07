@@ -27,10 +27,14 @@ import { getToolByName, toMcpTools, toolDefinitions } from "../tools.js";
 // Setting a value to 0 disables the wrapper for that tool.
 const DEFAULT_TOOL_TIMEOUT_MS = envNum("MCP_TOOL_TIMEOUT_DEFAULT_MS", 30_000);
 const TOOL_TIMEOUTS_MS: Record<string, number> = {
-  // Reads — tight
+  // Reads — tight, except for list ops whose latency fan-outs scale with
+  // maxResults (one threads.get metadata RPC per row). 60s gives a 200-row
+  // page enough headroom under transient API slowness; the schema's hard
+  // ceiling of 500 still bounds the worst case. Anything larger is a job
+  // for the CLI streaming path, not the MCP.
   read_email: 30_000,
-  search_emails: 30_000,
-  list_inbox_threads: 30_000,
+  search_emails: 60_000,
+  list_inbox_threads: 60_000,
   get_thread: 30_000,
   get_inbox_with_threads: 60_000,
   list_email_labels: 15_000,

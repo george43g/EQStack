@@ -242,3 +242,149 @@ export async function callOp<TOutput = unknown>(
   }
   return result.structuredContent as TOutput;
 }
+
+// ---------------------------------------------------------------------------
+// Streaming pagination helper for `--max 0` / `--all` CLI flows
+// ---------------------------------------------------------------------------
+
+interface PaginatedPage<Item> {
+  /** Per-page items. */
+  items: Item[];
+  /** Continuation token from the Gmail response. Empty/undefined → exhausted. */
+  nextPageToken?: string;
+  /** Gmail's server-side total estimate, surfaced from the first page. */
+  resultSizeEstimate?: number;
+}
+
+interface PaginateOptions<Args, Item> {
+  /** Op to call (must accept maxResults + pageToken inputs). */
+  toolName: string;
+  /** Per-page max — caller picks an appropriate page size (100 keeps the
+      metadata.get fan-out latency reasonable). */
+  pageSize: number;
+  /** Total cap. `0` means stream every page until Gmail says we're done.
+      Hard absolute cap of 5000 still applies as a safety net so a runaway
+      query can't OOM the process. */
+  totalMax: number;
+  /** Builds the args object for each page. The function receives the
+      current pageToken (empty for the first page) and returns the args
+      object passed to the tool. */
+  argsForPage: (pageToken: string | undefined) => Args;
+  /** Picks the page payload off the typed structured output. */
+  extract: (output: unknown) => PaginatedPage<Item>;
+  /** Per-page callback. Returns false to stop pagination (e.g. user typed
+      Ctrl-C and the caller wants to bail). */
+  onPage?: (page: PaginatedPage<Item>, accumulated: Item[]) => void | Promise<void> | boolean;
+  signal?: AbortSignal;
+}
+
+/** Defensive absolute ceiling — even with `--all`, we won't sweep more than
+    this many items in one CLI invocation. Adjust if a real workflow needs
+    more; the existing per-op timeout still protects each page. */
+export const PAGINATION_HARD_CAP = 5000;
+
+/**
+ * Loop tool calls with pageToken, accumulate results, honour Ctrl-C.
+ *
+ * The caller passes `--max N` from their command's option set; we translate:
+ *   N === 0  → stream until Gmail returns no nextPageToken or PAGINATION_HARD_CAP hits.
+ *   N  >  0  → stop once `accumulated.length >= N`.
+ *
+ * Returns the merged list AND the last page's metadata so the caller can
+ * surface "estimated total" / "truncated" to the user.
+ */
+export async function paginate<Args, Item>(
+  opts: PaginateOptions<Args, Item>,
+): Promise<{
+  items: Item[];
+  pageCount: number;
+  truncatedAtHardCap: boolean;
+  hitTotalMax: boolean;
+  exhausted: boolean;
+  resultSizeEstimate?: number;
+}> {
+  await bootstrapForCli();
+  const items: Item[] = [];
+  let pageToken: string | undefined;
+  let pageCount = 0;
+  let resultSizeEstimate: number | undefined;
+  const effectiveMax = opts.totalMax === 0 ? PAGINATION_HARD_CAP : opts.totalMax;
+  while (true) {
+    if (opts.signal?.aborted) break;
+    const args = opts.argsForPage(pageToken);
+    const result = (await callMcpTool(opts.toolName, args, opts.signal)) as ToolResult;
+    if (result.isError === true) {
+      throw new ToolCallError(opts.toolName, formatToolResultText(result), result);
+    }
+    pageCount += 1;
+    const page = opts.extract(result.structuredContent);
+    if (resultSizeEstimate === undefined && typeof page.resultSizeEstimate === "number") {
+      resultSizeEstimate = page.resultSizeEstimate;
+    }
+    items.push(...page.items);
+    if (opts.onPage) {
+      const cont = await opts.onPage(page, items);
+      if (cont === false) {
+        return {
+          items: items.slice(0, opts.totalMax === 0 ? items.length : opts.totalMax),
+          pageCount,
+          truncatedAtHardCap: false,
+          hitTotalMax: false,
+          exhausted: false,
+          resultSizeEstimate,
+        };
+      }
+    }
+    if (!page.nextPageToken) {
+      return {
+        items,
+        pageCount,
+        truncatedAtHardCap: false,
+        hitTotalMax: false,
+        exhausted: true,
+        resultSizeEstimate,
+      };
+    }
+    if (items.length >= effectiveMax) {
+      const truncatedAtHardCap = opts.totalMax === 0 && items.length >= PAGINATION_HARD_CAP;
+      return {
+        items: items.slice(0, opts.totalMax === 0 ? items.length : opts.totalMax),
+        pageCount,
+        truncatedAtHardCap,
+        hitTotalMax: opts.totalMax > 0,
+        exhausted: false,
+        resultSizeEstimate,
+      };
+    }
+    pageToken = page.nextPageToken;
+  }
+  return {
+    items,
+    pageCount,
+    truncatedAtHardCap: false,
+    hitTotalMax: false,
+    exhausted: false,
+    resultSizeEstimate,
+  };
+}
+
+/**
+ * Install a one-shot SIGINT handler that aborts an AbortController. Returns
+ * the controller plus a cleanup function. Wire into CLI streaming flows so
+ * Ctrl-C cancels the in-flight call AND prints whatever was accumulated up
+ * to that point instead of half-state.
+ */
+export function installSigintAbort(): { controller: AbortController; restore: () => void } {
+  const controller = new AbortController();
+  const handler = () => {
+    controller.abort();
+    // Restore default so a second Ctrl-C kills the process if the user is
+    // impatient with the cleanup.
+    process.off("SIGINT", handler);
+  };
+  process.on("SIGINT", handler);
+  return {
+    controller,
+    restore: () => process.off("SIGINT", handler),
+  };
+}
