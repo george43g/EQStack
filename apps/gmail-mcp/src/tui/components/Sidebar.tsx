@@ -9,14 +9,18 @@ interface Props {
   focused: boolean;
   selectedLabelId: string;
   theme: Theme;
+  /** Outer width including border + padding. Driven by the responsive
+      layout helper in App.tsx so all four panes share a single source of
+      truth and the layout doesn't drift between renders. */
+  width?: number;
 }
 
-function SidebarImpl({ labels, cursor, focused, selectedLabelId, theme }: Props) {
+function SidebarImpl({ labels, cursor, focused, selectedLabelId, theme, width = 24 }: Props) {
   const items = labels ? [...labels.system, ...labels.user] : [];
   return (
     <Box
       flexDirection="column"
-      width={24}
+      width={width}
       flexShrink={0}
       paddingX={1}
       paddingY={1}

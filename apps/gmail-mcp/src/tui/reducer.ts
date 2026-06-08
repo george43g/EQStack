@@ -478,7 +478,11 @@ function overlayThemeCursor(state: AppState, delta: number): AppState {
 
 function overlayAccountCursor(state: AppState, delta: number): AppState {
   if (state.overlay.kind !== "account") return state;
-  const items = (state.accountList?.accounts.length ?? 0) + 1;
+  // Single-account TUI: cursor walks 0..(accounts.length - 1). The legacy
+  // multi-account `"all"` row at index 0 has been removed; the underlying
+  // `BrowseScope` union (kind: "all" | "selected") still exists for the
+  // dispatcher layer, but the UI no longer surfaces those modes.
+  const items = state.accountList?.accounts.length ?? 0;
   const next = clamp(state.overlay.cursor + delta, 0, Math.max(0, items - 1));
   return { ...state, overlay: { ...state.overlay, cursor: next } };
 }

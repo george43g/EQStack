@@ -9,13 +9,19 @@ interface Props {
   focused: boolean;
   theme: Theme;
   title: string;
+  /** Outer width including border + padding. */
+  width?: number;
+  /** Thread id currently loaded in the detail pane — gets a persistent
+      accent-bar marker regardless of cursor position or pane focus so the
+      user can always see which row is "open" while browsing the list. */
+  openThreadId?: string | null;
 }
 
-function ThreadListImpl({ threads, cursor, focused, theme, title }: Props) {
+function ThreadListImpl({ threads, cursor, focused, theme, title, width, openThreadId }: Props) {
   return (
     <Box
       flexDirection="column"
-      flexGrow={1}
+      {...(width ? { width, flexShrink: 0 } : { flexGrow: 1 })}
       paddingX={1}
       paddingY={1}
       borderStyle="single"
@@ -32,6 +38,7 @@ function ThreadListImpl({ threads, cursor, focused, theme, title }: Props) {
       ) : (
         threads.threads.map((t, i) => {
           const selected = focused && i === cursor;
+          const isOpen = openThreadId === t.threadId;
           const from = truncate(senderName(t.latestMessage.from), 22);
           const account =
             "accountId" in t && t.accountId
@@ -40,21 +47,25 @@ function ThreadListImpl({ threads, cursor, focused, theme, title }: Props) {
           const subject = `${account}${t.latestMessage.subject || "(no subject)"}`;
           const dateStr = relativeDate(t.latestMessage.date);
           const indicator = t.messageCount > 1 ? `(${t.messageCount})` : "";
-          // Selected rows lead with an arrow marker so the focused row is
-          // unmistakable even on monochrome terminals or muted themes.
-          // Two-line rows would land more snippet preview but Ink 7's
-          // flex layout drops sibling text rows when the column is
-          // overfilled, so we hold at one row per thread; a scroll
-          // window + dense rows is a follow-up.
-          const cursorMark = selected ? "❯" : " ";
-          const raw = `${cursorMark} ${dateStr.padEnd(8)} ${from.padEnd(22)} ${subject} ${indicator}`;
+          // Row leader: `❯` for the focused-cursor row, `▎` for the row
+          // whose thread is currently loaded in the detail pane (regardless
+          // of focus), or a space otherwise. Selected wins on the same row.
+          const leader = selected ? "❯" : isOpen ? "▎" : " ";
+          const raw = `${leader} ${dateStr.padEnd(8)} ${from.padEnd(22)} ${subject} ${indicator}`;
           const ROW_TARGET = 120;
           const padded = raw.padEnd(ROW_TARGET);
+          // Colour hierarchy:
+          //   selected (focused cursor)   → selectedFg on selectedBg
+          //   open thread (no focus)      → accent fg, no background
+          //   default                     → theme.fg
+          const color = selected ? theme.selectedFg : isOpen ? theme.accent : theme.fg;
+          const bg = selected ? theme.selectedBg : undefined;
           return (
             <Text
               key={t.threadId}
-              color={selected ? theme.selectedFg : theme.fg}
-              backgroundColor={selected ? theme.selectedBg : undefined}
+              color={color}
+              backgroundColor={bg}
+              bold={isOpen && !selected}
               wrap="truncate"
             >
               {padded}

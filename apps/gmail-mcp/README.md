@@ -417,39 +417,79 @@ gmail search "from:noreply" --json
 gmail read <messageId>
 gmail labels list
 gmail send -t alice@example.com -s "Subject" -b "Body"
+
+# Streaming pagination — Gmail caps a single page at 500 results.
+# `--all` (alias: `--max 0`) loops pageToken across pages and streams
+# progress to stderr. Ctrl-C cancels and prints whatever was accumulated.
+gmail inbox --all --json | jq '.threads | length'
+gmail search "newer_than:30d" --max 1000 --json
+gmail threads list --query "label:work" --all
 ```
 
 The `tui` and `console` subcommands expose the terminal UI and an interactive REPL respectively. In `gmail console`, use `accounts` to list configured accounts and `switch <id>` / `sw <id>` to swap the active account for subsequent REPL commands.
 
-### `gmail tui` (Phase D MVP)
+### `gmail tui`
 
 ```bash
 gmail tui
 ```
 
-Full-screen Ink/React app with a vim-modal keymap. The three panes (Sidebar / ThreadList / MessageReader) share the in-process dispatcher with the CLI, so every action goes through the same MCP ops, scope gates, and timeouts.
+**Prerequisite — authorise an account first.** The TUI is a viewer over your Gmail; it needs an OAuth account configured before it can do anything. Run `gmail account auth <id>` once from any shell, then launch the TUI. If you start the TUI without any configured account it now shows a friendly empty-state screen with a one-key hotkey (`[a]`) that launches the interactive `gmail account auth` flow directly so you never see a stack trace on first run.
+
+Full-screen Ink/React app with a vim-modal keymap. The drill-down layout is **Sidebar → ThreadList → MessageDetail** (with a horizontal pill row above the detail when a thread has more than one message). All four panes share the in-process dispatcher with the CLI, so every action goes through the same MCP ops, scope gates, and timeouts.
 
 | Key | Action |
 |---|---|
-| `j` / `k` | Cursor down / up in the focused pane |
+| `j` / `k` | Cursor down / up in the focused pane (sidebar, threads, message body) |
+| `↑` / `↓` | Step messages within the open thread (focus-independent) |
+| `[` / `]` | Step adjacent threads + auto-open (focus-independent) |
 | `gg` / `G` | Top / bottom of list |
+| `Ctrl-d` / `Ctrl-u` | Half-page down / up |
+| `Ctrl-f` / `Ctrl-b` | Page down / up |
+| `H` / `M` / `L` | Viewport top / middle / bottom |
 | `Tab` | Cycle focus across panes |
-| `Enter` | Open selected thread / label |
+| `l` / `Enter` | Drill into selected (label → threads → message detail) |
+| `h` | Drill back (preserves the open thread — detail stays visible) |
 | `q` / `Q` | Close pane / quit |
+| `gi` `gs` `gd` `gt` `gS` `gI` | Go to Inbox / Sent / Drafts / Trash / Starred / Important |
+| `ga` | Open account switcher |
 | `r` / `R` | Reply / reply-all (opens `$EDITOR`) |
-| `c` / `e` | Compose / edit-draft (opens `$EDITOR`) |
+| `c` / `e` / `f` | Compose / edit draft / forward (opens `$EDITOR`) |
+| `a` / `A` | Archive message / entire thread |
+| `s` / `m` / `!` | Star / mark read-unread / mark spam |
+| `t` / `T` | Add / remove label (inline overlay) |
 | `x` | Delete (with confirm modal) |
-| `s` / `m` | Star / mark read–unread toggle |
+| `y` / `Y` | Copy threadId / messageId to clipboard |
+| `d` / `i` | Download all attachments / preview first image (kitty / iTerm2 / Ghostty inline; falls back to system viewer) |
 | `/` | Inline search bar |
 | `:` | Ex-command palette (`:q`, `:theme [name]`, `:search`, `:label`, `:account`, `:health`, `:stats`) |
+| `z` | Toggle preview (focus message detail) |
 | `~` | Toggle dev stats overlay |
-| `?` | Help overlay |
+| `?` | Fuzzy-filtered help overlay (46+ bindings, type to search) |
+
+**Visual cues:**
+
+- `▎` (accent bar) on the ThreadList row whose thread is currently open in the detail pane — stays visible even when the cursor or focus moves to another pane.
+- `❯` (selection arrow) on the focused-cursor row.
+- `│ ` left-bar prefix in border colour on quoted reply blocks and `On <date>, <name> wrote:` boundaries — makes it obvious which text is new vs quoted from earlier emails in the thread.
+- Subject and body wrap freely (no `…` truncation) in the message detail pane.
+- Hairline `─` separator between header block and body.
+
+**Responsive layout** — `computeLayout(terminalCols)` picks one of three tiers automatically:
+
+- **Compact** (≤ 120 cols): sidebar 22, threadList ~35% of remainder, detail = rest.
+- **Comfortable** (121–180 cols): sidebar 24, threadList 44, detail capped at 100.
+- **Wide** (≥ 181 cols): sidebar 28, detail 100 (cap holds for readability), surplus → threadList up to 80.
+
+The detail-pane cap (100 cols) is deliberate — prose readability drops past ~80–100 chars per line.
+
+**Single-account by design today.** The TUI surfaces one account at a time; switch via `ga` or `:account`. The underlying `BrowseScope` union still supports cross-account fan-out at the dispatcher layer for a future revival, but the UI is intentionally single-select to keep the mental model simple.
+
+**Lazy pagination.** The ThreadList loads a 50-thread page on label change, then lazy-fetches the next page once the cursor gets within 10 of the end. The header shows `Inbox (50 / ~201)` so you know there's more to come.
 
 Themes (`:theme <name>` or `GMAIL_TUI_THEME=…`): `default`, `mono`, `dracula`, `solarized-dark`, `solarized-light`, `nord`, `gruvbox`, `nerd` (requires a Nerd Font).
 
 Config: `~/.gmail-mcp/config.json` (`{theme, editor, cacheMB}`); env vars `GMAIL_TUI_THEME` / `GMAIL_TUI_EDITOR` / `GMAIL_TUI_CACHE_MB` override the file. Editor resolution: `VISUAL` → `EDITOR` → `GMAIL_TUI_EDITOR` → `config.editor` → `vi`.
-
-Account switcher: open with `:account` (or via the planned binding `Ctrl-a`). Enter swaps the active account via `switch_account`; the TUI subscribes to `sessionEvents.accountChanged` and re-fetches labels / inbox automatically.
 
 Fixture-mode dev loop (no real OAuth):
 

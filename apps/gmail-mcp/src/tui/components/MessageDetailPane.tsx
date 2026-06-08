@@ -11,6 +11,9 @@ interface Props {
   theme: Theme;
   /** Number of body lines hidden above the visible window (j/k/Ctrl-d scroll). */
   bodyScroll: number;
+  /** Outer pane width including border + padding. Source of truth lives
+      in App.tsx's responsive layout helper. */
+  width?: number;
 }
 
 // Full-body single-message view — the rightmost drill-down pane. Renders
@@ -20,32 +23,24 @@ interface Props {
 // hit the modals — this pane lives outside the modal takeover so it has
 // to defend itself).
 
-// Pane geometry consumed by the bleed-fix row padding. These constants must
-// match the App.tsx layout: sidebar default ~22 cols + MessageListPane fixed
-// 56 cols (width prop) + 4 borders + padding on each side + this pane's
-// border + padding. Empirically tuned against the live tmux capture.
-const SIDEBAR_COLS = 22;
-const MESSAGE_LIST_COLS = 56;
-
-function MessageDetailPaneImpl({ thread, cursor, focused, theme, bodyScroll }: Props) {
+function MessageDetailPaneImpl({ thread, cursor, focused, theme, bodyScroll, width }: Props) {
   const { stdout } = useStdout();
-  const terminalCols = stdout?.columns ?? 180;
   // Reserve ~9 rows for borders + header block + spacer + status bar + helpbar.
   // The remaining vertical real estate is the body viewport. With a 50-row
   // terminal that's typically 41 body lines visible at once.
   const terminalRows = stdout?.rows ?? 50;
   const bodyViewportRows = Math.max(6, terminalRows - 9);
-  // Pad generously past the visible pane width — truncate clips to the
-  // actual visible cells. The `…` ellipsis appears at the row end but every
-  // interior cell still gets a bg-coloured write, so prior-frame content
-  // can't peek through. Cleaner than fighting Ink's flex layout to compute
-  // the exact width.
-  const paneInner = Math.max(40, terminalCols - SIDEBAR_COLS - MESSAGE_LIST_COLS);
+  // `paneInner` is the row-content width inside the pane's border+padding.
+  // Driven by the `width` prop (responsive layout helper); falls back to a
+  // best-effort derivation when no width was supplied — useful for unit
+  // tests that render the component in isolation.
+  const paneOuter = width ?? Math.max(60, (stdout?.columns ?? 180) - 66);
+  const paneInner = Math.max(40, paneOuter - 4);
   if (!thread || thread.messages.length === 0) {
     return (
       <Box
         flexDirection="column"
-        flexGrow={1}
+        {...(width ? { width, flexShrink: 0 } : { flexGrow: 1 })}
         paddingX={1}
         paddingY={1}
         borderStyle="single"
@@ -61,7 +56,7 @@ function MessageDetailPaneImpl({ thread, cursor, focused, theme, bodyScroll }: P
     return (
       <Box
         flexDirection="column"
-        flexGrow={1}
+        {...(width ? { width, flexShrink: 0 } : { flexGrow: 1 })}
         paddingX={1}
         paddingY={1}
         borderStyle="single"
@@ -94,7 +89,7 @@ function MessageDetailPaneImpl({ thread, cursor, focused, theme, bodyScroll }: P
   return (
     <Box
       flexDirection="column"
-      flexGrow={1}
+      {...(width ? { width, flexShrink: 0 } : { flexGrow: 1 })}
       paddingX={1}
       borderStyle="single"
       borderColor={focused ? theme.accent : theme.border}
@@ -107,12 +102,12 @@ function MessageDetailPaneImpl({ thread, cursor, focused, theme, bodyScroll }: P
       <Row theme={theme} color={theme.dim} width={paneInner}>
         {" "}
       </Row>
-      {/* Header block — each row is its own Text so Ink writes every cell.
-          Subject leads (accent colour) so the email is immediately readable;
-          position + metadata follow. */}
-      <Row theme={theme} color={theme.accent} width={paneInner}>
+      {/* Subject wraps freely — long subjects span multiple lines so the
+          user never sees a `…` truncate. Accent colour so it leads the
+          eye. The `wrap="wrap"` engine word-wraps at the pane edge. */}
+      <Text color={theme.accent} backgroundColor={theme.bg} wrap="wrap" bold>
         {msg.subject || "(no subject)"}
-      </Row>
+      </Text>
       <Row theme={theme} color={theme.dim} width={paneInner}>
         {`Message ${idx + 1} of ${thread.messages.length}${accountTag}${scrollIndicator}`}
       </Row>
@@ -122,7 +117,14 @@ function MessageDetailPaneImpl({ thread, cursor, focused, theme, bodyScroll }: P
       <Row theme={theme} color={theme.dim} width={paneInner}>
         {`Date: ${formatFullDate(msg.date)}`}
       </Row>
-      <Box height={1} />
+      {/* Hairline horizontal separator between the header block and the
+          body — gives the eye a clear anchor to skip past metadata when
+          scanning a message. Renders in border colour for low-contrast
+          aesthetic; the line characters fill every cell in their row so
+          there's no bleed risk. */}
+      <Text color={theme.border} backgroundColor={theme.bg}>
+        {"─".repeat(Math.max(0, paneInner))}
+      </Text>
       {/* Body */}
       {bodyLines.length === 0 ? (
         <Row theme={theme} color={theme.dim} width={paneInner}>
@@ -147,6 +149,37 @@ function MessageDetailPaneImpl({ thread, cursor, focused, theme, bodyScroll }: P
           {attachmentRows(msg.messageId, msg.attachments, theme, paneInner)}
         </>
       ) : null}
+    </Box>
+  );
+}
+
+// Body line: wraps, no padEnd. The Text's backgroundColor still paints
+// every cell in the wrapped lines (Ink applies the bg to the laid-out
+// glyphs), so cell-leak defence holds even without the truncate trick.
+// We use a Box wrapper to constrain the wrap engine to the pane width.
+function BodyRow({
+  theme,
+  width,
+  prefix,
+  prefixColor,
+  body,
+  bodyColor,
+}: {
+  theme: Theme;
+  width: number;
+  prefix: string;
+  prefixColor: string;
+  body: string;
+  bodyColor: string;
+}) {
+  return (
+    <Box width={width} flexShrink={0}>
+      <Text color={prefixColor} backgroundColor={theme.bg}>
+        {prefix}
+      </Text>
+      <Text color={bodyColor} backgroundColor={theme.bg} wrap="wrap">
+        {body}
+      </Text>
     </Box>
   );
 }
@@ -224,11 +257,27 @@ function bodyLineRows(
     const key = `${messageId}:line-${startIndex + i}`;
     // Update mode for THIS line first (the boundary line itself is dim).
     if (isQuoteBoundary(line)) inQuote = true;
-    const dim = inQuote || isQuoteMarker(line) || isSignatureMarker(line);
+    const isQuote = inQuote || isQuoteMarker(line);
+    const isSignature = !isQuote && isSignatureMarker(line);
+    const dim = isQuote || isSignature;
+    // Quoted lines get a Slack/Discord-style left bar marker in border
+    // colour so the eye reliably skips past them. Signature lines just
+    // dim (no bar — `--` or "Sent from my iPhone" don't represent a
+    // multi-line block in the same way). Two-space gutter on regular
+    // lines so the body column aligns.
+    const prefix = isQuote ? "│ " : "  ";
+    const prefixColor = isQuote ? theme.border : theme.fg;
+    const bodyColor = dim ? theme.dim : theme.fg;
     return (
-      <Row key={key} theme={theme} color={dim ? theme.dim : theme.fg} width={width}>
-        {line || " "}
-      </Row>
+      <BodyRow
+        key={key}
+        theme={theme}
+        width={width}
+        prefix={prefix}
+        prefixColor={prefixColor}
+        body={line || " "}
+        bodyColor={bodyColor}
+      />
     );
   });
 }

@@ -9,6 +9,9 @@ interface Props {
   cursor: number;
   focused: boolean;
   theme: Theme;
+  /** Outer pane width (border + padding included). Defaults to the legacy
+      fixed 56 cols so the component still renders standalone. */
+  width?: number;
 }
 
 // Compact list of messages in the open thread — the middle pane in the
@@ -19,12 +22,12 @@ interface Props {
 // Position indicator lives in the header row ("3 of 7") — yazi-style — so
 // the user always knows where they are within the thread.
 
-function MessageListPaneImpl({ thread, cursor, focused, theme }: Props) {
+function MessageListPaneImpl({ thread, cursor, focused, theme, width = 56 }: Props) {
   if (!thread) {
     return (
       <Box
         flexDirection="column"
-        width={56}
+        width={width}
         flexShrink={0}
         paddingX={1}
         paddingY={1}
@@ -45,7 +48,7 @@ function MessageListPaneImpl({ thread, cursor, focused, theme }: Props) {
     // shrinks MessageDetail enough to clip its header rows.
     <Box
       flexDirection="column"
-      width={56}
+      width={width}
       flexShrink={0}
       paddingX={1}
       paddingY={1}

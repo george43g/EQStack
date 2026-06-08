@@ -1,7 +1,7 @@
 // Root TUI component. Owns the reducer + input dispatcher + async data loads.
 // Stays focused on wiring — heavy lifting lives in hooks/components.
 
-import { Box, useApp, useInput, useStdin } from "ink";
+import { Box, useApp, useInput, useStdin, useStdout } from "ink";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { type AccountChangedPayload, sessionEvents } from "../core/session.js";
 import { AccountSwitcher } from "./components/AccountSwitcher.js";
@@ -12,7 +12,7 @@ import { HelpBar } from "./components/HelpBar.js";
 import { HelpModal } from "./components/HelpModal.js";
 import { LabelOverlay } from "./components/LabelOverlay.js";
 import { MessageDetailPane } from "./components/MessageDetailPane.js";
-import { MessageListPane } from "./components/MessageListPane.js";
+import { MessagePillRow } from "./components/MessagePillRow.js";
 import { SearchBar } from "./components/SearchBar.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { StatusBar } from "./components/StatusBar.js";
@@ -28,6 +28,7 @@ import { detectImageTerminal, openImagePreview } from "./hooks/useImagePreview.j
 import { resolveKey } from "./keymap.js";
 import { type Action, initialState, reducer } from "./reducer.js";
 import { listThemeNames, loadTheme, type Theme } from "./themes/index.js";
+import { computeLayout } from "./util/responsive-layout.js";
 
 // Eager-load debounce: too short and we flood the API on cursor-spam (10j);
 // too long and the user doesn't perceive the prefetch. 250ms matches the
@@ -44,6 +45,12 @@ export function App({ initialTheme, config }: Props) {
   const [state, dispatch] = useReducer(reducer, { ...initialState, themeName: initialTheme.name });
   const { exit } = useApp();
   const { setRawMode } = useStdin();
+  const { stdout } = useStdout();
+  // Responsive pane widths — single source of truth so all four panes
+  // stay in lockstep on resize. The helper handles the three tiers
+  // (compact / comfortable / wide) and caps the detail pane for prose
+  // readability past ~100 cols.
+  const layout = computeLayout(stdout?.columns ?? 180);
   const fetchingThread = useRef<string | null>(null);
   // Pagination guard: tracks the pageToken currently being fetched in the
   // background. Prevents double-fetching the same page when the effect
@@ -389,7 +396,13 @@ export function App({ initialTheme, config }: Props) {
       }
       return;
     }
-    // Account switcher: j/k navigate, Enter applies, Esc closes.
+    // Account switcher: j/k navigate, Enter switches, Esc closes.
+    //
+    // Single-account only in the TUI today — the `BrowseScope` union still
+    // supports `"all"` and `"selected"` (see reducer.ts) so the dispatcher
+    // layer can fan out per account when re-enabled, but the user-facing
+    // surface here is intentionally single-select to keep the mental
+    // model simple. Future re-enablement is a UI-only change.
     if (state.overlay.kind === "account") {
       if (key.escape) {
         dispatch({ type: "CLOSE_OVERLAY" });
@@ -403,41 +416,9 @@ export function App({ initialTheme, config }: Props) {
         dispatch({ type: "CURSOR_UP" });
         return;
       }
-      if (input === " ") {
-        const items = state.accountList?.accounts ?? [];
-        const target = items[state.overlay.cursor - 1];
-        if (!target) return;
-        const selectedIds = new Set(state.overlay.selectedIds ?? []);
-        if (selectedIds.has(target.id)) selectedIds.delete(target.id);
-        else selectedIds.add(target.id);
-        dispatch({
-          type: "OPEN_OVERLAY",
-          payload: {
-            kind: "account",
-            cursor: state.overlay.cursor,
-            selectedIds: [...selectedIds],
-          },
-        });
-        return;
-      }
       if (key.return) {
         const items = state.accountList?.accounts ?? [];
-        if (state.overlay.cursor === 0) {
-          applyBrowseScope({ kind: "all" }, dispatch, threadCacheRef.current);
-          dispatch({ type: "CLOSE_OVERLAY" });
-          return;
-        }
-        const selectedIds = state.overlay.selectedIds ?? [];
-        if (selectedIds.length > 1) {
-          applyBrowseScope(
-            { kind: "selected", accountIds: selectedIds },
-            dispatch,
-            threadCacheRef.current,
-          );
-          dispatch({ type: "CLOSE_OVERLAY" });
-          return;
-        }
-        const target = items[state.overlay.cursor - 1];
+        const target = items[state.overlay.cursor];
         if (target)
           requestSwitchAccount(target.id, target.isActive, dispatch, threadCacheRef.current);
         dispatch({ type: "CLOSE_OVERLAY" });
@@ -561,12 +542,14 @@ export function App({ initialTheme, config }: Props) {
         // Drill-down panes always co-exist once a thread is opened so the
         // user never loses context when stepping back through focus levels:
         //
-        //   Sidebar | ThreadList | MessageListPane (if thread) | Detail (if thread)
+        //   Sidebar | ThreadList | Detail (if thread)
         //
         // Focus only changes which pane shows the highlight border and
         // which one consumes j/k. The detail stays visible whether the
         // user is reviewing the thread list, picking a message, or
-        // scrolling inside the message body.
+        // scrolling inside the message body. Widths come from the
+        // responsive layout helper so the detail pane caps at a readable
+        // line length on ultrawide terminals.
         <Box flexDirection="row" flexGrow={1}>
           <Sidebar
             labels={state.labels}
@@ -574,6 +557,7 @@ export function App({ initialTheme, config }: Props) {
             focused={state.focus === "sidebar"}
             selectedLabelId={state.selectedLabelId}
             theme={theme}
+            width={layout.sidebar}
           />
           <ThreadList
             threads={state.threads}
@@ -581,29 +565,40 @@ export function App({ initialTheme, config }: Props) {
             focused={state.focus === "threads"}
             theme={theme}
             title={labelTitle(state)}
+            width={layout.threadList}
+            openThreadId={state.thread?.threadId ?? null}
           />
+          {/* MessageListPane retired from the column layout — it
+              consumed a full vertical column for what's usually a 1–5
+              line list. The horizontal pill row above the detail pane
+              replaces it in slice 2; in the meantime the detail pane's
+              header row shows "Message N of M" so the user still has
+              positional context. The component is left in the source
+              tree (src/tui/components/MessageListPane.tsx) for a future
+              "max readability" toggle. */}
           {state.thread ? (
-            <MessageListPane
-              thread={state.thread}
-              cursor={state.messageCursor}
-              focused={state.focus === "message"}
-              theme={theme}
-            />
-          ) : null}
-          {state.thread ? (
-            // Force a remount whenever the message switches — Ink 7's diff
-            // renderer leaves cell artifacts when the pane's content shape
-            // shifts and a fresh mount guarantees a full repaint. Scroll
-            // intentionally NOT in the key — that would unmount on every
-            // j/k tick and lose render performance / scroll smoothness.
-            <MessageDetailPane
-              key={`view-${state.thread.threadId}-${state.messageCursor}`}
-              thread={state.thread}
-              cursor={state.messageCursor}
-              focused={state.focus === "view"}
-              theme={theme}
-              bodyScroll={state.bodyScroll}
-            />
+            // The detail column stacks: pill row (when multi-message) on
+            // top, MessageDetailPane below. The pill row replaces the
+            // legacy MessageListPane vertical column — a horizontal strip
+            // above the email body gives the user adjacent-message
+            // navigation without sacrificing horizontal real estate.
+            <Box flexDirection="column" width={layout.detail} flexShrink={0}>
+              <MessagePillRow
+                thread={state.thread}
+                cursor={state.messageCursor}
+                theme={theme}
+                width={layout.detail - 2}
+              />
+              <MessageDetailPane
+                key={`view-${state.thread.threadId}-${state.messageCursor}`}
+                thread={state.thread}
+                cursor={state.messageCursor}
+                focused={state.focus === "view"}
+                theme={theme}
+                bodyScroll={state.bodyScroll}
+                width={layout.detail}
+              />
+            </Box>
           ) : null}
         </Box>
       )}
@@ -1161,15 +1156,12 @@ function openAccountSwitcher(
   dispatch: (a: Action) => void,
 ) {
   const activeIdx = Math.max(0, state.accountList?.accounts.findIndex((a) => a.isActive) ?? 0);
-  const selectedIds =
-    state.scope.kind === "selected"
-      ? state.scope.accountIds
-      : state.scope.kind === "single" && state.scope.accountId
-        ? [state.scope.accountId]
-        : [];
+  // Single-account TUI: cursor lands directly on the active account row.
+  // `selectedIds` carried over from the prior multi-select shape stays in
+  // the overlay payload as an empty array for type-shape compatibility.
   dispatch({
     type: "OPEN_OVERLAY",
-    payload: { kind: "account", cursor: activeIdx + 1, selectedIds },
+    payload: { kind: "account", cursor: activeIdx, selectedIds: [] },
   });
   // Refresh asynchronously so the list reflects the latest state.
   (async () => {
