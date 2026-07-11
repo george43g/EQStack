@@ -9,8 +9,9 @@ COPY package.json package-lock.json* ./
 COPY tsconfig.json ./
 COPY src ./src
 
-# Install dependencies (which will trigger build via prepare script)
-RUN npm ci
+# Install dependencies and build the CLI
+RUN npm ci --ignore-scripts
+RUN npm run build
 
 # Create directory for credentials and config
 RUN mkdir -p /gmail-server /root/.gmail-mcp
@@ -23,5 +24,7 @@ ENV GMAIL_OAUTH_PATH=/root/.gmail-mcp/gcp-oauth.keys.json
 # Expose port for OAuth flow
 EXPOSE 3000
 
-# Set entrypoint command
-ENTRYPOINT ["node", "dist/index.js"]
+# Set entrypoint command. The default mode is MCP stdio; pass other `gmail`
+# subcommands after the image name for auth, CLI, console, or TUI usage.
+ENTRYPOINT ["node", "dist/cli/index.js"]
+CMD ["mcp"]

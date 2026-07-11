@@ -1,6 +1,6 @@
 // `gmail console` — interactive REPL over the same commander tree as the CLI.
 //
-// Modeled on imsg-mcp's console (/Users/george/repos/imsg-mcp/src/cli.ts):
+// Modeled on imsg-mcp's console:
 // a readline prompt feeding one line at a time into `program.parseAsync` so
 // console commands stay 1:1 with `gmail` CLI commands. A small alias-rewrite
 // table layers snappy two-letter shortcuts (`i` → inbox, `s` → search, …)

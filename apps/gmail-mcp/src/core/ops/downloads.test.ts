@@ -1,10 +1,8 @@
 // Handler-level tests for src/core/ops/downloads.ts.
 //
-// Covers gap items 7.1-7.4 (download_email handler integration across all
-// four format branches), 7.5 (savePath mkdir when missing), 7.7
-// (download_attachment filename auto-lookup, savePath default cwd,
-// safe-path sanitization), and 7.20 (DownloadAttachmentSchema parse) from
-// docs/test-coverage-inventory.md.
+// Covers download_email handler integration across all four format branches,
+// savePath mkdir when missing, download_attachment filename auto-lookup,
+// savePath default cwd, safe-path sanitization, and DownloadAttachmentSchema parse.
 //
 // Strategy mirrors src/core/ops/messages.test.ts: side-effect import the op
 // module so handlers register on the singleton registry, dispatch by name

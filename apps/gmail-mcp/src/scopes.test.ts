@@ -1,11 +1,7 @@
 // Unit tests for src/scopes.ts.
 //
-// Covers gap items 8.4–8.8 from docs/test-coverage-inventory.md:
-//   8.4  hasScope: empty required, URL/shorthand normalization, missing scope rejected
-//   8.5  scopeNameToUrl + scopeUrlToName + scopeNamesToUrls round-trip
-//   8.6  parseScopes: comma, whitespace, mixed, empty
-//   8.7  validateScopes: valid + invalid arrays
-//   8.8  getAvailableScopeNames returns the known set
+// Covers scope matching, shorthand/URL conversion, parsing, validation, and
+// available-scope enumeration.
 
 import { describe, expect, it } from "vitest";
 import {

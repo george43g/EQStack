@@ -1,7 +1,6 @@
 // Handler-level tests for src/core/ops/filters.ts.
 //
-// Covers gap items 6.1–6.5 (filter op handlers) from
-// docs/test-coverage-inventory.md. The most important branch is 6.5 —
+// Covers filter op handlers. The most important branch is
 // create_filter_from_template's 6-way switch + the missing-required-param
 // throws + the unreachable-by-schema default throw.
 //

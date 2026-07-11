@@ -1,8 +1,7 @@
 // Unit tests for src/filter-manager.ts.
 //
-// Covers gap items 6.6–6.11 (golden-output tests on the static filterTemplates
-// builders) and 6.12 / 6.14 / 6.15 (400 / 404 rewrap paths on the low-level
-// CRUD helpers) from docs/test-coverage-inventory.md.
+// Covers golden-output tests on the static filterTemplates builders and
+// 400 / 404 rewrap paths on the low-level CRUD helpers.
 //
 // The template builders are pure functions, so no mock is needed for those.
 // The CRUD helpers take a `gmail` argument shaped like the googleapis Gmail

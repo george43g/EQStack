@@ -24,7 +24,7 @@ cmd mcp help="Run the MCP server (stdio by default; --http for remote-mode)" {
 		arg <TOKEN_ENV>
 	}
 }
-cmd tui help="Launch the multi-pane terminal UI (Phase D)"
+cmd tui help="Launch the multi-pane terminal UI"
 cmd console help="Launch an interactive REPL with Gmail ops and account switching"
 cmd account help="Manage Gmail accounts, credentials, and OAuth auth" {
 	cmd list help="List configured accounts in the manifest" {

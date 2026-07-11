@@ -1,8 +1,7 @@
 // Handler-level tests for src/core/ops/messages.ts.
 //
-// Covers gap items 1.1 (read_email handler), 1.3 (search_emails handler),
-// 1.4 (modify_email labelIds precedence), 1.5 (delete_email handler), and
-// 1.6 (schema parse) from docs/test-coverage-inventory.md.
+// Covers read_email, search_emails, modify_email label precedence,
+// delete_email, and schema parsing.
 //
 // Strategy: import the module so the ops register themselves on the singleton
 // registry, then dispatch by name with a hand-rolled OperationContext whose

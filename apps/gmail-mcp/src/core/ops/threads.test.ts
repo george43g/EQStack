@@ -1,6 +1,6 @@
 // Handler-level tests for src/core/ops/threads.ts.
 // Mocks ctx.gmail.users.threads.{get,list,modify} and dispatches via the
-// process registry. Covers gap rows 2.1–2.6 in docs/test-coverage-inventory.md.
+// process registry.
 
 import { describe, expect, it, vi } from "vitest";
 import type { OperationContext } from "../context.js";

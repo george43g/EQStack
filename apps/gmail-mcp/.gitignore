@@ -36,6 +36,11 @@ credentials.json
 # Local MCP host config — contains machine-specific absolute paths
 .mcp.json
 
+# Local agent/editor workspace config
+.agents/
+.codex/
+.claude/
+
 # Fixture-mode runtime state (per-test config dir + raw capture output)
 .test-config/
 fixtures/raw/

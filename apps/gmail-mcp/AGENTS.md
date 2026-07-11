@@ -1,6 +1,6 @@
 # Gmail-MCP-Server — Agent Guide
 
-> `CLAUDE.md` is a symlink to this file — both Claude Code and other coding agents read these conventions.
+> `CLAUDE.md` is a symlink to this file, so Claude Code and other coding agents can share the same repository conventions.
 
 ## What this repo is
 
@@ -25,7 +25,7 @@ Bare `gmail` prints help; the CLI is the default surface.
 
 ## Branch workflow
 
-Two-branch model. `main` is stable, `experimental` is staging. Full SOP in `.claude/skills/pr-review-sop/SKILL.md` — required reading for any PR work.
+`main` is the stable public branch. Use focused feature branches for changes, keep commits reviewable, and do not push generated local config or credentials. Before opening or merging a PR, run the verification commands relevant to the touched surface; for broad changes, run `pnpm verify`.
 
 ## Architecture
 
@@ -382,19 +382,17 @@ Op handlers without an `outputSchema` stay text-only (no breakage; just no `--js
 After every change to this repo:
 
 1. **Rebuild**: `npm run build`.
-2. **Reload the dev MCP**: the proxy (`scripts/mcp-dev-proxy.ts`) auto-reloads on `src/**/*.ts` changes. If the host already has a session, restart Claude Code (or whichever MCP host) so it picks up the new code.
-3. **Exercise via the dev MCP**: call the relevant `mcp__gmail-mcp-dev__*` tool(s) and confirm the change. For changes the host can't easily reach (signal handling, watchdog kill, etc.), use a one-shot bash test piping JSON-RPC through the proxy.
-4. **Add a regression test** when the change is unit-testable. Vitest tests live next to the source (`*.test.ts`). The robustness library has full unit coverage — keep it that way.
-5. **Regenerate/check CLI usage artifacts when Commander commands or help text change**: `pnpm run gen-usage`, then `pnpm run gen-usage -- --check`. `usage.kdl` is the source for completions and manpages.
-6. **Run the full test suite**: `npm test`.
-7. **Run the stress harness on changes that touch the dispatcher / lifecycle**: `npm run stress`.
-8. **Run the e2e suite when touching bootstrap / account / dispatch surfaces**: `pnpm test:e2e`. Boots the dispatcher against `fixtures/gmail/{work,personal}/` and exercises `list_inbox_threads → switch_account → list_inbox_threads` + the CLI binary. `pnpm verify` runs it automatically.
+2. **Add a regression test** when the change is unit-testable. Vitest tests live next to the source (`*.test.ts`). The robustness library has full unit coverage — keep it that way.
+3. **Regenerate/check CLI usage artifacts when Commander commands or help text change**: `pnpm run gen-usage`, then `pnpm run gen-usage -- --check`. `usage.kdl` is the source for completions and manpages.
+4. **Run the full test suite**: `npm test`.
+5. **Run the stress harness on changes that touch the dispatcher / lifecycle**: `npm run stress`.
+6. **Run the e2e suite when touching bootstrap / account / dispatch surfaces**: `pnpm test:e2e`. Boots the dispatcher against `fixtures/gmail/{work,personal}/` and exercises `list_inbox_threads → switch_account → list_inbox_threads` + the CLI binary. `pnpm verify` runs it automatically.
 
-This rule is non-negotiable. The dev MCP is the only way to catch issues that compile but break at runtime (e.g. silent stdout pollution, unhandled rejection paths, signal-handling regressions).
+For release or publish-prep changes, also run `npm pack --dry-run` and inspect the tarball file list.
 
 ## PR & issue review
 
-Mandatory security audit on every PR before presenting. See `.claude/skills/pr-review-sop/SKILL.md`.
+Prioritize build breakage, behavior regressions, missing tests, credential leakage, network exposure, and dependency/supply-chain risk. This is a local stdio MCP server by default, so review security findings against that threat model rather than treating every local filesystem operation as remote-code risk.
 
 ## Stress harness
 
@@ -431,9 +429,8 @@ Optional capture+anonymise scripts (`scripts/capture-fixtures.ts`, `scripts/anon
 
 - **`gmail console` polish.** The REPL exists, prints a legend, routes through the commander tree, and supports `accounts` plus `switch <id>` / `sw <id>`. Future polish: inline `@inquirer/prompts` widgets for destructive ops and richer account/status summaries.
 - **`usage.kdl` spec for shell completions.** Generated from the commander tree by `scripts/gen-usage.ts` (run via `pnpm run gen-usage`). `pnpm verify` runs `gen-usage --check` so drift fails CI. The committed `usage.kdl` is consumed by the [`usage`](https://usage.jdx.dev/) Rust binary; `gmail --usage-spec` also prints it on demand.
-- **Phase D — TUI MVP** ✅ shipped. `gmail tui` opens a 3-pane Ink/React UI against the in-process dispatcher: vim-modal keymap, `$EDITOR` suspend for compose / reply / reply-all / draft-edit, 8 themes (`:theme` overlay), account switcher (`:account` modal that subscribes to `sessionEvents.accountChanged`), dev stats overlay (`~` / `:stats`), per-thread LRU cache (`GMAIL_TUI_CACHE_MB`). Reads `~/.gmail-mcp/config.json` for `theme` / `editor` / `cacheMB`; `GMAIL_TUI_*` env wins over the file. See `docs/phase-d-tui-plan.md` for the (now-historical) plan. Phase D2 follow-ups: visual-mode batch ops, filter/label CRUD UI, attachment preview, sent/drafts folder UIs.
+- **TUI follow-ups.** `gmail tui` opens a 3-pane Ink/React UI against the in-process dispatcher: vim-modal keymap, `$EDITOR` suspend for compose / reply / reply-all / draft-edit, 8 themes (`:theme` overlay), account switcher (`:account` modal that subscribes to `sessionEvents.accountChanged`), dev stats overlay (`~` / `:stats`), per-thread LRU cache (`GMAIL_TUI_CACHE_MB`). Reads `~/.gmail-mcp/config.json` for `theme` / `editor` / `cacheMB`; `GMAIL_TUI_*` env wins over the file. Follow-ups: visual-mode batch ops, filter/label CRUD UI, attachment preview, sent/drafts folder UIs.
 - **VHS screenshot pipeline** ✅ shipped. `pnpm screenshots` regenerates `docs/screenshots/*.{png,gif}` from `scripts/screenshots/*.tape` against `GMAIL_FIXTURE_MODE=1`. The 6 stills + animated workflow GIF feed the top-level README and `docs/SCREENSHOTS.md` gallery. CI (`.github/workflows/screenshots.yml`) auto-regenerates on push (auto-commits with `[skip ci]`) and gates PRs (`git diff --exit-code`). Local pre-push hook at `.githooks/pre-push` refuses to push TUI changes that drift the captures.
-- **tmux MCP wiring + benchmark** — `tmux-mcp-rs` (Rust, brew) and `tmux-mcp` (Node, npx) are installed locally but not in `~/.claude.json`. See [`docs/tmux-mcp-setup.md`](docs/tmux-mcp-setup.md) for the one-time wiring recipe (separate per-server sockets so the bench A/Bs cleanly). Benchmark driver at [`scripts/bench-tmux-mcp.ts`](scripts/bench-tmux-mcp.ts); metric table at [`docs/tmux-mcp-bench.md`](docs/tmux-mcp-bench.md) (filled in next session once both servers are exposed to Claude Code).
 - **Phase G2 — multi-tenant HTTP mode.** Defer until a real use case appears. Would add per-request OAuth introspection, per-tenant credential lookup, scope-isolated rate limiting.
 - **`zod` 3 → 4** (with `zod-to-json-schema` co-bump). zod 4 changes the discriminated-union surface, default-value semantics, and error format. The 27 schemas in `tools.ts` plus the test fixtures all need review. Defer until there's a concrete reason — currently no zod 3 bug is biting us.
 - **Wrap remaining Gmail call sites with `withRetry` / `rateLimitAcquire`**. The library is in place and is wired into `read_email` and `search_emails` as the canonical pattern. The other read paths (`list_inbox_threads`, `get_thread`, `download_*`, etc.) and the idempotent writes (`modify_*`, `delete_*`, `batch_*`) are progressive-adoption candidates. Send/draft creation must remain unwrapped (non-idempotent).

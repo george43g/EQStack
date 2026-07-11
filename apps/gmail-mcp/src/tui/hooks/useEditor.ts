@@ -4,8 +4,7 @@
 // exits. Ink's render loop survives the suspension (we don't unmount); the
 // editor takes the TTY because we drop raw mode and pause stdin while it runs.
 //
-// Rejected alternatives are documented in docs/phase-d-tui-plan.md. The
-// suspend-and-spawn pattern matches what aerc, mutt, and lazygit do.
+// The suspend-and-spawn pattern matches what aerc, mutt, and lazygit do.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";

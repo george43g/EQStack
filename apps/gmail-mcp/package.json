@@ -1,14 +1,13 @@
 {
-  "name": "@gongrzhe/server-gmail-autoauth-mcp",
+  "name": "@george43g/gmail-mcp",
   "version": "1.1.11",
-  "description": "Gmail MCP server with auto authentication support",
+  "description": "Gmail MCP server with CLI, TUI, console, OAuth, and multi-account support",
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
     "gmail": "./dist/cli/index.js"
   },
   "scripts": {
-    "preinstall": "pnpm add -g .",
     "build": "tsc",
     "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local dist/cli/index.js",
     "dev": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/cli/index.ts",
@@ -27,12 +26,12 @@
     "screenshots": "fc-list | grep -qi 'jetbrains mono' || { echo 'Install: brew install --cask font-jetbrains-mono'; exit 1; }; pnpm build && bash scripts/screenshots/prepare-fake-editor.sh && for f in scripts/screenshots/*.tape; do echo \"▶ $f\"; vhs \"$f\"; done",
     "screenshots:check": "pnpm screenshots && bash scripts/screenshots/check-drift.sh",
     "verify": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:e2e && pnpm run gen-usage -- --check",
-    "prepare": "npm run build && git config core.hooksPath .githooks 2>/dev/null || true",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "files": [
     "dist",
-    "skills",
     "README.md",
     "usage.kdl"
   ],
@@ -50,23 +49,22 @@
     "claude",
     "auto-auth"
   ],
-  "author": "gongrzhe",
-  "license": "ISC",
+  "author": "George G <11027390+george43g@users.noreply.github.com>",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ArtyMcLabin/Gmail-MCP-Server.git"
+    "url": "git+https://github.com/george43g/gmail-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/ArtyMcLabin/Gmail-MCP-Server/issues"
+    "url": "https://github.com/george43g/gmail-mcp/issues"
   },
-  "homepage": "https://github.com/ArtyMcLabin/Gmail-MCP-Server#readme",
+  "homepage": "https://github.com/george43g/gmail-mcp#readme",
   "publishConfig": {
     "access": "public"
   },
   "engines": {
     "node": ">=20.6.0",
-    "npm": "not in use",
-    "pnpm": ">=11"
+    "pnpm": ">=9"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.4.2",

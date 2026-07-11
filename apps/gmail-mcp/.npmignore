@@ -4,6 +4,9 @@ src/
 # Development
 .git/
 .github/
+.agents/
+.codex/
+.claude/
 .gitignore
 .npmrc
 .env
@@ -35,4 +38,4 @@ coverage/
 
 # Misc
 .DS_Store
-Thumbs.db 
+Thumbs.db

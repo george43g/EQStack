@@ -1,8 +1,7 @@
 // Dispatcher unit tests for src/server/build.ts.
 //
-// Covers gap items 12.1 (tools/list scope filter), 12.3 (unknown-tool error
-// envelope), 12.4 (scope-gated tool re-auth hint), and 12.5 (ToolTimeoutError
-// → isError envelope) from docs/test-coverage-inventory.md §12.
+// Covers tools/list scope filtering, unknown-tool errors, scope-gated re-auth
+// hints, and ToolTimeoutError → isError envelopes.
 //
 // Strategy: setSession() with a fake oauth+gmail, then call buildMcpServer().
 // Invoke the dispatch closure directly for tools/call paths; reach into the

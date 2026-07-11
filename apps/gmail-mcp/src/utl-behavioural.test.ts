@@ -2,7 +2,7 @@
  * Behavioural tests for src/utl.ts — these complement the existing
  * source-grep tests in src/utl.test.ts with proper run-time assertions.
  *
- * Covered branches (per docs/test-coverage-inventory.md §4):
+ * Covered branches:
  *   4.14 createEmailMessage mimeType branches (text/plain, text/html, multipart/alternative)
  *   4.15 createEmailMessage RFC2047 subject encoding for non-ASCII
  *   4.16 createEmailMessage CRLF / NUL header sanitization (CRLF-injection guard)

@@ -16,7 +16,7 @@ name: Screenshots
 
 on:
   push:
-    branches: [main, experimental, "george43/improvements"]
+    branches: [main, experimental]
     paths:
       - "src/tui/**"
       - "fixtures/gmail/**"

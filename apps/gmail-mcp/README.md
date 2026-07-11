@@ -1,30 +1,25 @@
-# Gmail AutoAuth MCP Server (Actively Maintained Fork)
+# Gmail MCP Server
 
-[![CI](https://github.com/ArtyMcLabin/Gmail-MCP-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/ArtyMcLabin/Gmail-MCP-Server/actions/workflows/ci.yml)
+[![CI](https://github.com/george43g/gmail-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/george43g/gmail-mcp/actions/workflows/ci.yml)
 
-> **This is an actively maintained fork of [GongRzhe/Gmail-MCP-Server](https://github.com/GongRzhe/Gmail-MCP-Server).**
->
-> The original repository has been unmaintained since August 2025 — 7+ months with zero maintainer activity and 72+ unmerged pull requests. I use this MCP server daily as part of my Claude Code workflow and depend on it working correctly, so I picked it up.
->
-> **Pull requests are welcome.** If you've been sitting on fixes or features with nowhere to submit them, this is the place.
+An actively maintained Gmail integration for MCP hosts, plus a human-friendly
+`gmail` CLI, interactive console, and terminal UI.
+
+This fork descends from [GongRzhe/Gmail-MCP-Server](https://github.com/GongRzhe/Gmail-MCP-Server)
+and incorporates the maintained fork history from `ArtyMcLabin/Gmail-MCP-Server`.
+Upstream authors and contributors are credited in the Git history and license.
 
 ### What this fork adds
 
-- **Fixed reply threading** — auto-resolves `In-Reply-To` and `References` headers so email replies land in the correct thread instead of creating orphaned messages ([upstream PR #91](https://github.com/GongRzhe/Gmail-MCP-Server/pull/91), still pending)
+- **Fixed reply threading** — auto-resolves `In-Reply-To` and `References` headers so email replies land in the correct thread instead of creating orphaned messages
 - **Send-as alias support** — optional `from` parameter for multi-identity email management (send from any configured Gmail alias)
-- **Reply-all tool** — `reply_all` automatically fetches the original email, builds To/CC recipient lists (excluding yourself), and sets proper threading headers ([PR #3](https://github.com/ArtyMcLabin/Gmail-MCP-Server/pull/3) by [@MaxGhenis](https://github.com/MaxGhenis))
-- **Fixed `list_filters`** — was returning empty array due to wrong response property name ([PR #4](https://github.com/ArtyMcLabin/Gmail-MCP-Server/pull/4) by [@nicholas-anthony-ai](https://github.com/nicholas-anthony-ai))
-- **Custom OAuth2 scoping** — `--scopes` flag to request only the permissions you need, with automatic tool filtering ([PR #6](https://github.com/ArtyMcLabin/Gmail-MCP-Server/pull/6) by [@tansanDOTeth](https://github.com/tansanDOTeth))
-- **CI/CD hardening** — fixed shell injection vector in GitHub Actions workflow, added least-privilege permissions scope ([PR #9](https://github.com/ArtyMcLabin/Gmail-MCP-Server/pull/9) by [@JF10R](https://github.com/JF10R))
-- **Security hardening** — fixed path traversal in attachment download, restricted OAuth credential file permissions ([PR #10](https://github.com/ArtyMcLabin/Gmail-MCP-Server/pull/10) by [@JF10R](https://github.com/JF10R))
-- **Dependency security** — upgraded MCP SDK to v1.27.1 (3 CVE fixes), upgraded nodemailer (DoS + routing fix), moved dev-only packages out of production deps ([PR #11](https://github.com/ArtyMcLabin/Gmail-MCP-Server/pull/11) by [@JF10R](https://github.com/JF10R))
+- **Reply-all tool** — `reply_all` automatically fetches the original email, builds To/CC recipient lists (excluding yourself), and sets proper threading headers
+- **Custom OAuth2 scoping** — `--scopes` flag to request only the permissions you need, with automatic tool filtering
+- **Multi-account management** — account manifests, `gmail account`, `list_accounts`, `switch_account`, and account-aware console/TUI browsing
 - **Thread-level tools** — `get_thread`, `list_inbox_threads`, `get_inbox_with_threads` for efficient thread-based email reading in a single call
-- **Tool annotations** — MCP spec annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) on all tools for safer LLM tool execution ([PR #14](https://github.com/ArtyMcLabin/Gmail-MCP-Server/pull/14) by [@bryankthompson](https://github.com/bryankthompson))
-- **Download email tool** — `download_email` saves emails to disk in json/eml/txt/html formats without consuming LLM context ([PR #13](https://github.com/ArtyMcLabin/Gmail-MCP-Server/pull/13) by [@icanhasjonas](https://github.com/icanhasjonas))
-
-All features are production-tested in daily use.
-
-[![Star History Chart](https://api.star-history.com/svg?repos=ArtyMcLabin/Gmail-MCP-Server&type=Date)](https://star-history.com/#ArtyMcLabin/Gmail-MCP-Server&Date)
+- **Tool annotations** — MCP spec annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) on all tools for safer LLM tool execution
+- **Download email tool** — `download_email` saves emails to disk in json/eml/txt/html formats without consuming LLM context
+- **TUI and console** — `gmail tui` for a keyboard-driven terminal client and `gmail console` for a REPL over the same tool catalog
 
 ---
 
@@ -35,7 +30,7 @@ A Model Context Protocol (MCP) server for Gmail integration in Claude Desktop wi
 
 ## Screenshots
 
-![gmail tui — workflow demo](docs/screenshots/workflow-demo.gif)
+![gmail tui — workflow demo](https://raw.githubusercontent.com/george43g/gmail-mcp/main/docs/screenshots/workflow-demo.gif)
 
 The animated demo above shows `gmail tui` booting against the fixture
 corpus, opening a thread, swapping accounts, and toggling the dev-stats
@@ -98,14 +93,14 @@ regenerate locally with `pnpm screenshots`.
    mv gcp-oauth.keys.json ~/.gmail-mcp/
 
    # Run authentication from anywhere
-   npx @gongrzhe/server-gmail-autoauth-mcp account auth default
+   npx @george43g/gmail-mcp account auth default
    ```
 
    b. Local Authentication:
    ```bash
    # Place gcp-oauth.keys.json in your current directory
    # The file will be automatically copied to global config
-   npx @gongrzhe/server-gmail-autoauth-mcp account auth default
+   npx @george43g/gmail-mcp account auth default
    ```
 
    The authentication process will:
@@ -127,7 +122,7 @@ regenerate locally with `pnpm screenshots`.
     "gmail": {
       "command": "npx",
       "args": [
-        "@gongrzhe/server-gmail-autoauth-mcp",
+        "@george43g/gmail-mcp",
         "mcp"
       ]
     }
@@ -147,7 +142,7 @@ docker run -i --rm \
   -e GMAIL_OAUTH_PATH=/gcp-oauth.keys.json \
   -e "GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json" \
   -p 3000:3000 \
-  mcp/gmail account auth default
+  george43g/gmail-mcp account auth default
 ```
 
 2. Usage:
@@ -164,7 +159,8 @@ docker run -i --rm \
         "mcp-gmail:/gmail-server",
         "-e",
         "GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json",
-        "mcp/gmail"
+        "george43g/gmail-mcp",
+        "mcp"
       ]
     }
   }
@@ -176,24 +172,24 @@ docker run -i --rm \
 For cloud server environments (like n8n), you can specify a custom callback URL during authentication:
 
 ```bash
-npx @gongrzhe/server-gmail-autoauth-mcp account auth default --callback https://gmail.gongrzhe.com/oauth2callback
+npx @george43g/gmail-mcp account auth default --callback https://gmail.example.com/oauth2callback
 ```
 
 #### Setup Instructions for Cloud Environment
 
 1. **Configure Reverse Proxy:**
    - Set up your n8n container to expose a port for authentication
-   - Configure a reverse proxy to forward traffic from your domain (e.g., `gmail.gongrzhe.com`) to this port
+   - Configure a reverse proxy to forward traffic from your domain (e.g., `gmail.example.com`) to this port
 
 2. **DNS Configuration:**
    - Add an A record in your DNS settings to resolve your domain to your cloud server's IP address
 
 3. **Google Cloud Platform Setup:**
-   - In your Google Cloud Console, add your custom domain callback URL (e.g., `https://gmail.gongrzhe.com/oauth2callback`) to the authorized redirect URIs list
+   - In your Google Cloud Console, add your custom domain callback URL (e.g., `https://gmail.example.com/oauth2callback`) to the authorized redirect URIs list
 
 4. **Run Authentication:**
    ```bash
-   npx @gongrzhe/server-gmail-autoauth-mcp account auth default --callback https://gmail.gongrzhe.com/oauth2callback
+   npx @george43g/gmail-mcp account auth default --callback https://gmail.example.com/oauth2callback
    ```
 
 5. **Configure in your application:**
@@ -203,7 +199,7 @@ npx @gongrzhe/server-gmail-autoauth-mcp account auth default --callback https://
        "gmail": {
          "command": "npx",
          "args": [
-           "@gongrzhe/server-gmail-autoauth-mcp",
+           "@george43g/gmail-mcp",
            "mcp"
          ]
        }
@@ -236,13 +232,13 @@ Use the `--scopes` flag to request only the permissions you need:
 
 ```bash
 # Read-only access (recommended for safe browsing)
-npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.readonly
+npx @george43g/gmail-mcp account auth default --scopes=gmail.readonly
 
 # Read-only with filter management
-npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.readonly,gmail.settings.basic
+npx @george43g/gmail-mcp account auth default --scopes=gmail.readonly,gmail.settings.basic
 
 # Full access (default behavior)
-npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.modify,gmail.settings.basic
+npx @george43g/gmail-mcp account auth default --scopes=gmail.modify,gmail.settings.basic
 ```
 
 If no `--scopes` flag is provided, the server defaults to `gmail.modify,gmail.settings.basic` for full functionality.
@@ -273,7 +269,7 @@ To use this MCP server with [Claude Code](https://docs.anthropic.com/en/docs/cla
 First, authenticate with read-only scope:
 
 ```bash
-npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.readonly
+npx @george43g/gmail-mcp account auth default --scopes=gmail.readonly
 ```
 
 Then add to your Claude Code MCP settings (`~/.claude/mcp_settings.json` or project-level `.mcp.json`):
@@ -283,7 +279,7 @@ Then add to your Claude Code MCP settings (`~/.claude/mcp_settings.json` or proj
   "mcpServers": {
     "gmail": {
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]
+      "args": ["@george43g/gmail-mcp", "mcp"]
     }
   }
 }
@@ -300,7 +296,7 @@ With read-only scopes, only these 4 tools will be available to Claude:
 For full Gmail management capabilities:
 
 ```bash
-npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.modify,gmail.settings.basic
+npx @george43g/gmail-mcp account auth default --scopes=gmail.modify,gmail.settings.basic
 ```
 
 ```json
@@ -308,19 +304,19 @@ npx @gongrzhe/server-gmail-autoauth-mcp account auth default --scopes=gmail.modi
   "mcpServers": {
     "gmail": {
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]
+      "args": ["@george43g/gmail-mcp", "mcp"]
     }
   }
 }
 ```
 
-This enables all 20 tools including sending emails, managing labels, creating filters, reply-all, and batch operations.
+This enables the full tool catalog, including sending emails, managing labels, creating filters, reply-all, account switching, and batch operations.
 
 ## Other MCP Hosts
 
-This server speaks the standard MCP stdio protocol — any host that supports MCP can talk to it. All examples below assume you've already run `gmail account auth default` (or `npx @gongrzhe/server-gmail-autoauth-mcp account auth default`) once on a machine with a browser. The credentials end up in `~/.gmail-mcp/accounts/default/credentials.json`.
+This server speaks the standard MCP stdio protocol — any host that supports MCP can talk to it. All examples below assume you've already run `gmail account auth default` (or `npx @george43g/gmail-mcp account auth default`) once on a machine with a browser. The credentials end up in `~/.gmail-mcp/accounts/default/credentials.json`.
 
-> **Bin layout change (May 2026):** the package now ships a single `gmail` binary. Subcommands `mcp` / `tui` / `console` expose the MCP server, terminal UI, and interactive REPL. Bare `gmail` prints help. **Update existing host configs** that say `args: ["@gongrzhe/server-gmail-autoauth-mcp"]` to `args: ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]` — the trailing `mcp` is required, since the CLI is now the default surface.
+> **Bin layout change (May 2026):** the package now ships a single `gmail` binary. Subcommands `mcp` / `tui` / `console` expose the MCP server, terminal UI, and interactive REPL. Bare `gmail` prints help. **Update existing host configs** that say `args: ["@george43g/gmail-mcp"]` to `args: ["@george43g/gmail-mcp", "mcp"]` — the trailing `mcp` is required, since the CLI is now the default surface.
 
 If you want to skip the file entirely (CI, Docker, remote server), see [Env-Driven Config](#env-driven-config-no-gmail-mcp-files-needed).
 
@@ -332,7 +328,7 @@ If you want to skip the file entirely (CI, Docker, remote server), see [Env-Driv
     "gmail": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]
+      "args": ["@george43g/gmail-mcp", "mcp"]
     }
   }
 }
@@ -350,7 +346,7 @@ Same shape as Claude Code's `.mcp.json` — drop the snippet above into project 
     "gmail": {
       "type": "local",
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]
+      "args": ["@george43g/gmail-mcp", "mcp"]
     }
   }
 }
@@ -364,7 +360,7 @@ Same shape as Claude Code's `.mcp.json` — drop the snippet above into project 
     {
       "name": "gmail",
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"]
+      "args": ["@george43g/gmail-mcp", "mcp"]
     }
   ]
 }
@@ -379,7 +375,7 @@ Open Cline's MCP-server settings (gear icon → "Configure MCP Servers") and pas
 If you have [Bun](https://bun.sh/) installed, swap `npx` for `bunx` in any of the snippets above. Cold-start is ~2–5× faster for first-run downloads, and ~100× faster for subsequent runs from Bun's global cache. Our shebang (`#!/usr/bin/env node`) is preserved, so Bun runs the server under Node.js.
 
 ```json
-{ "mcpServers": { "gmail": { "command": "bunx", "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"] } } }
+{ "mcpServers": { "gmail": { "command": "bunx", "args": ["@george43g/gmail-mcp", "mcp"] } } }
 ```
 
 ## CLI Usage
@@ -536,7 +532,7 @@ For deployments where you don't want filesystem state (Docker, Cloud Run, epheme
   "mcpServers": {
     "gmail": {
       "command": "npx",
-      "args": ["@gongrzhe/server-gmail-autoauth-mcp", "mcp"],
+      "args": ["@george43g/gmail-mcp", "mcp"],
       "env": {
         "GMAIL_OAUTH_KEYS_JSON": "${GMAIL_OAUTH_KEYS_JSON}",
         "GMAIL_CREDENTIALS_JSON": "${GMAIL_CREDENTIALS_JSON}"
@@ -736,7 +732,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - run: npm i -g @gongrzhe/server-gmail-autoauth-mcp
+      - run: npm i -g @george43g/gmail-mcp
       - name: Send email
         env:
           GMAIL_OAUTH_KEYS_JSON: ${{ secrets.GMAIL_OAUTH_KEYS_JSON }}
@@ -1384,4 +1380,4 @@ MIT
 
 ## Support
 
-If you encounter any issues or have questions, please [file an issue](https://github.com/ArtyMcLabin/Gmail-MCP-Server/issues).
+If you encounter any issues or have questions, please [file an issue](https://github.com/george43g/gmail-mcp/issues).

@@ -1,10 +1,7 @@
 // Handler-level tests for src/core/ops/health.ts.
 //
-// Covers gap items 8.1 and 8.2 from docs/test-coverage-inventory.md:
-//   8.1  health_check handler with stubbed snapshot returning healthy /
-//        degraded / unhealthy, populates content + structuredContent.
-//   8.2  snapshotHealth `unhealthy` branch via event-loop p99 ≥ 5000 ms AND
-//        via watchdog killReason.
+// Covers health_check text/structured output plus degraded/unhealthy branches
+// driven by event-loop p99 and watchdog kill reasons.
 //
 // Strategy: mock src/robustness/watchdog.ts so readWatchdogState() returns
 // driver-supplied values. Side-effect import of ./health.js registers the op;
