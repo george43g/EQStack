@@ -9,13 +9,13 @@
 // gives first-time users a guided path to a working TUI.
 
 import { spawn } from "node:child_process";
-import { withFullScreen } from "fullscreen-ink";
 import { render } from "ink";
 import { loadManifest } from "../core/accounts.js";
 import { BootstrapError, bootstrapSession } from "../index.js";
 import { App } from "./App.js";
 import { NoAccountScreen } from "./components/NoAccountScreen.js";
 import { loadTuiConfig } from "./config.js";
+import { withFullScreen } from "./fullscreen.js";
 import { loadTheme } from "./themes/index.js";
 
 /** Returns true when there's at least one account in the manifest. */

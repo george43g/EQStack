@@ -1,8 +1,9 @@
 // Inline terminal image preview. Detects iTerm2 / kitty / Ghostty graphics
 // support from env, encodes the image bytes with the matching protocol, and
-// emits the escape sequence directly to stdout. Uses the same Ink-suspend
-// flow as useEditor — drop raw mode, pause stdin, write, wait for a key,
-// resume — so the image isn't overwritten by Ink's next frame.
+// emits the escape sequence directly to stdout. Uses the same terminal
+// suspend primitive as useEditor (fullscreen.tsx) — while suspended, Ink
+// renders an empty frame, so nothing can paint over the image, resize
+// events included.
 //
 // Falls back to a status-message-only return when the host terminal doesn't
 // support an inline protocol; the caller can then choose to open the file
@@ -10,6 +11,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resumeTerminal, suspendTerminal } from "../fullscreen.js";
 
 export type ImageTerminal = "iterm2" | "kitty" | null;
 
@@ -59,14 +61,12 @@ export async function openImagePreview({
     const bytes = await fs.readFile(imagePath);
     const seq = buildImageEscape(term, bytes, path.basename(imagePath));
 
-    // Suspend Ink (mirrors useEditor flow).
+    // Suspend the terminal (mirrors useEditor flow): after this resolves Ink
+    // has flushed an empty frame and cleared the screen — the image owns the
+    // viewport until resumeTerminal(), resize events included.
+    await suspendTerminal();
     if (setRawMode) setRawMode(false);
     process.stdin.pause();
-    // Take a fresh viewport — clear the screen and emit the image at home.
-    // Ink will repaint over the top whenever it next renders, so we lock the
-    // user in an explicit "press any key to continue" state until they choose
-    // to return.
-    process.stdout.write("\x1b[2J\x1b[H");
     process.stdout.write(seq);
     process.stdout.write("\r\n\r\n");
     process.stdout.write("press any key to return…\r\n");
@@ -85,8 +85,8 @@ export async function openImagePreview({
   } catch {
     return "error";
   } finally {
-    // Restore Ink's TTY ownership; the next state-change render will repaint
-    // the panes cleanly.
+    // Restore Ink's TTY ownership, then resume the terminal — fullscreen.tsx
+    // re-enters the alt screen, clears the image, and forces a full repaint.
     try {
       process.stdin.pause();
     } catch {
@@ -98,6 +98,7 @@ export async function openImagePreview({
     } catch {
       // ignore
     }
+    await resumeTerminal();
   }
 }
 

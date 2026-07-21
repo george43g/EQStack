@@ -72,7 +72,6 @@
     "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
     "email-addresses": "^5.0.0",
-    "fullscreen-ink": "^0.1.0",
     "fuzzysort": "^3.1.0",
     "google-auth-library": "^10.6.2",
     "googleapis": "^171.4.0",
