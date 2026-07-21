@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { getConfigDir, getCredentialsPath, getOAuthPath } from "./config-paths.js";
+import { getConfigDir, getCredentialsPath, getDraftsDir, getOAuthPath } from "./config-paths.js";
 
 describe("getConfigDir", () => {
   it("defaults to ~/.gmail-mcp", () => {
@@ -47,5 +47,15 @@ describe("getCredentialsPath", () => {
 
   it("composes with GMAIL_CONFIG_DIR when GMAIL_CREDENTIALS_PATH unset", () => {
     expect(getCredentialsPath({ GMAIL_CONFIG_DIR: "/x" })).toBe("/x/credentials.json");
+  });
+});
+
+describe("getDraftsDir", () => {
+  it("defaults to <configDir>/drafts", () => {
+    expect(getDraftsDir({})).toBe(path.join(os.homedir(), ".gmail-mcp", "drafts"));
+  });
+
+  it("composes with GMAIL_CONFIG_DIR", () => {
+    expect(getDraftsDir({ GMAIL_CONFIG_DIR: "/x" })).toBe("/x/drafts");
   });
 });

@@ -274,23 +274,43 @@ export function App({ initialTheme, config }: Props) {
     if (!intent) return;
     let cancelled = false;
     (async () => {
+      // Draft-persistence contract: the on-disk draft is removed ONLY after
+      // the Gmail call verifiably succeeded. Aborts, validation bails, and
+      // send failures keep the file so the user's writing survives.
+      let draftPath: string | null = null;
+      const discardDraft = async () => {
+        if (!draftPath) return;
+        const fs = await import("node:fs/promises");
+        await fs.rm(draftPath, { force: true }).catch(() => {});
+      };
       try {
         dispatch({ type: "SET_STATUS", payload: `Opening $EDITOR (${intent.kind})…` });
-        const result = await openEditorRef.current({ initialContent: intent.initialContent });
+        const result = await openEditorRef.current({
+          initialContent: intent.initialContent,
+          kind: intent.kind,
+        });
         if (cancelled) return;
+        draftPath = result.draftPath;
         if (!result.content) {
-          dispatch({ type: "SET_STATUS", payload: "Compose aborted." });
+          dispatch({
+            type: "SET_STATUS",
+            payload: `Compose aborted — draft kept at ${result.draftPath}`,
+          });
           dispatch({ type: "CLEAR_EDITOR" });
           return;
         }
         const parsed = parseCompose(result.content);
         if (intent.kind === "reply-all") {
           if (!intent.sourceMessageId) {
-            dispatch({ type: "SET_STATUS", payload: "reply-all: missing source message id" });
+            dispatch({
+              type: "SET_STATUS",
+              payload: `reply-all: missing source message id — draft kept at ${result.draftPath}`,
+            });
             dispatch({ type: "CLEAR_EDITOR" });
             return;
           }
           await gmail.replyAll({ messageId: intent.sourceMessageId, body: parsed.body });
+          await discardDraft();
           dispatch({ type: "SET_STATUS", payload: "Reply sent (reply-all)" });
         } else if (intent.kind === "draft-edit") {
           if (parsed.to.length === 0 || !parsed.subject) {
@@ -307,11 +327,16 @@ export function App({ initialTheme, config }: Props) {
             body: parsed.body,
             threadId: intent.sourceThreadId,
           });
+          // Content now lives in Gmail drafts — the local copy is redundant.
+          await discardDraft();
           dispatch({ type: "SET_STATUS", payload: "Draft saved" });
         } else {
           // compose / reply both call send_email
           if (parsed.to.length === 0) {
-            dispatch({ type: "SET_STATUS", payload: "Aborted: To: header empty." });
+            dispatch({
+              type: "SET_STATUS",
+              payload: `Aborted: To: header empty — draft kept at ${result.draftPath}`,
+            });
             dispatch({ type: "CLEAR_EDITOR" });
             return;
           }
@@ -324,6 +349,7 @@ export function App({ initialTheme, config }: Props) {
             threadId: intent.sourceThreadId,
             inReplyTo: intent.sourceMessageId,
           });
+          await discardDraft();
           dispatch({
             type: "SET_STATUS",
             payload: intent.kind === "reply" ? "Reply sent" : "Email sent",
@@ -332,7 +358,10 @@ export function App({ initialTheme, config }: Props) {
       } catch (err) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
-        dispatch({ type: "SET_ERROR", payload: msg });
+        dispatch({
+          type: "SET_ERROR",
+          payload: draftPath ? `${msg} — draft kept at ${draftPath}` : msg,
+        });
       } finally {
         dispatch({ type: "CLEAR_EDITOR" });
       }

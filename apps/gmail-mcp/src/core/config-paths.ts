@@ -32,3 +32,9 @@ export function getCredentialsPath(env: NodeJS.ProcessEnv = process.env): string
   if (override && override.trim().length > 0) return override;
   return path.join(getConfigDir(env), "credentials.json");
 }
+
+/** Where TUI compose drafts persist (`<configDir>/drafts/`). Drafts survive
+    aborts and failed sends; only a verified successful send removes one. */
+export function getDraftsDir(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(getConfigDir(env), "drafts");
+}

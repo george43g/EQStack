@@ -1,22 +1,31 @@
 // External `$EDITOR` suspend flow. The hook returns a single function that
-// callers await: write content to a tmp .eml file → release Ink's raw mode →
-// spawn the editor with stdio: "inherit" → read the file back when the editor
-// exits. Ink's render loop survives the suspension (we don't unmount); the
-// editor takes the TTY because we drop raw mode and pause stdin while it runs.
+// callers await: write content to a persistent draft .eml file → suspend the
+// Ink terminal (fullscreen.tsx renders an empty frame so nothing can paint
+// over the editor) → release raw mode → spawn the editor with stdio:
+// "inherit" → read the file back when the editor exits → resume the terminal.
+//
+// Draft persistence contract: this hook NEVER deletes the draft file. Every
+// `:w` in the editor is an autosave to a stable path under
+// `<configDir>/drafts/`, and the editor's own swapfile covers crash
+// recovery. The caller (App.tsx) removes the draft only after the send /
+// draft-save has verifiably succeeded; aborts and failures keep the file.
 //
 // The suspend-and-spawn pattern matches what aerc, mutt, and lazygit do.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { getDraftsDir } from "../../core/config-paths.js";
+import { resumeTerminal, suspendTerminal } from "../fullscreen.js";
 
 export interface OpenEditorOptions {
-  /** Initial content written to the tmp file before the editor opens. */
+  /** Initial content written to the draft file before the editor opens. */
   initialContent: string;
+  /** Compose kind — prefixes the draft filename (`compose-…`, `reply-…`). */
+  kind: string;
   /** Override editor binary. Otherwise: VISUAL → EDITOR → "vi". */
   editor?: string;
-  /** Extension on the tmp file — defaults to `.eml` so editor syntax highlighting kicks in. */
+  /** Extension on the draft file — defaults to `.eml` so editor syntax highlighting kicks in. */
   extension?: string;
 }
 
@@ -25,12 +34,33 @@ export interface OpenEditorResult {
   content: string | null;
   /** Editor's exit code. */
   exitCode: number;
+  /** Where the draft lives on disk. The file survives aborts and failures. */
+  draftPath: string;
 }
 
 export type OpenEditor = (opts: OpenEditorOptions) => Promise<OpenEditorResult>;
 
 export function resolveEditor(env: NodeJS.ProcessEnv = process.env): string {
   return env.VISUAL?.trim() || env.EDITOR?.trim() || env.GMAIL_TUI_EDITOR?.trim() || "vi";
+}
+
+/** `2026-06-23-141530` — sortable, readable, filesystem-safe. */
+function draftTimestamp(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+/** First free `<kind>-<timestamp>[-n]<ext>` path under the drafts dir. */
+async function allocateDraftPath(dir: string, kind: string, ext: string): Promise<string> {
+  const base = `${kind}-${draftTimestamp()}`;
+  for (let n = 0; ; n++) {
+    const candidate = path.join(dir, `${base}${n === 0 ? "" : `-${n}`}${ext}`);
+    try {
+      await fs.access(candidate);
+    } catch {
+      return candidate;
+    }
+  }
 }
 
 /**
@@ -43,28 +73,24 @@ export function createEditorOpener(
   setRawMode: ((mode: boolean) => void) | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): OpenEditor {
-  return async ({ initialContent, editor, extension = ".eml" }) => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gmail-mcp-"));
-    const tmpPath = path.join(tmpDir, `compose-${process.pid}-${Date.now()}${extension}`);
-    await fs.writeFile(tmpPath, initialContent, "utf8");
+  return async ({ initialContent, kind, editor, extension = ".eml" }) => {
+    const draftsDir = getDraftsDir(env);
+    await fs.mkdir(draftsDir, { recursive: true });
+    const draftPath = await allocateDraftPath(draftsDir, kind, extension);
+    await fs.writeFile(draftPath, initialContent, "utf8");
 
     const bin = (editor ?? resolveEditor(env)).trim();
-    // Cleanup helper — always runs, even on exception, to avoid tmp-file leaks.
-    const cleanup = async () => {
-      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-    };
 
+    // Suspend first: after this resolves, Ink has flushed an empty frame and
+    // cannot repaint (resize included) until resumeTerminal(). Then release
+    // the raw-mode lock and pause stdin so the editor gets a clean TTY.
+    await suspendTerminal();
     try {
-      // Release Ink's raw-mode lock so the editor gets a clean TTY. Pause
-      // stdin so Ink's input listeners don't grab bytes destined for the
-      // editor. The editor process inherits the parent stdio so it renders
-      // on the same alternate screen — when it exits, control returns to
-      // Ink, which will redraw on the next state change.
       if (setRawMode) setRawMode(false);
       process.stdin.pause();
 
       const exitCode = await new Promise<number>((resolve, reject) => {
-        const child = spawn(bin, [tmpPath], {
+        const child = spawn(bin, [draftPath], {
           stdio: "inherit",
           env: { ...env },
           shell: false,
@@ -80,10 +106,10 @@ export function createEditorOpener(
       });
 
       if (exitCode !== 0) {
-        return { content: null, exitCode };
+        return { content: null, exitCode, draftPath };
       }
-      const content = await fs.readFile(tmpPath, "utf8");
-      return { content, exitCode };
+      const content = await fs.readFile(draftPath, "utf8");
+      return { content, exitCode, draftPath };
     } finally {
       try {
         process.stdin.resume();
@@ -91,7 +117,7 @@ export function createEditorOpener(
         // ignore
       }
       if (setRawMode) setRawMode(true);
-      await cleanup();
+      await resumeTerminal();
     }
   };
 }
