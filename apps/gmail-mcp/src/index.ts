@@ -294,6 +294,10 @@ export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<Ses
  * runtime to reach callMcpTool in-process without becoming an MCP server.
  */
 export async function main(opts: { skipTransport?: boolean } = {}) {
+  if (opts.skipTransport) {
+    return await bootstrapSession({ skipTransport: true });
+  }
+
   installShutdownHandlers();
   registerCleanup(() => logShutdown("normal"));
   startHeapMonitor();
@@ -302,7 +306,7 @@ export async function main(opts: { skipTransport?: boolean } = {}) {
 
   let bundle: SessionBundle;
   try {
-    bundle = await bootstrapSession({ skipTransport: opts.skipTransport });
+    bundle = await bootstrapSession();
   } catch (err) {
     if (err instanceof BootstrapError) {
       console.error(`Error: ${err.message}`);
@@ -312,8 +316,6 @@ export async function main(opts: { skipTransport?: boolean } = {}) {
     await shutdown(1);
     return;
   }
-
-  if (opts.skipTransport) return;
 
   const { server } = bundle;
 

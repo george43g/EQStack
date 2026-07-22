@@ -149,7 +149,7 @@ The `src/robustness/` modules form a "robustness harness" that any local stdio M
 
 ### Self-healing contract (who installs what)
 
-The watchdog + signal handlers are installed by `main()` in `src/index.ts`, **not** by `bootstrapSession()`. This is load-bearing — it lets long-lived embedders (the Phase D TUI) call `bootstrapSession` directly and own their own lifecycle (Ink handles Ctrl+C; the TUI catches `BootstrapError` to render a "credentials missing" pane instead of exiting). The contract is pinned by `src/index.test.ts` (asserts `bootstrapSession` registers 0 SIG* listeners) and `src/robustness/shutdown.test.ts` (asserts `installShutdownHandlers` wires all four signals).
+The watchdog + signal handlers are installed by transport-owning `main()` calls in `src/index.ts`, **not** by `bootstrapSession()` or `main({skipTransport:true})`. This is load-bearing — it lets the CLI/TUI/console own their lifecycle and lets the TUI catch `BootstrapError` to render a "credentials missing" pane instead of exiting. The contract is pinned by `src/index.test.ts` (asserts both bootstrap paths register 0 SIG* listeners) and `src/robustness/shutdown.test.ts` (asserts `installShutdownHandlers` wires all four signals).
 
 Self-healing surface covered by tests:
 - **Per-tool timeout** (`MCP_TOOL_TIMEOUT_DEFAULT_MS`, default 30s) → one hung handler returns `isError:true` envelope; the next call still routes through the dispatcher. Stress case `MCP self-heals: serves the next call after a timed-out one`.

@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetForTests as resetSession } from "./core/session.js";
-import { _resetDispatcherForTests, BootstrapError, bootstrapSession } from "./index.js";
+import { _resetDispatcherForTests, BootstrapError, bootstrapSession, main } from "./index.js";
 
 let tmpDir: string;
 let originalEnv: typeof process.env;
@@ -147,5 +147,25 @@ describe("bootstrapSession — process contract", () => {
     await bootstrapSession();
     expect(sigOnCalls).toEqual([]);
     onSpy.mockRestore();
+  });
+
+  it("does not install process handlers when main skips transport", async () => {
+    fs.writeFileSync(path.join(tmpDir, "gcp-oauth.keys.json"), VALID_KEYS);
+    fs.writeFileSync(path.join(tmpDir, "credentials.json"), VALID_CREDS);
+
+    const sigOnCalls: string[] = [];
+    const onSpy = vi.spyOn(process, "on").mockImplementation((event, listener) => {
+      if (typeof event === "string" && event.startsWith("SIG")) sigOnCalls.push(event);
+      return process.on(event, listener);
+    });
+
+    await main({ skipTransport: true });
+    expect(sigOnCalls).toEqual([]);
+    onSpy.mockRestore();
+  });
+
+  it("lets skip-transport bootstrap failures propagate to the CLI runtime", async () => {
+    process.env.GMAIL_OAUTH_KEYS_JSON = "{bad";
+    await expect(main({ skipTransport: true })).rejects.toBeInstanceOf(BootstrapError);
   });
 });
