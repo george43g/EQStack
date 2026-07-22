@@ -186,8 +186,8 @@ async function runRawCommand(args: string[]): Promise<void> {
 }
 
 async function listTools(): Promise<void> {
-  // Side-effect import: loads the registry so we can enumerate every op.
-  await bootstrapForCli();
+  // Tool metadata is static and does not require Gmail credentials.
+  await import("../core/ops/index.js");
   const { registry } = await import("../core/registry.js");
   for (const name of registry.names().sort()) {
     process.stdout.write(`${name}\n`);

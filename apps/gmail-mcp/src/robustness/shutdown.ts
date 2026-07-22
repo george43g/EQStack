@@ -16,6 +16,11 @@ type CleanupFn = () => void | Promise<void>;
 const registry = new Set<CleanupFn>();
 let shuttingDown = false;
 let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+let forceExitTimer: ReturnType<typeof setTimeout> | null = null;
+let handlersInstalled = false;
+const signalHandlers = new Map<NodeJS.Signals, () => void>();
+let stdinTarget: NodeJS.ReadableStream | null = null;
+let stdinEndHandler: (() => void) | null = null;
 
 /**
  * Register a cleanup function to run on shutdown.
@@ -39,7 +44,10 @@ export function unregisterCleanup(fn: CleanupFn): void {
 export async function shutdown(exitCode = 0): Promise<never> {
   if (shuttingDown) {
     // Already shutting down — force exit after 3s safety net
-    setTimeout(() => process.exit(exitCode), 3000).unref();
+    if (!forceExitTimer) {
+      forceExitTimer = setTimeout(() => process.exit(exitCode), 3000);
+      forceExitTimer.unref();
+    }
     return new Promise<never>(() => {});
   }
   shuttingDown = true;
@@ -80,12 +88,15 @@ function syncCleanup(): void {
  * Call once at process startup.
  */
 export function installShutdownHandlers(): void {
-  const onSignal = (signal: string) => {
-    shutdown(signal === "SIGINT" ? 130 : 0);
-  };
+  if (handlersInstalled) return;
+  handlersInstalled = true;
 
   for (const sig of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"] as const) {
-    process.on(sig, () => onSignal(sig));
+    const handler = () => {
+      shutdown(sig === "SIGINT" ? 130 : 0);
+    };
+    signalHandlers.set(sig, handler);
+    process.on(sig, handler);
   }
 
   process.on("exit", syncCleanup);
@@ -96,10 +107,13 @@ export function installShutdownHandlers(): void {
  * Essential for MCP stdio servers to detect host death.
  */
 export function enableStdinEofDetection(): void {
-  process.stdin.on("end", () => {
+  if (stdinTarget) return;
+  stdinTarget = process.stdin;
+  stdinEndHandler = () => {
     if (!shuttingDown) shutdown(0);
-  });
-  process.stdin.resume();
+  };
+  stdinTarget.on("end", stdinEndHandler);
+  stdinTarget.resume();
 }
 
 /**
@@ -131,8 +145,21 @@ export function isShuttingDown(): boolean {
  * @internal
  */
 export function _resetForTests(): void {
+  for (const [sig, handler] of signalHandlers) {
+    process.off(sig, handler);
+  }
+  signalHandlers.clear();
+  if (handlersInstalled) process.off("exit", syncCleanup);
+  handlersInstalled = false;
+  if (stdinTarget && stdinEndHandler) stdinTarget.removeListener("end", stdinEndHandler);
+  stdinTarget = null;
+  stdinEndHandler = null;
   registry.clear();
   shuttingDown = false;
+  if (forceExitTimer) {
+    clearTimeout(forceExitTimer);
+    forceExitTimer = null;
+  }
   if (watchdogTimer) {
     clearInterval(watchdogTimer);
     watchdogTimer = null;

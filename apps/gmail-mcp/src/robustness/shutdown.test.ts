@@ -155,6 +155,16 @@ describe("installShutdownHandlers", () => {
     expect(registeredSignals.exit?.length).toBe(1);
   });
 
+  it("does not install duplicate process handlers", () => {
+    installShutdownHandlers();
+    installShutdownHandlers();
+    expect(registeredSignals.SIGINT?.length).toBe(1);
+    expect(registeredSignals.SIGTERM?.length).toBe(1);
+    expect(registeredSignals.SIGHUP?.length).toBe(1);
+    expect(registeredSignals.SIGQUIT?.length).toBe(1);
+    expect(registeredSignals.exit?.length).toBe(1);
+  });
+
   it("SIGINT handler triggers shutdown with exit code 130 (128 + signal 2)", async () => {
     installShutdownHandlers();
     const handler = registeredSignals.SIGINT?.[0];
