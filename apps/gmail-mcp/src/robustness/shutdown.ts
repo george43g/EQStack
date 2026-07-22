@@ -121,12 +121,16 @@ export function enableStdinEofDetection(): void {
  * If the parent PID changes (reparented to launchd/init), trigger shutdown.
  * Timer is unref'd so it doesn't prevent natural exit.
  */
-export function enableOrphanWatchdog(intervalMs = 5000): void {
+export function enableOrphanWatchdog(
+  intervalMs = 5000,
+  readParentPid: () => number = () => process.ppid,
+): void {
   if (watchdogTimer) return;
-  const parentPid = process.ppid;
+  const parentPid = readParentPid();
 
   watchdogTimer = setInterval(() => {
-    if (process.ppid === 1 || process.ppid !== parentPid) {
+    const currentParentPid = readParentPid();
+    if (currentParentPid === 1 || currentParentPid !== parentPid) {
       shutdown(0);
     }
   }, intervalMs);

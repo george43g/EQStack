@@ -230,48 +230,44 @@ describe("enableStdinEofDetection", () => {
 
 describe("enableOrphanWatchdog", () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
-  let originalPpid: number;
+  let parentPid: number;
 
   beforeEach(() => {
     _resetForTests();
     exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     vi.useFakeTimers();
-    originalPpid = process.ppid;
+    parentPid = 12345;
   });
 
   afterEach(() => {
-    Object.defineProperty(process, "ppid", { value: originalPpid, configurable: true });
     vi.useRealTimers();
     exitSpy.mockRestore();
     _resetForTests();
   });
 
   it("triggers shutdown when ppid changes to 1 (reparented to init/launchd)", async () => {
-    Object.defineProperty(process, "ppid", { value: 12345, configurable: true });
-    enableOrphanWatchdog(100);
+    enableOrphanWatchdog(100, () => parentPid);
 
     // Simulate the parent dying → reparent to init (pid 1 on macOS/Linux).
-    Object.defineProperty(process, "ppid", { value: 1, configurable: true });
+    parentPid = 1;
     await vi.advanceTimersByTimeAsync(150);
 
     expect(exitSpy).toHaveBeenCalled();
   });
 
   it("triggers shutdown when ppid changes to a different non-1 parent (reparented)", async () => {
-    Object.defineProperty(process, "ppid", { value: 12345, configurable: true });
-    enableOrphanWatchdog(100);
+    enableOrphanWatchdog(100, () => parentPid);
 
-    Object.defineProperty(process, "ppid", { value: 99999, configurable: true });
+    parentPid = 99999;
     await vi.advanceTimersByTimeAsync(150);
 
     expect(exitSpy).toHaveBeenCalled();
   });
 
   it("is idempotent — second call doesn't double-install the timer", async () => {
-    Object.defineProperty(process, "ppid", { value: 12345, configurable: true });
-    enableOrphanWatchdog(100);
-    enableOrphanWatchdog(100);
-    Object.defineProperty(process, "ppid", { value: 1, configurable: true });
+    enableOrphanWatchdog(100, () => parentPid);
+    enableOrphanWatchdog(100, () => parentPid);
+    parentPid = 1;
     await vi.advanceTimersByTimeAsync(150);
     // We expect ONE exit call even if two timers had fired (shutdown gates
     // re-entry via shuttingDown). The point is "no crash + no double-trigger".
