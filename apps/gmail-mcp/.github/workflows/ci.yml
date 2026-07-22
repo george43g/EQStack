@@ -17,23 +17,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 24]
+        include:
+          - node: 20
+            manager: npm
+          - node: 24
+            manager: pnpm
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
+        if: matrix.manager == 'pnpm'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          cache: pnpm
+          cache: ${{ matrix.manager }}
 
-      - name: Install dependencies
+      - name: Install dependencies with pnpm
+        if: matrix.manager == 'pnpm'
         run: pnpm install --frozen-lockfile
 
+      - name: Install dependencies with npm
+        if: matrix.manager == 'npm'
+        run: npm ci
+
       - name: Verify source, tests, package, and production audit
-        run: pnpm verify
+        run: ${{ matrix.manager }} run verify
 
   package-smoke:
     name: Package Smoke (Node 24)

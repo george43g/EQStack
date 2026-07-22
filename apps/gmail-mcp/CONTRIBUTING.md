@@ -4,7 +4,7 @@ Contributions are welcome. Open an issue before starting a large behavioral or a
 
 ## Development
 
-Requirements: Node.js 20.6 or newer and pnpm 11 or newer. Node 20 and 24 are tested in CI.
+The published runtime supports Node.js 20.6 or newer. Local pnpm development requires Node.js 22.13 or newer with pnpm 11; CI verifies the Node 20 runtime through npm and the Node 24 runtime through pnpm.
 
 ```bash
 pnpm install
