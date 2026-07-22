@@ -36,7 +36,11 @@ export function loadFixtureGmail(fixtureDir: string, accountId: string | null): 
     );
   }
 
-  const client = new GmailFixtureClient(accountDir);
+  const requestedLatency = Number.parseInt(process.env.GMAIL_FIXTURE_DELAY_MS ?? "0", 10);
+  const client = new GmailFixtureClient(
+    accountDir,
+    Number.isFinite(requestedLatency) && requestedLatency > 0 ? requestedLatency : 0,
+  );
   return {
     // The cast lives at this one seam — every method in GmailFixtureClient
     // that the ops actually invoke is implemented. Anything unimplemented

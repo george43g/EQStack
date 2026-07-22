@@ -20,8 +20,13 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
-const TSX = resolve(ROOT, "node_modules/.bin/tsx");
 const ENTRY = resolve(ROOT, "src/cli/index.ts");
+const FIXTURE_ENV = {
+  GMAIL_FIXTURE_MODE: "1",
+  GMAIL_FIXTURE_DIR: resolve(ROOT, "fixtures/gmail"),
+  GMAIL_CONFIG_DIR: "",
+  GMAIL_ACCOUNT: "work",
+};
 
 interface RpcRequest {
   jsonrpc: "2.0";
@@ -45,8 +50,9 @@ class McpClient {
   public stderr = "";
 
   constructor(env: Record<string, string> = {}) {
-    this.child = spawn(TSX, [ENTRY, "mcp"], {
-      env: { ...process.env, ...env },
+    this.child = spawn(process.execPath, ["--import", "tsx", ENTRY, "mcp"], {
+      cwd: ROOT,
+      env: { ...process.env, ...FIXTURE_ENV, ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child.stdout.on("data", (chunk: Buffer) => this.onStdout(chunk));
@@ -233,7 +239,10 @@ async function caseMalformedSchema(): Promise<void> {
 }
 
 async function caseForcedTimeout(): Promise<void> {
-  const c = new McpClient({ MCP_TOOL_TIMEOUT_FORCE_MS: "1" });
+  const c = new McpClient({
+    MCP_TOOL_TIMEOUT_FORCE_MS: "1",
+    GMAIL_FIXTURE_DELAY_MS: "25",
+  });
   try {
     await c.initialize();
     const r = await c.request("tools/call", {
@@ -255,7 +264,10 @@ async function caseMcpSelfHealsAfterTimeout(): Promise<void> {
   // (we issue an "unknown tool" which intentionally fails fast — proves the
   // dispatcher is responsive after a timeout). Self-healing contract: one
   // misbehaving tool doesn't kill the MCP.
-  const c = new McpClient({ MCP_TOOL_TIMEOUT_FORCE_MS: "1" });
+  const c = new McpClient({
+    MCP_TOOL_TIMEOUT_FORCE_MS: "1",
+    GMAIL_FIXTURE_DELAY_MS: "25",
+  });
   try {
     await c.initialize();
 
@@ -348,12 +360,22 @@ async function caseHttpTransport(): Promise<void> {
   const port = 18000 + Math.floor(Math.random() * 1000);
   const token = `stress-token-${Date.now()}`;
   const child = spawn(
-    TSX,
-    [ENTRY, "mcp", "--http", `--port=${port}`, "--bind=127.0.0.1", "--token-env=GMAIL_HTTP_TOKEN"],
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      ENTRY,
+      "mcp",
+      "--http",
+      `--port=${port}`,
+      "--bind=127.0.0.1",
+      "--token-env=GMAIL_HTTP_TOKEN",
+    ],
     {
       cwd: ROOT,
       env: {
         ...process.env,
+        ...FIXTURE_ENV,
         GMAIL_HTTP_TOKEN: token,
         GMAIL_AUTH_NON_INTERACTIVE: "1",
       },

@@ -101,6 +101,7 @@
     "@usage-spec/commander": "^1.1.0",
     "ink-testing-library": "^4.0.0",
     "mcp-evals": "^1.0.18",
+    "tsx": "^4.23.1",
     "typescript": "^5.3.3",
     "vitest": "^4.0.18"
   },

@@ -45,7 +45,16 @@ interface ListRequestParams {
 }
 
 export class GmailFixtureClient {
-  constructor(public readonly accountDir: string) {}
+  constructor(
+    public readonly accountDir: string,
+    private readonly latencyMs = 0,
+  ) {}
+
+  private async waitForLatency(): Promise<void> {
+    if (this.latencyMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.latencyMs));
+    }
+  }
 
   // ── messages.* ──────────────────────────────────────────────────────────
 
@@ -214,6 +223,7 @@ export class GmailFixtureClient {
       },
 
       list: async (_params: { userId: string }): Promise<RestResponse<unknown>> => {
+        await this.waitForLatency();
         const labels = this.readLabels();
         return { data: ListLabelsResponseSchema.parse({ labels }) };
       },
