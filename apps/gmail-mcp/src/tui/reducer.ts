@@ -46,6 +46,22 @@ export type Overlay =
   | { kind: "command"; text: string }
   | { kind: "search"; text: string }
   | { kind: "confirm"; prompt: string; pendingCmd: string }
+  // Preview-and-confirm gate before an editor-composed message actually sends.
+  // Carries the parsed payload + the on-disk draft path so the confirm handler
+  // can send (and only then discard the draft). reply-all / draft-edit are
+  // exempt and never open this.
+  | {
+      kind: "confirm-send";
+      to: string[];
+      cc: string[];
+      bcc: string[];
+      subject: string;
+      body: string;
+      threadId?: string;
+      inReplyTo?: string;
+      sendKind: "compose" | "reply";
+      draftPath: string;
+    }
   | { kind: "theme"; cursor: number }
   | { kind: "account"; cursor: number; selectedIds?: string[] }
   | { kind: "label"; mode: "add" | "remove"; text: string }
@@ -277,7 +293,10 @@ export function reducer(state: AppState, action: Action): AppState {
     case "SET_LOADING":
       return { ...state, loading: action.payload };
     case "SET_STATUS":
-      return { ...state, status: action.payload };
+      // A fresh status message supersedes any stale error — the status bar
+      // renders error over status, so without clearing it a resolved failure
+      // (e.g. a send that later succeeds) would keep showing "Error: …".
+      return { ...state, status: action.payload, error: null };
     case "SET_ERROR":
       return { ...state, error: action.payload, loading: false };
     case "SET_MODE":

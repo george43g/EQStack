@@ -7,6 +7,7 @@ import { type AccountChangedPayload, sessionEvents } from "../core/session.js";
 import { AccountSwitcher } from "./components/AccountSwitcher.js";
 import { CommandPalette } from "./components/CommandPalette.js";
 import { ConfirmModal } from "./components/ConfirmModal.js";
+import { ConfirmSendModal } from "./components/ConfirmSendModal.js";
 import { DevStatsModal } from "./components/DevStatsModal.js";
 import { DraftsRecovery } from "./components/DraftsRecovery.js";
 import { HelpBar } from "./components/HelpBar.js";
@@ -359,7 +360,10 @@ export function App({ initialTheme, config }: Props) {
             dispatch({ type: "SET_STATUS", payload: "Draft saved" });
           }
         } else {
-          // compose / reply both call send_email
+          // compose / reply both call send_email — but gate behind a preview
+          // confirmation instead of sending immediately. The actual send +
+          // draft discard happen in runConfirmedSend once the user confirms;
+          // until then the draft stays on disk.
           if (parsed.to.length === 0) {
             dispatch({
               type: "SET_STATUS",
@@ -368,19 +372,20 @@ export function App({ initialTheme, config }: Props) {
             dispatch({ type: "CLEAR_EDITOR" });
             return;
           }
-          await gmail.sendEmail({
-            to: parsed.to,
-            cc: parsed.cc,
-            bcc: parsed.bcc,
-            subject: parsed.subject,
-            body: parsed.body,
-            threadId: sourceThreadId,
-            inReplyTo: sourceMessageId,
-          });
-          await discardDraft();
           dispatch({
-            type: "SET_STATUS",
-            payload: intent.kind === "reply" ? "Reply sent" : "Email sent",
+            type: "OPEN_OVERLAY",
+            payload: {
+              kind: "confirm-send",
+              to: parsed.to,
+              cc: parsed.cc,
+              bcc: parsed.bcc,
+              subject: parsed.subject,
+              body: parsed.body,
+              threadId: sourceThreadId,
+              inReplyTo: sourceMessageId,
+              sendKind: intent.kind === "reply" ? "reply" : "compose",
+              draftPath: result.draftPath,
+            },
           });
         }
       } catch (err) {
@@ -449,6 +454,20 @@ export function App({ initialTheme, config }: Props) {
       if (input === "n" || input === "N" || key.escape) {
         dispatch({ type: "CLOSE_OVERLAY" });
         dispatch({ type: "SET_STATUS", payload: "Aborted." });
+        return;
+      }
+      return;
+    }
+    // Send-confirmation modal: y sends, n/Esc keeps the message as a draft.
+    if (state.overlay.kind === "confirm-send") {
+      if (input === "y" || input === "Y") {
+        runConfirmedSend(state.overlay, dispatch);
+        return;
+      }
+      if (input === "n" || input === "N" || key.escape) {
+        const { draftPath } = state.overlay;
+        dispatch({ type: "CLOSE_OVERLAY" });
+        dispatch({ type: "SET_STATUS", payload: `Kept as draft at ${draftPath}` });
         return;
       }
       return;
@@ -595,6 +614,7 @@ export function App({ initialTheme, config }: Props) {
     state.showHelp ||
     state.showStats ||
     state.overlay.kind === "confirm" ||
+    state.overlay.kind === "confirm-send" ||
     state.overlay.kind === "theme" ||
     state.overlay.kind === "account" ||
     state.overlay.kind === "drafts";
@@ -608,6 +628,16 @@ export function App({ initialTheme, config }: Props) {
           ) : null}
           {state.overlay.kind === "confirm" ? (
             <ConfirmModal prompt={state.overlay.prompt} theme={theme} />
+          ) : null}
+          {state.overlay.kind === "confirm-send" ? (
+            <ConfirmSendModal
+              to={state.overlay.to}
+              cc={state.overlay.cc}
+              bcc={state.overlay.bcc}
+              subject={state.overlay.subject}
+              sendKind={state.overlay.sendKind}
+              theme={theme}
+            />
           ) : null}
           {state.overlay.kind === "theme" ? (
             <ThemePicker cursor={state.overlay.cursor} current={state.themeName} theme={theme} />
@@ -1846,4 +1876,29 @@ function runConfirmedCmd(
     return;
   }
   dispatch({ type: "SET_STATUS", payload: `Unknown confirm cmd: ${pendingCmd}` });
+}
+
+// Perform the actual send after the user confirms the preview. Mirrors the
+// send + draft-discard the editor effect used to do inline: the draft file is
+// removed only after send_email succeeds; a failure keeps it on disk.
+function runConfirmedSend(
+  payload: Extract<import("./reducer.js").Overlay, { kind: "confirm-send" }>,
+  dispatch: (a: Action) => void,
+) {
+  dispatch({ type: "CLOSE_OVERLAY" });
+  const { to, cc, bcc, subject, body, threadId, inReplyTo, sendKind, draftPath } = payload;
+  (async () => {
+    try {
+      await gmail.sendEmail({ to, cc, bcc, subject, body, threadId, inReplyTo });
+      const fs = await import("node:fs/promises");
+      await fs.rm(draftPath, { force: true }).catch(() => {});
+      dispatch({
+        type: "SET_STATUS",
+        payload: sendKind === "reply" ? "Reply sent" : "Email sent",
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      dispatch({ type: "SET_ERROR", payload: `${msg} — draft kept at ${draftPath}` });
+    }
+  })();
 }

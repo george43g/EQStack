@@ -24,16 +24,16 @@ Enter
 Sleep 3s
 
 # `c` → compose: useEditor writes the tmp .eml, spawns the fake editor,
-# parses the result, calls send_email. The fixture client returns canned
-# success and the status bar flips to "Email sent". `Wait` blocks until
-# the steady-state text actually appears — `Sleep` alone gave a race
-# between "Opening $EDITOR (compose)…" and "Email sent" depending on
-# machine speed, which alternated the captured PNG.
+# parses the result, then opens the send-confirmation preview modal (To/Cc/
+# Subject). `y` confirms; the fixture client returns canned success and the
+# status bar flips to "Email sent". We lean on Sleep because VHS's Wait/
+# Wait+Screen don't see Ink's alt-screen output reliably.
 Type "c"
-# 5s is comfortably past the fake-editor spawn + .eml write + send_email
-# round-trip on every machine the gate runs on. VHS's Wait/Wait+Screen
-# don't see Ink's alt-screen output reliably, so we lean on Sleep.
-Sleep 5s
+# 3s is comfortably past the fake-editor spawn + .eml write on every machine.
+Sleep 3s
+# Confirm the send in the preview modal.
+Type "y"
+Sleep 2s
 
 Screenshot docs/screenshots/05-compose-flow.png
 

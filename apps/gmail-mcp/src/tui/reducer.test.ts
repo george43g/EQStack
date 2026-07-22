@@ -242,6 +242,36 @@ describe("overlay state machine", () => {
     expect(s.overlay).toEqual({ kind: "none" });
   });
 
+  it("SET_STATUS clears a stale error so a later success isn't masked", () => {
+    let s = reducer(initialState, { type: "SET_ERROR", payload: "send failed" });
+    expect(s.error).toBe("send failed");
+    s = reducer(s, { type: "SET_STATUS", payload: "Email sent" });
+    expect(s.error).toBeNull();
+    expect(s.status).toBe("Email sent");
+  });
+
+  it("OPEN_OVERLAY(confirm-send) carries the send payload and stays in normal mode", () => {
+    const s = reducer(initialState, {
+      type: "OPEN_OVERLAY",
+      payload: {
+        kind: "confirm-send",
+        to: ["a@b.test"],
+        cc: [],
+        bcc: [],
+        subject: "hi",
+        body: "hello",
+        threadId: "t1",
+        inReplyTo: "<m1>",
+        sendKind: "reply",
+        draftPath: "/tmp/drafts/reply-x.eml",
+      },
+    });
+    // Confirm-send is not a text-input overlay — mode must remain normal so the
+    // y/n keys reach the modal branch rather than the insert buffer.
+    expect(s.mode).toBe("normal");
+    expect(s.overlay).toMatchObject({ kind: "confirm-send", to: ["a@b.test"], sendKind: "reply" });
+  });
+
   it("CURSOR_DOWN in theme overlay moves the picker cursor instead of the pane cursor", () => {
     let s = reducer(initialState, {
       type: "OPEN_OVERLAY",
