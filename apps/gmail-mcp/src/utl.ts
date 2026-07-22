@@ -27,8 +27,15 @@ function encodeEmailHeader(text: string): string {
 }
 
 export const validateEmail = (email: string): boolean => {
+  // Accept the RFC-5322 display-name form ("Name <a@b.com>") by validating the
+  // bracketed address; the caller keeps the full string verbatim, which
+  // nodemailer/Gmail accept, so the display name survives in the sent header.
+  // A bare address is validated as-is, preserving the strict old behaviour
+  // (e.g. rejecting stray surrounding whitespace).
+  const angle = email.match(/<([^>]+)>/);
+  const addr = angle ? angle[1].trim() : email;
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
+  return emailRegex.test(addr);
 };
 
 /**

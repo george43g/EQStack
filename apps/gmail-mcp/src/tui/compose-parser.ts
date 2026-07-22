@@ -12,6 +12,8 @@
 // case-insensitive. Multiple addresses are comma-separated. Whitespace
 // around commas is trimmed.
 
+import emailAddresses from "email-addresses";
+
 export interface ParsedCompose {
   to: string[];
   cc: string[];
@@ -68,11 +70,45 @@ export function parseCompose(raw: string): ParsedCompose {
   return parsed;
 }
 
+// Format a parsed mailbox back into a header-safe string. A bare address
+// stays bare; a display name is re-quoted only when it contains RFC-5322
+// specials (e.g. the comma in "Last, First"), so the reconstructed string
+// re-parses unambiguously instead of splitting on the name's comma.
+function formatAddress(name: string, address: string): string {
+  if (!name) return address;
+  const needsQuote = /[",;:<>@()[\]\\]/.test(name);
+  const display = needsQuote ? `"${name.replace(/(["\\])/g, "\\$1")}"` : name;
+  return `${display} <${address}>`;
+}
+
+// Split a comma-separated address header into individual entries. Uses the
+// RFC-5322 parser (not a naive comma split) so display names containing
+// commas — `"Last, First" <a@b>` — stay intact, and preserves the display
+// name so it survives into the sent header. Falls back to a naive split when
+// the parser bails on a malformed line, so recipients are never silently
+// dropped.
 function splitAddrs(raw: string): string[] {
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  const parsed = emailAddresses.parseAddressList(trimmed);
+  if (!parsed) {
+    return trimmed
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+  const out: string[] = [];
+  for (const entry of parsed) {
+    if (entry.type === "mailbox") {
+      out.push(formatAddress(entry.name || "", entry.address));
+    } else if (entry.type === "group") {
+      // RFC-5322 group syntax ("Team: a@b, c@d;") — flatten to its mailboxes.
+      for (const m of entry.addresses) {
+        out.push(formatAddress(m.name || "", m.address));
+      }
+    }
+  }
+  return out;
 }
 
 /** Build a compose template the editor will open with.

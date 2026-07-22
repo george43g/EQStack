@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createEmailMessage } from "./utl.js";
+import { createEmailMessage, validateEmail } from "./utl.js";
 
 // Resolve src directory
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -66,6 +66,36 @@ describe("Email threading headers", () => {
 
     expect(getHeader(raw, "References")).toBeNull();
     expect(getHeader(raw, "In-Reply-To")).toBeNull();
+  });
+});
+
+describe("validateEmail — display-name recipients", () => {
+  it("accepts bare addresses", () => {
+    expect(validateEmail("a@b.com")).toBe(true);
+    expect(validateEmail("first.last@sub.example.co.uk")).toBe(true);
+  });
+
+  it("accepts RFC-5322 display-name form (the reported bug)", () => {
+    expect(validateEmail("Vahid Habibi <vahid.habibi@thebluerock.com.au>")).toBe(true);
+    expect(validateEmail('"Last, First" <lf@example.com>')).toBe(true);
+  });
+
+  it("still rejects genuinely invalid recipients", () => {
+    expect(validateEmail("")).toBe(false);
+    expect(validateEmail("not-an-email")).toBe(false);
+    expect(validateEmail("missing-tld@domain")).toBe(false);
+    expect(validateEmail("two addresses@x.com y@z.com")).toBe(false);
+  });
+});
+
+describe("createEmailMessage — display name preserved in header", () => {
+  it("does not reject a Name <addr> recipient and keeps it verbatim in To:", () => {
+    const raw = createEmailMessage({
+      to: ["Vahid Habibi <vahid.habibi@thebluerock.com.au>"],
+      subject: "Re: Disclaimer for Ads",
+      body: "Sounds good.",
+    });
+    expect(getHeader(raw, "To")).toBe("Vahid Habibi <vahid.habibi@thebluerock.com.au>");
   });
 });
 

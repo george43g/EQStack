@@ -16,6 +16,26 @@ describe("parseCompose", () => {
     expect(parsed.to).toEqual(["a@b.test", "c@d.test", "e@f.test"]);
   });
 
+  it("preserves display-name recipients (Name <addr>)", () => {
+    const raw = "To: Vahid Habibi <vahid.habibi@thebluerock.test>, a@b.test\n\n";
+    const parsed = parseCompose(raw);
+    expect(parsed.to).toEqual(["Vahid Habibi <vahid.habibi@thebluerock.test>", "a@b.test"]);
+  });
+
+  it("does not split on a comma inside a quoted display name", () => {
+    const raw = 'To: "Last, First" <lf@example.test>, a@b.test\n\n';
+    const parsed = parseCompose(raw);
+    // The comma inside the quoted name must not fragment the recipient, and
+    // the name is re-quoted so it re-parses unambiguously.
+    expect(parsed.to).toEqual(['"Last, First" <lf@example.test>', "a@b.test"]);
+  });
+
+  it("falls back to a naive split when the address list is malformed", () => {
+    const raw = "To: not an address, a@b.test\n\n";
+    const parsed = parseCompose(raw);
+    expect(parsed.to).toEqual(["not an address", "a@b.test"]);
+  });
+
   it("ignores empty Cc/Bcc lines without crashing", () => {
     const raw = "To: a@b.test\nCc:\nBcc:\nSubject: hi\n\nbody\n";
     const parsed = parseCompose(raw);
