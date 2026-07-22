@@ -1,22 +1,8 @@
 name: Screenshots
 
-# Regenerates the VHS-driven TUI screenshots whenever a relevant input
-# changes. Two modes:
-#
-#   • push (or workflow_dispatch): regenerate, auto-commit any drift to
-#     docs/screenshots/ with [skip ci]. Owner of the truth.
-#   • pull_request: regenerate + `git diff --exit-code` against
-#     docs/screenshots/ — fail the check on drift so reviewers see when a
-#     TUI / fixture change needs a corresponding screenshot bump.
-#
-# Adapted from mcp-cli-starter-template/apps/scaffolder/src/phases/
-# 12-ci-release/lib/.github/workflows/screenshots.yml — base layout +
-# auto-commit dance is theirs; the drift-check on PRs + JetBrains Mono
-# install + fixture-mode env wiring is local.
-
 on:
   push:
-    branches: [main, experimental]
+    branches: [main]
     paths:
       - "src/tui/**"
       - "fixtures/gmail/**"
@@ -32,90 +18,83 @@ on:
       - ".github/workflows/screenshots.yml"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  regenerate:
+  check:
+    name: Screenshot Check
     runs-on: ubuntu-latest
-    # On PRs from forks we have no write access — skip the auto-commit
-    # branch entirely. The drift-check still runs and fails the check
-    # so the contributor knows to regenerate locally.
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
+          version: 11
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 24
+          cache: pnpm
 
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 9
-          run_install: false
-
-      - name: Install pnpm deps
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install VHS (pinned)
-        # Pin to a known good release so renders are deterministic across
-        # runs. Bump the version here + scripts/screenshots/README.md in
-        # lockstep when upgrading.
+      - name: Install VHS, ttyd, ffmpeg, and JetBrains Mono
         env:
           VHS_VERSION: "0.11.0"
         run: |
           set -euo pipefail
           curl -fsSL "https://github.com/charmbracelet/vhs/releases/download/v${VHS_VERSION}/vhs_${VHS_VERSION}_Linux_x86_64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin --strip-components=1 "vhs_${VHS_VERSION}_Linux_x86_64/vhs"
-          vhs --version
-
-      - name: Install ttyd + ffmpeg + JetBrains Mono
-        run: |
-          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ttyd ffmpeg fonts-jetbrains-mono
           fc-cache -f
-          fc-list | grep -i 'jetbrains mono' | head -1
-
-      - name: Build the CLI (so VHS captures the real bin)
-        run: pnpm build
 
       - name: Regenerate screenshots
         run: |
           set -euo pipefail
+          pnpm build
           bash scripts/screenshots/prepare-fake-editor.sh
           mkdir -p docs/screenshots
-          for f in scripts/screenshots/*.tape; do
-            echo "▶ $f"
-            vhs "$f"
+          for tape in scripts/screenshots/*.tape; do
+            echo "Rendering $tape"
+            vhs "$tape"
           done
 
-      - name: Drift report (pull_request)
-        if: github.event_name == 'pull_request'
+      - name: Report screenshot drift
         run: |
           set -euo pipefail
-          # Best-effort drift report. VHS's PNG / GIF encoders aren't
-          # byte-deterministic even when the visual content matches —
-          # blocking on the diff caused enough false positives that the
-          # gate hurt more than it helped. The push branch auto-commits
-          # regenerated outputs so the canonical state stays current; PR
-          # reviewers see the diff in this log and judge by eye.
-          if git diff --exit-code -- 'docs/screenshots/*.png'; then
-            echo "✓ Screenshots in sync."
+          if git diff --exit-code -- docs/screenshots/; then
+            echo "Screenshots are in sync."
           else
-            echo "ℹ Screenshots differ from committed baseline. Review the diff"
-            echo "  in the CI artifacts. If the visual content actually changed,"
-            echo "  regenerate locally and commit:"
-            echo "    pnpm screenshots && git add docs/screenshots/ && git commit"
+            echo "Screenshots differ from the committed baseline."
+            echo "VHS image encoders are not byte-deterministic, so reviewers must inspect the artifact."
           fi
 
-      - name: Commit regenerated screenshots (push / workflow_dispatch)
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gmail-mcp-screenshots
+          path: docs/screenshots/
+          if-no-files-found: error
+
+  commit:
+    name: Commit Screenshots
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: gmail-mcp-screenshots
+          path: docs/screenshots/
+
+      - name: Commit regenerated screenshots
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"

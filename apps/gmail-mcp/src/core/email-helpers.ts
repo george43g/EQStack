@@ -30,6 +30,8 @@ export interface ExtractedHeaders {
   subject: string;
   from: string;
   to: string;
+  cc: string;
+  bcc: string;
   date: string;
   rfcMessageId: string;
 }
@@ -138,6 +140,8 @@ export function extractHeaders(
     subject: getHeader("subject"),
     from: getHeader("from"),
     to: getHeader("to"),
+    cc: getHeader("cc"),
+    bcc: getHeader("bcc"),
     date: getHeader("date"),
     rfcMessageId: getHeader("message-id"),
   };

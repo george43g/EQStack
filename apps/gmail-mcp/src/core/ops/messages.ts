@@ -12,6 +12,8 @@ import {
   ModifyOrDeleteEmailOutputSchema,
   ReadEmailOutputSchema,
   ReadEmailSchema,
+  ReportPhishingOutputSchema,
+  ReportPhishingSchema,
   SearchEmailsOutputSchema,
   SearchEmailsSchema,
 } from "../../tools.js";
@@ -27,6 +29,7 @@ import { type Operation, registry } from "../registry.js";
 type ReadEmailOutput = z.infer<typeof ReadEmailOutputSchema>;
 type SearchEmailsOutput = z.infer<typeof SearchEmailsOutputSchema>;
 type ModifyOrDeleteEmailOutput = z.infer<typeof ModifyOrDeleteEmailOutputSchema>;
+type ReportPhishingOutput = z.infer<typeof ReportPhishingOutputSchema>;
 
 const readEmail: Operation<unknown, ReadEmailOutput> = {
   name: "read_email",
@@ -46,7 +49,9 @@ const readEmail: Operation<unknown, ReadEmailOutput> = {
       { label: "gmail_messages_get" },
     );
 
-    const { subject, from, to, date, rfcMessageId } = extractHeaders(response.data.payload);
+    const { subject, from, to, cc, bcc, date, rfcMessageId } = extractHeaders(
+      response.data.payload,
+    );
     const threadId = response.data.threadId || "";
     const extracted = extractEmailContent((response.data.payload as GmailMessagePart) || {});
     const { text, html } = extracted;
@@ -68,7 +73,7 @@ const readEmail: Operation<unknown, ReadEmailOutput> = {
       content: [
         {
           type: "text",
-          text: `Thread ID: ${threadId}\nMessage-ID: ${rfcMessageId}\nSubject: ${subject}\nFrom: ${from}\nTo: ${to}\nDate: ${date}\n\n${body}${attachmentInfo}`,
+          text: `Thread ID: ${threadId}\nMessage-ID: ${rfcMessageId}\nSubject: ${subject}\nFrom: ${from}\nTo: ${to}${cc ? `\nCC: ${cc}` : ""}${bcc ? `\nBCC: ${bcc}` : ""}\nDate: ${date}\n\n${body}${attachmentInfo}`,
         },
       ],
       structuredContent: {
@@ -77,6 +82,8 @@ const readEmail: Operation<unknown, ReadEmailOutput> = {
         subject,
         from,
         to,
+        cc,
+        bcc,
         date,
         rfcMessageId,
         body,
@@ -188,7 +195,7 @@ const deleteEmail: Operation<unknown, ModifyOrDeleteEmailOutput> = {
   name: "delete_email",
   schema: DeleteEmailSchema,
   outputSchema: ModifyOrDeleteEmailOutputSchema,
-  scopes: ["gmail.modify"],
+  scopes: ["gmail.full"],
   handler: async (input, ctx) => {
     const args = input as { messageId: string };
     await ctx.gmail.users.messages.delete({
@@ -202,7 +209,39 @@ const deleteEmail: Operation<unknown, ModifyOrDeleteEmailOutput> = {
   },
 };
 
+const reportPhishing: Operation<unknown, ReportPhishingOutput> = {
+  name: "report_phishing",
+  schema: ReportPhishingSchema,
+  outputSchema: ReportPhishingOutputSchema,
+  scopes: ["gmail.modify"],
+  handler: async (input, ctx) => {
+    const { messageId } = input as z.infer<typeof ReportPhishingSchema>;
+    await ctx.gmail.users.messages.modify({
+      userId: "me",
+      id: messageId,
+      requestBody: { addLabelIds: ["SPAM"] },
+    });
+    const limitation =
+      "Gmail exposes no native phishing-report endpoint; this operation applies the SPAM label.";
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Email ${messageId} marked as spam. ${limitation}`,
+        },
+      ],
+      structuredContent: {
+        messageId,
+        labelApplied: "SPAM",
+        status: "reported_as_spam",
+        limitation,
+      },
+    };
+  },
+};
+
 registry.register(readEmail);
 registry.register(searchEmails);
 registry.register(modifyEmail);
 registry.register(deleteEmail);
+registry.register(reportPhishing);

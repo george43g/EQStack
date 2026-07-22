@@ -31,8 +31,10 @@ describe("buildProgram (10.1)", () => {
       "auth",
       "batch-delete",
       "batch-modify",
+      "batch-report-phishing",
       "console",
       "delete",
+      "delete-draft",
       "download-attachment",
       "download-email",
       "draft",
@@ -44,10 +46,13 @@ describe("buildProgram (10.1)", () => {
       "modify",
       "read",
       "reply-all",
+      "report-phishing",
       "search",
       "send",
+      "send-draft",
       "threads",
       "tui",
+      "update-draft",
     ].sort();
     expect(names).toEqual(expected);
   });

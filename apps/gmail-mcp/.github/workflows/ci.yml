@@ -2,16 +2,43 @@ name: CI
 
 on:
   push:
-    branches: [main, experimental]
+    branches: [main]
   pull_request:
-    branches: [main, experimental]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build-and-test:
-    name: Build & Test
+  verify:
+    name: Verify (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify source, tests, package, and production audit
+        run: pnpm verify
+
+  package-smoke:
+    name: Package Smoke (Node 24)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,20 +46,40 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install with npm and inspect the clean package
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run package:check
+          npm audit --omit=dev
 
-      - name: Build
-        run: npm run build
+      - name: Install and run the exact tarball
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gmail-mcp-pack /tmp/gmail-mcp-install
+          npm run package:tarball -- --pack-destination /tmp/gmail-mcp-pack
+          tarball=/tmp/gmail-mcp-pack/george43g-gmail-mcp-2.0.0.tgz
+          npm install --prefix /tmp/gmail-mcp-install "$tarball"
+          bin=/tmp/gmail-mcp-install/node_modules/.bin/gmail
+          test "$("$bin" --version)" = "2.0.0"
+          "$bin" --help >/dev/null
+          "$bin" health --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.status)process.exit(1)})'
+          node -e 'const p=require(process.argv[1]);if(p.dependencies["@hono/node-server"]!=="^2.0.11")process.exit(1)' /tmp/gmail-mcp-install/node_modules/@george43g/gmail-mcp/node_modules/@modelcontextprotocol/sdk/package.json
+          node -e 'const p=require(process.argv[1]);if(p.version!=="2.0.11")process.exit(1)' /tmp/gmail-mcp-install/node_modules/@george43g/gmail-mcp/node_modules/@hono/node-server/package.json
+          npm audit --prefix /tmp/gmail-mcp-install --omit=dev
 
-      - name: Unit tests
-        run: npm test
+  docker-smoke:
+    name: Docker Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: E2E tests
-        run: npm run test:e2e
-
-      - name: Usage spec is current
-        run: npm run gen-usage -- --check
+      - name: Build and smoke the image
+        run: |
+          set -euo pipefail
+          docker build -t gmail-mcp:ci .
+          test "$(docker run --rm gmail-mcp:ci --version)" = "2.0.0"
+          docker run --rm gmail-mcp:ci health --json | grep -q '"status"'

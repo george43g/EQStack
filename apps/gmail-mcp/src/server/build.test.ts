@@ -71,7 +71,7 @@ describe("buildMcpServer tools/list scope filter (12.1)", () => {
   });
 
   it("returns the full catalogue when broad scopes are granted", async () => {
-    setAuthorizedScopes(["gmail.modify", "gmail.settings.basic"]);
+    setAuthorizedScopes(["gmail.full", "gmail.settings.basic"]);
     const { server } = buildMcpServer();
     const handlers = (server as unknown as { _requestHandlers: Map<string, RequestHandler> })
       ._requestHandlers;
@@ -92,17 +92,49 @@ describe("buildMcpServer tools/list scope filter (12.1)", () => {
   });
 });
 
+describe("buildMcpServer MCP tool prefix", () => {
+  it("prefixes tools/list and maps prefixed wire calls while direct dispatch stays canonical", async () => {
+    setAuthorizedScopes(["gmail.modify"]);
+    const registryDispatch = vi.spyOn(registry, "dispatch").mockResolvedValue({
+      content: [{ type: "text", text: "ok" }],
+    });
+    vi.spyOn(registry, "has").mockReturnValue(true);
+    const { server, dispatch } = buildMcpServer({ toolPrefix: "work_" });
+    const handlers = (server as unknown as { _requestHandlers: Map<string, RequestHandler> })
+      ._requestHandlers;
+    const listed = (await handlers.get("tools/list")!(
+      { method: "tools/list", params: {} },
+      { signal: new AbortController().signal },
+    )) as { tools: Array<{ name: string }> };
+    expect(listed.tools.every((tool) => tool.name.startsWith("work_"))).toBe(true);
+
+    await handlers.get("tools/call")!(
+      { method: "tools/call", params: { name: "work_read_email", arguments: { messageId: "m" } } },
+      { signal: new AbortController().signal },
+    );
+    expect(registryDispatch).toHaveBeenCalledWith(
+      "read_email",
+      { messageId: "m" },
+      expect.objectContaining({ toolName: "read_email" }),
+    );
+
+    await dispatch("read_email", { messageId: "m" });
+    expect(registryDispatch).toHaveBeenLastCalledWith(
+      "read_email",
+      { messageId: "m" },
+      expect.objectContaining({ toolName: "read_email" }),
+    );
+  });
+});
+
 describe("buildMcpServer dispatcher", () => {
-  it("rejects an unknown tool name with a non-isError advisory envelope (12.3)", async () => {
+  it("rejects an unknown tool name with an error envelope (12.3)", async () => {
     setAuthorizedScopes(["gmail.modify", "gmail.settings.basic"]);
     const { dispatch } = buildMcpServer();
 
     const result = await dispatch("nonexistent_made_up_tool", {});
 
-    // Unknown-tool path returns a text envelope without isError — the
-    // dispatcher treats it as an advisory ("you need different scopes")
-    // rather than an internal failure.
-    expect(result.isError).toBeUndefined();
+    expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain("nonexistent_made_up_tool");
     expect(result.content[0]?.text).toContain("not available");
     expect(result.content[0]?.text).toContain("re-authenticate");
@@ -120,6 +152,7 @@ describe("buildMcpServer dispatcher", () => {
       body: "x",
     });
 
+    expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain('Tool "send_email" is not available');
     expect(result.content[0]?.text).toMatch(/re-authenticate.*additional scopes/i);
   });

@@ -57,6 +57,8 @@ describe("read_email handler", () => {
             { name: "Subject", value: "hi" },
             { name: "From", value: "a@b.com" },
             { name: "To", value: "c@d.com" },
+            { name: "Cc", value: "cc@d.com" },
+            { name: "Bcc", value: "bcc@d.com" },
             { name: "Date", value: "2026-05-01" },
             { name: "Message-ID", value: "<msg-1@example>" },
           ],
@@ -72,12 +74,16 @@ describe("read_email handler", () => {
     expect(result.content[0].text).toContain("Thread ID: T123");
     expect(result.content[0].text).toContain("Subject: hi");
     expect(result.content[0].text).toContain("hello world");
+    expect(result.content[0].text).toContain("CC: cc@d.com");
+    expect(result.content[0].text).toContain("BCC: bcc@d.com");
     expect(result.structuredContent).toMatchObject({
       messageId: "M1",
       threadId: "T123",
       subject: "hi",
       from: "a@b.com",
       to: "c@d.com",
+      cc: "cc@d.com",
+      bcc: "bcc@d.com",
       date: "2026-05-01",
       rfcMessageId: "<msg-1@example>",
       body: "hello world",
@@ -215,6 +221,28 @@ describe("delete_email handler (1.5)", () => {
     expect(deleteMock).toHaveBeenCalledWith({ userId: "me", id: "Mdel" });
     expect(result.content[0].text).toBe("Email Mdel deleted successfully");
     expect(result.structuredContent).toEqual({ messageId: "Mdel", status: "deleted" });
+  });
+});
+
+describe("report_phishing handler", () => {
+  it("applies SPAM and discloses the Gmail API limitation", async () => {
+    const modifyMock = vi.fn().mockResolvedValue({ data: {} });
+    const result = await registry.dispatch(
+      "report_phishing",
+      { messageId: "Mphish" },
+      makeCtx({ modify: modifyMock }),
+    );
+    expect(modifyMock).toHaveBeenCalledWith({
+      userId: "me",
+      id: "Mphish",
+      requestBody: { addLabelIds: ["SPAM"] },
+    });
+    expect(result.content[0].text).toContain("no native phishing-report endpoint");
+    expect(result.structuredContent).toMatchObject({
+      messageId: "Mphish",
+      labelApplied: "SPAM",
+      status: "reported_as_spam",
+    });
   });
 });
 

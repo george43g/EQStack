@@ -40,6 +40,21 @@ describe("hasScope (8.4)", () => {
   it("returns false when authorized list is empty but a scope is required", () => {
     expect(hasScope([], ["gmail.modify"])).toBe(false);
   });
+
+  it("treats gmail.full as a superset of mail scopes but not settings scopes", () => {
+    for (const scope of [
+      "gmail.readonly",
+      "gmail.modify",
+      "gmail.compose",
+      "gmail.send",
+      "gmail.labels",
+      "gmail.full",
+    ]) {
+      expect(hasScope(["gmail.full"], [scope])).toBe(true);
+    }
+    expect(hasScope(["https://mail.google.com/"], ["gmail.modify"])).toBe(true);
+    expect(hasScope(["gmail.full"], ["gmail.settings.basic"])).toBe(false);
+  });
 });
 
 describe("scopeNameToUrl / scopeUrlToName / scopeNamesToUrls (8.5)", () => {

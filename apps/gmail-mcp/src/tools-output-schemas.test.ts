@@ -82,6 +82,8 @@ const cases: SchemaCase[] = [
       subject: "s",
       from: "a@example.com",
       to: "b@example.com",
+      cc: "",
+      bcc: "",
       date: "2024-01-01",
       rfcMessageId: "<rfc@id>",
       body: "body",

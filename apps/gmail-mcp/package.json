@@ -1,6 +1,6 @@
 {
   "name": "@george43g/gmail-mcp",
-  "version": "1.1.11",
+  "version": "2.0.0",
   "description": "Gmail MCP server with CLI, TUI, console, OAuth, and multi-account support",
   "type": "module",
   "main": "dist/cli/index.js",
@@ -8,7 +8,8 @@
     "gmail": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc",
     "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local dist/cli/index.js",
     "dev": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/cli/index.ts",
     "dev:mcp": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/cli/index.ts mcp",
@@ -25,15 +26,21 @@
     "gen-usage": "tsx scripts/gen-usage.ts",
     "screenshots": "fc-list | grep -qi 'jetbrains mono' || { echo 'Install: brew install --cask font-jetbrains-mono'; exit 1; }; pnpm build && bash scripts/screenshots/prepare-fake-editor.sh && for f in scripts/screenshots/*.tape; do echo \"▶ $f\"; vhs \"$f\"; done",
     "screenshots:check": "pnpm screenshots && bash scripts/screenshots/check-drift.sh",
-    "verify": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:e2e && pnpm run gen-usage -- --check",
+    "audit:prod": "npm audit --omit=dev",
+    "package:check": "npm run build && tsx scripts/check-package.ts",
+    "package:tarball": "npm run build && tsx scripts/check-package.ts",
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:e2e && pnpm run gen-usage -- --check && pnpm run package:check && pnpm run audit:prod",
     "hooks:install": "git config core.hooksPath .githooks",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run package:check"
   },
   "files": [
     "dist",
     "README.md",
     "usage.kdl"
+  ],
+  "bundleDependencies": [
+    "@modelcontextprotocol/sdk"
   ],
   "keywords": [
     "gmail",
@@ -64,20 +71,21 @@
   },
   "engines": {
     "node": ">=20.6.0",
-    "pnpm": ">=9"
+    "pnpm": ">=11"
   },
+  "packageManager": "pnpm@11.0.0",
   "dependencies": {
     "@inquirer/prompts": "^8.4.2",
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
     "email-addresses": "^5.0.0",
     "fuzzysort": "^3.1.0",
-    "google-auth-library": "^10.6.2",
-    "googleapis": "^171.4.0",
-    "ink": "^7.0.2",
+    "google-auth-library": "^10.9.0",
+    "googleapis": "^173.0.0",
+    "ink": "^7.1.1",
     "mime-types": "^3.0.1",
-    "nodemailer": "^7.0.11",
+    "nodemailer": "^9.0.3",
     "open": "^10.0.0",
     "picocolors": "^1.1.1",
     "react": "^19.2.6",
@@ -89,12 +97,21 @@
     "@biomejs/biome": "^2.4.14",
     "@types/mime-types": "^2.1.4",
     "@types/node": "^20.10.5",
-    "@types/nodemailer": "^6.4.17",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.2.14",
     "@usage-spec/commander": "^1.1.0",
     "ink-testing-library": "^4.0.0",
     "mcp-evals": "^1.0.18",
     "typescript": "^5.3.3",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "@hono/node-server": "2.0.11",
+    "body-parser": "2.3.0",
+    "fast-uri": "3.1.4",
+    "hono": "4.12.31",
+    "ip-address": "10.2.0",
+    "qs": "6.15.3",
+    "ws": "8.21.1"
   }
 }

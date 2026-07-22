@@ -14,6 +14,7 @@ interface FakeGmail {
     messages: {
       modify: ReturnType<typeof vi.fn>;
       delete: ReturnType<typeof vi.fn>;
+      batchModify: ReturnType<typeof vi.fn>;
     };
   };
 }
@@ -24,6 +25,7 @@ function makeFakeGmail(overrides: Partial<FakeGmail["users"]["messages"]> = {}):
       messages: {
         modify: vi.fn(),
         delete: vi.fn(),
+        batchModify: vi.fn(),
         ...overrides,
       } as FakeGmail["users"]["messages"],
     },
@@ -88,6 +90,32 @@ describe("batch_modify_emails handler", () => {
     const truncated = failingId.substring(0, 16);
     expect(text).toContain(`- ${truncated}... (permission denied)`);
     expect(text).not.toContain(failingId); // full id should not appear
+  });
+});
+
+describe("batch_report_phishing handler", () => {
+  it("falls back per item and reports partial failures", async () => {
+    const badId = "phish-bad";
+    const batchModify = vi.fn(async ({ requestBody }: { requestBody: { ids: string[] } }) => {
+      if (requestBody.ids.includes(badId)) throw new Error("blocked");
+      return { data: {} };
+    });
+    const result = await registry.dispatch(
+      "batch_report_phishing",
+      { messageIds: ["phish-good", badId], batchSize: 2 },
+      makeCtx(makeFakeGmail({ batchModify }), "batch_report_phishing"),
+    );
+    expect(batchModify).toHaveBeenCalledWith({
+      userId: "me",
+      requestBody: { ids: ["phish-good"], addLabelIds: ["SPAM"] },
+    });
+    expect(result.structuredContent).toEqual({
+      action: "report_phishing",
+      successCount: 1,
+      failureCount: 1,
+      failures: [{ messageId: badId, error: "blocked" }],
+    });
+    expect(result.content[0].text).toContain("no native phishing-report endpoint");
   });
 });
 

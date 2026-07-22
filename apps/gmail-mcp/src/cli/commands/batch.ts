@@ -8,7 +8,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { runCliOp } from "../runtime.js";
 
-function resolveIds(raw: string): string[] {
+export function resolveIds(raw: string): string[] {
   if (raw.startsWith("@")) {
     const filePath = path.resolve(raw.slice(1));
     return fs
@@ -21,6 +21,24 @@ function resolveIds(raw: string): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+export function buildBatchReportPhishingCommand(): Command {
+  return new Command("batch-report-phishing")
+    .description("Mark many messages as spam (closest Gmail API phishing approximation)")
+    .requiredOption(
+      "--ids <ids>",
+      "Comma-separated message IDs, or '@file.txt' for newline-delimited input",
+    )
+    .option("--batch-size <n>", "Per-batch size (default 50)", (v) => Number.parseInt(v, 10), 50)
+    .option("--json", "Emit typed JSON")
+    .action(async (options: { ids: string; batchSize?: number; json?: boolean }) => {
+      await runCliOp(
+        "batch_report_phishing",
+        { messageIds: resolveIds(options.ids), batchSize: options.batchSize },
+        { json: options.json },
+      );
+    });
 }
 
 export function buildBatchModifyCommand(): Command {

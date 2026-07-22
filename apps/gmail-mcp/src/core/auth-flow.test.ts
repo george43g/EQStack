@@ -240,6 +240,24 @@ describe("createOAuthClient", () => {
     const url = client.generateAuthUrl({ scope: ["openid"] });
     expect(url).toContain(encodeURIComponent("http://localhost:4040/oauth2callback"));
   });
+
+  it("rejects HTTPS callbacks because the built-in listener is plain HTTP", () => {
+    expect(() =>
+      createOAuthClient(
+        { client_id: "id-x", client_secret: "y" },
+        "https://localhost/oauth2callback",
+      ),
+    ).toThrow(/must use http:\/\//);
+  });
+
+  it("accepts a portless HTTP callback (which resolves to port 80)", () => {
+    expect(() =>
+      createOAuthClient(
+        { client_id: "id-x", client_secret: "y" },
+        "http://localhost/oauth2callback",
+      ),
+    ).not.toThrow();
+  });
 });
 
 describe("saveCredentialsToFile", () => {

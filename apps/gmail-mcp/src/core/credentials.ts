@@ -43,6 +43,55 @@ export interface LoadedCredentials {
   locator?: string;
 }
 
+interface TokenEmitter {
+  on: (...args: any[]) => unknown;
+}
+
+export interface TokenPersistenceOptions {
+  writeFile?: typeof fs.writeFileSync;
+  rename?: typeof fs.renameSync;
+  chmod?: typeof fs.chmodSync;
+  onError?: (error: Error) => void;
+}
+
+/** Persist google-auth-library token rotations only for file-backed credentials. */
+export function attachTokenPersistence(
+  oauth2Client: TokenEmitter,
+  loaded: LoadedCredentials,
+  options: TokenPersistenceOptions = {},
+): boolean {
+  if (loaded.source !== "file" || !loaded.locator) return false;
+
+  const writeFile = options.writeFile ?? fs.writeFileSync;
+  const rename = options.rename ?? fs.renameSync;
+  const chmod = options.chmod ?? fs.chmodSync;
+  const onError = options.onError ?? (() => undefined);
+  const credentialsPath = loaded.locator;
+
+  oauth2Client.on("tokens", (tokens: unknown) => {
+    try {
+      const newTokens = tokens as Record<string, unknown>;
+      const mergedTokens = { ...loaded.credentials.tokens, ...newTokens };
+      if (!newTokens.refresh_token && loaded.credentials.tokens.refresh_token) {
+        mergedTokens.refresh_token = loaded.credentials.tokens.refresh_token;
+      }
+      loaded.credentials.tokens = mergedTokens;
+
+      const tempPath = `${credentialsPath}.${process.pid}.tmp`;
+      writeFile(
+        tempPath,
+        JSON.stringify({ tokens: mergedTokens, scopes: loaded.credentials.scopes }, null, 2),
+        { mode: 0o600 },
+      );
+      rename(tempPath, credentialsPath);
+      if (process.platform !== "win32") chmod(credentialsPath, 0o600);
+    } catch (error) {
+      onError(error as Error);
+    }
+  });
+  return true;
+}
+
 export class CredentialLoadError extends Error {
   source: CredentialSource;
   cause?: unknown;

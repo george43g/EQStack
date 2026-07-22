@@ -31,7 +31,7 @@ import {
 } from "../accounts.js";
 import { loadOAuthKeys } from "../auth-flow.js";
 import { getConfigDir, getOAuthPath } from "../config-paths.js";
-import { loadCredentials } from "../credentials.js";
+import { attachTokenPersistence, loadCredentials } from "../credentials.js";
 import { type Operation, registry } from "../registry.js";
 import { getCurrentAccountId, setSession } from "../session.js";
 
@@ -221,6 +221,13 @@ const switchOp: Operation<SwitchAccountInput, SwitchAccountOutput> = {
       "http://localhost:3000/oauth2callback",
     );
     oauth2Client.setCredentials(loaded.credentials.tokens);
+    attachTokenPersistence(oauth2Client, loaded, {
+      onError: (error) =>
+        logInfo("failed to persist refreshed OAuth tokens", {
+          account: accountId,
+          error: error.message,
+        }),
+    });
     const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
     const scopes = loaded.credentials.scopes ?? [];

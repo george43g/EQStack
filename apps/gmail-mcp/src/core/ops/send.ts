@@ -14,7 +14,7 @@ import {
   SendEmailSchema,
   SendOrDraftOutputSchema,
 } from "../../tools.js";
-import { createEmailMessage, createEmailWithNodemailer } from "../../utl.js";
+import { createEmailMessage, createEmailWithNodemailer, needsRawBuilder } from "../../utl.js";
 import type { OperationContext } from "../context.js";
 import { type Operation, type OperationResult, registry } from "../registry.js";
 
@@ -79,7 +79,7 @@ export async function handleEmailAction(
       }
     }
 
-    if (validatedArgs.attachments && validatedArgs.attachments.length > 0) {
+    if (needsRawBuilder(validatedArgs)) {
       // Use nodemailer to construct a proper RFC822 multipart message.
       message = await createEmailWithNodemailer(validatedArgs);
       const encodedMessage = Buffer.from(message)
@@ -120,6 +120,7 @@ export async function handleEmailAction(
         ],
         structuredContent: {
           messageId: response.data.id ?? "",
+          draftId: response.data.id ?? "",
           action: "drafted",
           threadId: validatedArgs.threadId,
         },
@@ -165,16 +166,14 @@ export async function handleEmailAction(
       ],
       structuredContent: {
         messageId: response.data.id ?? "",
+        draftId: response.data.id ?? "",
         action: "drafted",
         threadId: validatedArgs.threadId,
       },
     };
   } catch (error: any) {
-    if (validatedArgs.attachments && validatedArgs.attachments.length > 0) {
-      console.error(
-        `Failed to send email with ${validatedArgs.attachments.length} attachments:`,
-        error.message,
-      );
+    if (needsRawBuilder(validatedArgs)) {
+      console.error("Failed to build or send MIME email:", error.message);
     }
     throw error;
   }
@@ -246,6 +245,7 @@ const replyAll: Operation<unknown, ReplyAllOutput> = {
       threadId,
       inReplyTo: originalMessageId,
       attachments: args.attachments,
+      inlineImages: args.inlineImages,
     };
 
     await handleEmailAction("send", emailArgs, ctx.gmail);

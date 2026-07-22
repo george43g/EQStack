@@ -1,5 +1,6 @@
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { CredentialLoadError, loadCredentials } from "./credentials.js";
+import { attachTokenPersistence, CredentialLoadError, loadCredentials } from "./credentials.js";
 
 function makeStubs(overrides: Partial<Parameters<typeof loadCredentials>[0]> = {}) {
   return {
@@ -274,5 +275,54 @@ describe("loadCredentials shape compatibility", () => {
       expiry_date: 12345,
     });
     expect(result.credentials.scopes).toBeUndefined();
+  });
+});
+
+describe("attachTokenPersistence", () => {
+  it("persists rotations for file credentials while preserving refresh token and scopes", () => {
+    const emitter = new EventEmitter();
+    const writes: Array<{ path: string; data: string }> = [];
+    const rename = vi.fn();
+    const attached = attachTokenPersistence(
+      emitter,
+      {
+        source: "file",
+        locator: "/config/accounts/work/credentials.json",
+        credentials: {
+          tokens: { access_token: "old", refresh_token: "refresh", expiry_date: 1 },
+          scopes: ["gmail.modify"],
+        },
+      },
+      {
+        writeFile: ((path: string, data: string) => writes.push({ path, data })) as any,
+        rename: rename as any,
+        chmod: vi.fn() as any,
+      },
+    );
+
+    expect(attached).toBe(true);
+    emitter.emit("tokens", { access_token: "new", expiry_date: 2 });
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0]!.data)).toEqual({
+      tokens: { access_token: "new", refresh_token: "refresh", expiry_date: 2 },
+      scopes: ["gmail.modify"],
+    });
+    expect(rename).toHaveBeenCalledWith(
+      expect.stringMatching(/credentials\.json\.\d+\.tmp$/),
+      "/config/accounts/work/credentials.json",
+    );
+  });
+
+  it("does not attach persistence for env or 1Password credentials", () => {
+    for (const source of ["env-json", "1password"] as const) {
+      const emitter = new EventEmitter();
+      expect(
+        attachTokenPersistence(emitter, {
+          source,
+          credentials: { tokens: { access_token: "a" }, scopes: ["gmail.modify"] },
+        }),
+      ).toBe(false);
+      expect(emitter.listenerCount("tokens")).toBe(0);
+    }
   });
 });

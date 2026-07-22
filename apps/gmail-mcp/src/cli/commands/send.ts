@@ -15,11 +15,24 @@ interface SendOptions {
   cc?: string;
   bcc?: string;
   attach?: string[];
+  inlineImage?: string[];
   threadId?: string;
   inReplyTo?: string;
   from?: string;
   mimeType?: "text/plain" | "text/html" | "multipart/alternative";
   json?: boolean;
+}
+
+function parseInlineImages(values: string[] | undefined): unknown[] | undefined {
+  if (!values?.length) return undefined;
+  return values.map((value) => {
+    if (value.trim().startsWith("{")) return JSON.parse(value);
+    const separator = value.indexOf("=");
+    if (separator <= 0 || separator === value.length - 1) {
+      throw new Error('Usage error: --inline-image expects "cid=/path/to/image" or a JSON object');
+    }
+    return { cid: value.slice(0, separator), path: value.slice(separator + 1) };
+  });
 }
 
 async function resolveSendArgs(options: SendOptions) {
@@ -40,6 +53,7 @@ async function resolveSendArgs(options: SendOptions) {
     cc: options.cc?.split(",").map((s) => s.trim()),
     bcc: options.bcc?.split(",").map((s) => s.trim()),
     attachments: options.attach,
+    inlineImages: parseInlineImages(options.inlineImage),
     threadId: options.threadId,
     inReplyTo: options.inReplyTo,
     from: options.from,
@@ -61,6 +75,12 @@ function attachSendOptions(cmd: Command): Command {
     .option(
       "--attach <path>",
       "Attach a file (repeatable)",
+      (val, prev: string[] = []) => prev.concat(val),
+      [] as string[],
+    )
+    .option(
+      "--inline-image <cid=path|json>",
+      "Embed a CID image (repeatable); JSON form also supports base64 content",
       (val, prev: string[] = []) => prev.concat(val),
       [] as string[],
     )
@@ -92,6 +112,36 @@ export function buildDraftCommand(): Command {
     });
 }
 
+export function buildSendDraftCommand(): Command {
+  return new Command("send-draft")
+    .description("Send an existing Gmail draft and remove it from Drafts")
+    .argument("<draftId>", "Gmail draft ID")
+    .option("--json", "Emit typed JSON")
+    .action(async (draftId: string, options: { json?: boolean }) => {
+      await runCliOp("send_draft", { draftId }, { json: options.json });
+    });
+}
+
+export function buildUpdateDraftCommand(): Command {
+  return attachSendOptions(new Command("update-draft"))
+    .description("Replace an existing Gmail draft's content")
+    .argument("<draftId>", "Gmail draft ID")
+    .action(async (draftId: string, options: SendOptions) => {
+      const args = await resolveSendArgs(options);
+      await runCliOp("update_draft", { draftId, ...args }, { json: options.json });
+    });
+}
+
+export function buildDeleteDraftCommand(): Command {
+  return new Command("delete-draft")
+    .description("Delete an existing Gmail draft")
+    .argument("<draftId>", "Gmail draft ID")
+    .option("--json", "Emit typed JSON")
+    .action(async (draftId: string, options: { json?: boolean }) => {
+      await runCliOp("delete_draft", { draftId }, { json: options.json });
+    });
+}
+
 export function buildReplyAllCommand(): Command {
   const cmd = new Command("reply-all");
   cmd
@@ -109,6 +159,12 @@ export function buildReplyAllCommand(): Command {
       [] as string[],
     )
     .option(
+      "--inline-image <cid=path|json>",
+      "Embed a CID image (repeatable); JSON form also supports base64 content",
+      (val, prev: string[] = []) => prev.concat(val),
+      [] as string[],
+    )
+    .option(
       "--mime-type <type>",
       "text/plain | text/html | multipart/alternative (default: text/plain)",
     )
@@ -120,6 +176,7 @@ export function buildReplyAllCommand(): Command {
           body?: string;
           html?: string;
           attach?: string[];
+          inlineImage?: string[];
           mimeType?: "text/plain" | "text/html" | "multipart/alternative";
           json?: boolean;
         },
@@ -138,6 +195,7 @@ export function buildReplyAllCommand(): Command {
             body,
             htmlBody: options.html,
             attachments: options.attach,
+            inlineImages: parseInlineImages(options.inlineImage),
             mimeType: options.mimeType ?? "text/plain",
           },
           { json: options.json },

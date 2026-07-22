@@ -199,7 +199,23 @@ export function createOAuthClient(
   keys: OAuthKeys,
   callback: string = DEFAULT_CALLBACK,
 ): OAuth2Client {
+  validateLoopbackCallback(callback);
   return new OAuth2Client(keys.client_id, keys.client_secret, callback);
+}
+
+export function validateLoopbackCallback(callback: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(callback);
+  } catch {
+    throw new Error(`Invalid OAuth callback URL: ${callback}`);
+  }
+  if (parsed.protocol !== "http:") {
+    throw new Error(
+      `OAuth callback URL must use http:// because the built-in loopback listener does not support TLS (got ${parsed.protocol}//).`,
+    );
+  }
+  return parsed;
 }
 
 /**
@@ -214,6 +230,7 @@ export async function runOAuthFlow(
   options: OAuthFlowOptions = {},
 ): Promise<OAuthFlowResult> {
   const callback = options.callback ?? DEFAULT_CALLBACK;
+  validateLoopbackCallback(callback);
   const port = options.port ?? portFromCallback(callback) ?? DEFAULT_PORT;
   const headless = options.headless ?? false;
   const log = options.log ?? ((line: string) => console.error(line));
@@ -221,6 +238,7 @@ export async function runOAuthFlow(
   const scopeUrls = scopeNamesToUrls(scopes);
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
+    prompt: "consent",
     scope: scopeUrls,
   });
 

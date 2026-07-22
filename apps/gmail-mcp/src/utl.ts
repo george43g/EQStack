@@ -1,6 +1,17 @@
 import fs from "fs";
+import { lookup as mimeLookup } from "mime-types";
 import nodemailer from "nodemailer";
 import path from "path";
+
+export const MAX_INLINE_IMAGE_CONTENT_BYTES = 10 * 1024 * 1024;
+const INLINE_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/bmp",
+  "image/x-icon",
+]);
 
 /**
  * Helper function to encode email headers containing non-ASCII characters
@@ -133,9 +144,14 @@ export async function createEmailWithNodemailer(validatedArgs: any): Promise<str
     buffer: true,
   });
 
+  const inlineImages = validatedArgs.inlineImages ?? [];
+  if (inlineImages.length > 0 && !validatedArgs.htmlBody) {
+    throw new Error("inlineImages require htmlBody");
+  }
+
   // Prepare attachments for nodemailer
-  const attachments = [];
-  for (const filePath of validatedArgs.attachments) {
+  const attachments: Array<Record<string, unknown>> = [];
+  for (const filePath of validatedArgs.attachments ?? []) {
     if (!fs.existsSync(filePath)) {
       throw new Error(`File does not exist: ${filePath}`);
     }
@@ -146,6 +162,56 @@ export async function createEmailWithNodemailer(validatedArgs: any): Promise<str
       filename: fileName,
       path: filePath,
     });
+  }
+
+  for (const image of inlineImages) {
+    const cid = sanitizeHeaderValue(String(image.cid ?? ""));
+    if (!cid || /[\s<>]/.test(cid)) {
+      throw new Error("Inline image cid contains invalid characters");
+    }
+
+    const attachment: Record<string, unknown> = {
+      cid,
+      filename: image.filename ? path.basename(image.filename) : cid,
+      contentDisposition: "inline",
+    };
+
+    if (image.path) {
+      if (!fs.existsSync(image.path)) {
+        throw new Error(`Inline image file does not exist: ${image.path}`);
+      }
+      const size = fs.statSync(image.path).size;
+      if (size > MAX_INLINE_IMAGE_CONTENT_BYTES) {
+        throw new Error(`Inline image '${cid}' exceeds the 10 MB size limit`);
+      }
+      const inferredType = image.contentType || mimeLookup(image.path);
+      if (typeof inferredType !== "string" || !INLINE_IMAGE_MIME_TYPES.has(inferredType)) {
+        throw new Error(`Inline image '${cid}' must use a supported raster image MIME type`);
+      }
+      attachment.path = image.path;
+      attachment.filename = image.filename
+        ? path.basename(image.filename)
+        : path.basename(image.path);
+      attachment.contentType = inferredType;
+    } else {
+      const content = String(image.content ?? "");
+      const padding = content.endsWith("==") ? 2 : content.endsWith("=") ? 1 : 0;
+      const decodedSize = Math.floor((content.length * 3) / 4) - padding;
+      if (decodedSize > MAX_INLINE_IMAGE_CONTENT_BYTES) {
+        throw new Error(`Inline image '${cid}' exceeds the 10 MB size limit`);
+      }
+      if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(content)) {
+        throw new Error(`Inline image '${cid}' content must be valid base64`);
+      }
+      const decoded = Buffer.from(content, "base64");
+      if (!INLINE_IMAGE_MIME_TYPES.has(image.contentType)) {
+        throw new Error(`Inline image '${cid}' must use a supported raster image MIME type`);
+      }
+      attachment.content = decoded;
+      attachment.contentType = image.contentType;
+    }
+
+    attachments.push(attachment);
   }
 
   const mailOptions = {
@@ -166,4 +232,10 @@ export async function createEmailWithNodemailer(validatedArgs: any): Promise<str
   const rawMessage = info.message.toString();
 
   return rawMessage;
+}
+
+/** Messages containing attachments or CID images require the MIME builder. */
+export function needsRawBuilder(args: unknown): boolean {
+  const value = args as { attachments?: unknown[]; inlineImages?: unknown[] } | undefined;
+  return Boolean(value?.attachments?.length || value?.inlineImages?.length);
 }

@@ -6,6 +6,8 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -85,6 +87,122 @@ describe("e2e: gmail CLI binary against fixtures", () => {
     const parsed = JSON.parse(stdout) as { status: string; pid: number };
     expect(["healthy", "degraded", "unhealthy"]).toContain(parsed.status);
     expect(typeof parsed.pid).toBe("number");
+  });
+
+  it("runs the draft lifecycle through the built CLI", () => {
+    const created = runCli([
+      "draft",
+      "--to",
+      "recipient@example.com",
+      "--subject",
+      "Fixture draft",
+      "--body",
+      "Initial body",
+      "--json",
+    ]);
+    expect(created.status).toBe(0);
+    const createdJson = JSON.parse(created.stdout) as { draftId: string; messageId: string };
+    expect(createdJson.draftId).toMatch(/^fixture-draft-/);
+    expect(createdJson.messageId).toBe(createdJson.draftId);
+
+    const updated = runCli([
+      "update-draft",
+      createdJson.draftId,
+      "--to",
+      "recipient@example.com",
+      "--subject",
+      "Updated fixture draft",
+      "--body",
+      "Updated body",
+      "--json",
+    ]);
+    expect(updated.status).toBe(0);
+    expect(JSON.parse(updated.stdout)).toMatchObject({
+      draftId: createdJson.draftId,
+      status: "updated",
+    });
+
+    const sent = runCli(["send-draft", createdJson.draftId, "--json"]);
+    expect(sent.status).toBe(0);
+    expect(JSON.parse(sent.stdout)).toMatchObject({
+      draftId: createdJson.draftId,
+      status: "sent",
+    });
+
+    const deleted = runCli(["delete-draft", createdJson.draftId, "--json"]);
+    expect(deleted.status).toBe(0);
+    expect(JSON.parse(deleted.stdout)).toEqual({
+      draftId: createdJson.draftId,
+      status: "deleted",
+    });
+  });
+
+  it("marks one or many fixture messages as spam through phishing aliases", () => {
+    const single = runCli(["report-phishing", "w_msg_001", "--json"]);
+    expect(single.status).toBe(0);
+    expect(JSON.parse(single.stdout)).toMatchObject({
+      messageId: "w_msg_001",
+      labelApplied: "SPAM",
+      status: "reported_as_spam",
+      limitation: expect.stringContaining("no native phishing-report endpoint"),
+    });
+
+    const batch = runCli([
+      "batch-report-phishing",
+      "--ids",
+      "w_msg_001,w_msg_002",
+      "--json",
+    ]);
+    expect(batch.status).toBe(0);
+    expect(JSON.parse(batch.stdout)).toMatchObject({
+      action: "report_phishing",
+      successCount: 2,
+      failureCount: 0,
+      failures: [],
+    });
+  });
+
+  it("requires gmail.full for permanent deletion", () => {
+    const result = runCli(["delete", "w_msg_001", "--json"]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('Tool \\"delete_email\\" is not available');
+    expect(result.stdout).toContain("additional scopes");
+  });
+
+  it("advertises and accepts prefixed MCP tool names", async () => {
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    );
+    const transport = new StdioClientTransport({
+      command: NODE,
+      args: [CLI_BIN, "mcp", "--tool-prefix", "fixture_"],
+      env,
+      stderr: "pipe",
+    });
+    const client = new Client({ name: "fixture-e2e", version: "1.0.0" });
+    try {
+      await client.connect(transport);
+      const catalog = await client.listTools();
+      expect(catalog.tools.length).toBe(26);
+      expect(catalog.tools.every((tool) => tool.name.startsWith("fixture_"))).toBe(true);
+      expect(catalog.tools.map((tool) => tool.name)).toEqual(
+        expect.arrayContaining([
+          "fixture_send_draft",
+          "fixture_update_draft",
+          "fixture_delete_draft",
+          "fixture_report_phishing",
+          "fixture_batch_report_phishing",
+        ]),
+      );
+
+      const result = await client.callTool({ name: "fixture_health_check", arguments: {} });
+      expect(result.isError).not.toBe(true);
+      expect(result.content).toEqual(
+        expect.arrayContaining([expect.objectContaining({ type: "text" })]),
+      );
+    } finally {
+      await client.close();
+    }
   });
 
   it("`gmail console` processes piped account/scope browsing without mixing single-account inboxes", () => {

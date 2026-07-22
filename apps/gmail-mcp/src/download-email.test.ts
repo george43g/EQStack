@@ -259,7 +259,7 @@ describe("extractHeaders refactor - source verification", () => {
 
   it("read_email uses extractHeaders (not inline header extraction)", () => {
     expect(messagesSource).toContain(
-      "const { subject, from, to, date, rfcMessageId } = extractHeaders(",
+      "const { subject, from, to, cc, bcc, date, rfcMessageId } = extractHeaders(",
     );
   });
 

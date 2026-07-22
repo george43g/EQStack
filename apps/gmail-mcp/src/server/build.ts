@@ -20,6 +20,8 @@ import {
 import { envNum, noteActivity, ToolTimeoutError, withTimeout } from "../robustness/index.js";
 import { hasScope } from "../scopes.js";
 import { getToolByName, toMcpTools, toolDefinitions } from "../tools.js";
+import { VERSION } from "../version.js";
+import { canonicalToolName, prefixedToolName } from "./tool-prefix.js";
 
 // Per-tool timeout overrides (ms). Default applies to anything not listed.
 // Tunable via MCP_TOOL_TIMEOUT_DEFAULT_MS. Per-tool overrides keep batch /
@@ -45,6 +47,9 @@ const TOOL_TIMEOUTS_MS: Record<string, number> = {
   // Writes — slightly looser
   send_email: 60_000,
   draft_email: 60_000,
+  send_draft: 60_000,
+  update_draft: 60_000,
+  delete_draft: 30_000,
   reply_all: 60_000,
   modify_email: 30_000,
   delete_email: 30_000,
@@ -59,6 +64,8 @@ const TOOL_TIMEOUTS_MS: Record<string, number> = {
   // Batch — long
   batch_modify_emails: 120_000,
   batch_delete_emails: 120_000,
+  report_phishing: 30_000,
+  batch_report_phishing: 120_000,
   // Robustness — fast canary, no API call
   health_check: 5_000,
 };
@@ -82,11 +89,15 @@ export type CallToolFn = (
  * Prerequisite: setSession() must have been called (in main()/bootstrap)
  * so getOAuth2Client(), getAuthorizedScopes(), counters, etc. are valid.
  */
-export function buildMcpServer(): { server: Server; dispatch: CallToolFn } {
+export function buildMcpServer(options: { toolPrefix?: string } = {}): {
+  server: Server;
+  dispatch: CallToolFn;
+} {
+  const toolPrefix = options.toolPrefix ?? "";
   const server = new Server(
     {
       name: "gmail",
-      version: "1.0.0",
+      version: VERSION,
     },
     {
       capabilities: { tools: {} },
@@ -98,7 +109,12 @@ export function buildMcpServer(): { server: Server; dispatch: CallToolFn } {
     const availableTools = toolDefinitions.filter((tool) =>
       hasScope(getAuthorizedScopes(), tool.scopes),
     );
-    return { tools: toMcpTools(availableTools) };
+    return {
+      tools: toMcpTools(availableTools).map((tool) => ({
+        ...tool,
+        name: prefixedToolName(tool.name, toolPrefix),
+      })),
+    };
   });
 
   // The dispatcher does: scope-gate → per-tool timeout → registry.dispatch.
@@ -111,6 +127,7 @@ export function buildMcpServer(): { server: Server; dispatch: CallToolFn } {
     const toolDef = getToolByName(name);
     if (!toolDef || !hasScope(getAuthorizedScopes(), toolDef.scopes)) {
       return {
+        isError: true,
         content: [
           {
             type: "text",
@@ -149,7 +166,10 @@ export function buildMcpServer(): { server: Server; dispatch: CallToolFn } {
   };
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
-    return dispatch(request.params.name, request.params.arguments, extra.signal);
+    const rawName = request.params.name;
+    const candidate = canonicalToolName(rawName, toolPrefix);
+    const name = getToolByName(candidate) ? candidate : rawName;
+    return dispatch(name, request.params.arguments, extra.signal);
   });
 
   return { server, dispatch };

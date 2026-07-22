@@ -13,6 +13,8 @@ describe("extractHeaders", () => {
       subject: "",
       from: "",
       to: "",
+      cc: "",
+      bcc: "",
       date: "",
       rfcMessageId: "",
     });
@@ -20,6 +22,8 @@ describe("extractHeaders", () => {
       subject: "",
       from: "",
       to: "",
+      cc: "",
+      bcc: "",
       date: "",
       rfcMessageId: "",
     });
@@ -37,6 +41,8 @@ describe("extractHeaders", () => {
       subject: "hi",
       from: "a@b",
       to: "c@d",
+      cc: "",
+      bcc: "",
       date: "2026-01-01",
       rfcMessageId: "<msg@example>",
     });
@@ -47,6 +53,8 @@ describe("extractHeaders", () => {
       subject: "only-subject",
       from: "",
       to: "",
+      cc: "",
+      bcc: "",
       date: "",
       rfcMessageId: "",
     });

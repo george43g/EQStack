@@ -2,10 +2,10 @@
 // satisfy the methods src/core/ops/*.ts actually call:
 //
 //   gmail.users.getProfile
-//   gmail.users.messages.{get, list, modify, delete, send}
+//   gmail.users.messages.{get, list, modify, batchModify, delete, send}
 //   gmail.users.messages.attachments.get
 //   gmail.users.threads.{get, list, modify}
-//   gmail.users.drafts.create
+//   gmail.users.drafts.{create, update, send, delete}
 //   gmail.users.labels.{get, list, create, update, delete}
 //   gmail.users.settings.filters.{get, list, create, delete}
 //
@@ -89,6 +89,11 @@ export class GmailFixtureClient {
         return { data: { id: _params.id, threadId: "fixture-thread", labelIds: [] } };
       },
 
+      batchModify: async (_params: {
+        userId: string;
+        requestBody?: { ids?: string[]; addLabelIds?: string[]; removeLabelIds?: string[] };
+      }): Promise<RestResponse<unknown>> => ({ data: {} }),
+
       delete: async (_params: { userId: string; id: string }): Promise<RestResponse<unknown>> => {
         return { data: {} };
       },
@@ -168,6 +173,32 @@ export class GmailFixtureClient {
           },
         };
       },
+      update: async (params: {
+        userId: string;
+        id: string;
+        requestBody?: { message?: { raw?: string; threadId?: string } };
+      }): Promise<RestResponse<unknown>> => ({
+        data: {
+          id: params.id,
+          message: {
+            id: `fixture-msg-${Date.now()}`,
+            threadId: params.requestBody?.message?.threadId ?? "fixture-thread",
+          },
+        },
+      }),
+      send: async (params: {
+        userId: string;
+        requestBody?: { id?: string };
+      }): Promise<RestResponse<unknown>> => ({
+        data: {
+          id: `fixture-sent-${params.requestBody?.id ?? Date.now()}`,
+          threadId: "fixture-thread",
+          labelIds: ["SENT"],
+        },
+      }),
+      delete: async (_params: { userId: string; id: string }): Promise<RestResponse<unknown>> => ({
+        data: {},
+      }),
     },
 
     labels: {

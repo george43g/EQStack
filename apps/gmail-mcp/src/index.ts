@@ -33,7 +33,10 @@ import { type gmail_v1, google } from "googleapis";
 import { getAccountCredentialsPath, resolveActiveAccount } from "./core/accounts.js";
 import { loadOAuthKeys } from "./core/auth-flow.js";
 import { getConfigDir, getCredentialsPath, getOAuthPath } from "./core/config-paths.js";
-import { loadCredentials as coreLoadCredentials } from "./core/credentials.js";
+import {
+  attachTokenPersistence,
+  loadCredentials as coreLoadCredentials,
+} from "./core/credentials.js";
 // Side-effect import: each op file under core/ops/ registers itself with
 // the registry at module load time. Adding an import here exposes the op
 // to the dispatcher constructed by server/build.ts.
@@ -54,6 +57,7 @@ import {
 } from "./robustness/index.js";
 import { DEFAULT_SCOPES } from "./scopes.js";
 import { buildMcpServer, type CallToolFn } from "./server/build.js";
+import { resolveToolPrefix } from "./server/tool-prefix.js";
 
 // In-process dispatcher reference. Populated by `bootstrapSession()` after
 // session initialisation so non-stdio callers (CLI / TUI / HTTP wrapper) can
@@ -167,7 +171,9 @@ export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<Ses
       accountId: accountIdFromEnv,
     });
 
-    const { server, dispatch } = buildMcpServer();
+    const { server, dispatch } = buildMcpServer({
+      toolPrefix: resolveToolPrefix(process.argv.slice(2), env),
+    });
     _dispatcherFn = dispatch;
     void opts.skipTransport;
 
@@ -224,6 +230,10 @@ export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<Ses
       accountId,
     });
     oauth2Client.setCredentials(loaded.credentials.tokens);
+    attachTokenPersistence(oauth2Client, loaded, {
+      onError: (error) =>
+        logWarn("failed to persist refreshed OAuth tokens", { error: error.message }),
+    });
     if (loaded.credentials.scopes) authorizedScopes = loaded.credentials.scopes;
     // Warn when a legacy <configDir>/credentials.json shadows a per-account
     // file the user is no longer reading from. Common after migrating from
@@ -257,7 +267,9 @@ export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<Ses
     accountId: accountId ?? null,
   });
 
-  const { server, dispatch } = buildMcpServer();
+  const { server, dispatch } = buildMcpServer({
+    toolPrefix: resolveToolPrefix(process.argv.slice(2), env),
+  });
   _dispatcherFn = dispatch;
 
   // skipTransport is honoured here as a no-op (no transport install at this

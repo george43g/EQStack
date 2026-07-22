@@ -2,7 +2,40 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 // Schema definitions
-export const SendEmailSchema = z.object({
+export const InlineImageSchema = z
+  .object({
+    cid: z
+      .string()
+      .min(1)
+      .regex(
+        /^[^\s<>\r\n\0]+$/,
+        "cid must not contain whitespace, angle brackets, or control characters",
+      )
+      .describe('Content-ID referenced from htmlBody as <img src="cid:CID">'),
+    path: z.string().optional().describe("Absolute image file path (use this or content)"),
+    content: z.string().optional().describe("Base64-encoded image data (use this or path)"),
+    contentType: z
+      .enum(["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/x-icon"])
+      .optional()
+      .describe("Raster image MIME type; required when content is provided"),
+    filename: z.string().optional().describe("Display filename for the inline image"),
+  })
+  .superRefine((image, ctx) => {
+    if (Number(Boolean(image.path)) + Number(Boolean(image.content)) !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Each inline image must set exactly one of path or content",
+      });
+    }
+    if (image.content && !image.contentType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "contentType is required when an inline image uses content",
+      });
+    }
+  });
+
+const EmailMessageSchema = z.object({
   to: z.array(z.string()).describe("List of recipient email addresses"),
   subject: z.string().describe("Email subject"),
   body: z
@@ -25,7 +58,38 @@ export const SendEmailSchema = z.object({
   threadId: z.string().optional().describe("Thread ID to reply to"),
   inReplyTo: z.string().optional().describe("Message ID being replied to"),
   attachments: z.array(z.string()).optional().describe("List of file paths to attach to the email"),
+  inlineImages: z
+    .array(InlineImageSchema)
+    .optional()
+    .describe('Images embedded in htmlBody and referenced via <img src="cid:CID">'),
 });
+
+function requireHtmlForInlineImages(
+  input: { htmlBody?: string; inlineImages?: unknown[] },
+  ctx: z.RefinementCtx,
+): void {
+  if (input.inlineImages?.length && !input.htmlBody) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["htmlBody"],
+      message: "htmlBody is required when inlineImages are provided",
+    });
+  }
+}
+
+export const SendEmailSchema = EmailMessageSchema.superRefine(requireHtmlForInlineImages);
+
+export const SendDraftSchema = z.object({
+  draftId: z.string().min(1).describe("ID of the draft to send"),
+});
+
+export const DeleteDraftSchema = z.object({
+  draftId: z.string().min(1).describe("ID of the draft to delete"),
+});
+
+export const UpdateDraftSchema = EmailMessageSchema.extend({
+  draftId: z.string().min(1).describe("ID of the draft to update"),
+}).superRefine(requireHtmlForInlineImages);
 
 export const ReadEmailSchema = z.object({
   messageId: z.string().describe("ID of the email message to retrieve"),
@@ -146,6 +210,29 @@ export const BatchDeleteEmailsSchema = z.object({
     .default(50)
     .describe("Number of messages to process in each batch (default: 50)"),
 });
+
+export const ReportPhishingSchema = z
+  .object({
+    messageId: z.string().min(1).describe("ID of the email message to mark as spam"),
+  })
+  .describe(
+    "Applies Gmail's SPAM label as the closest public API approximation of reporting phishing",
+  );
+
+export const BatchReportPhishingSchema = z
+  .object({
+    messageIds: z
+      .array(z.string())
+      .max(
+        BATCH_MESSAGE_IDS_MAX,
+        `messageIds must contain ${BATCH_MESSAGE_IDS_MAX} or fewer entries`,
+      )
+      .describe(`List of message IDs to mark as spam (max ${BATCH_MESSAGE_IDS_MAX})`),
+    batchSize: z.number().int().min(1).max(BATCH_MESSAGE_IDS_MAX).optional().default(50),
+  })
+  .describe(
+    "Applies Gmail's SPAM label to multiple messages as the closest public API approximation of reporting phishing",
+  );
 
 export const CreateFilterSchema = z
   .object({
@@ -317,19 +404,28 @@ export const GetInboxWithThreadsSchema = z.object({
 });
 
 // Reply All schema - fetches original email and builds recipient list automatically
-export const ReplyAllSchema = z.object({
-  messageId: z.string().describe("ID of the email message to reply to"),
-  body: z
-    .string()
-    .describe("Reply body content (used for text/plain or when htmlBody not provided)"),
-  htmlBody: z.string().optional().describe("HTML version of the reply body"),
-  mimeType: z
-    .enum(["text/plain", "text/html", "multipart/alternative"])
-    .optional()
-    .default("text/plain")
-    .describe("Email content type"),
-  attachments: z.array(z.string()).optional().describe("List of file paths to attach to the reply"),
-});
+export const ReplyAllSchema = z
+  .object({
+    messageId: z.string().describe("ID of the email message to reply to"),
+    body: z
+      .string()
+      .describe("Reply body content (used for text/plain or when htmlBody not provided)"),
+    htmlBody: z.string().optional().describe("HTML version of the reply body"),
+    mimeType: z
+      .enum(["text/plain", "text/html", "multipart/alternative"])
+      .optional()
+      .default("text/plain")
+      .describe("Email content type"),
+    attachments: z
+      .array(z.string())
+      .optional()
+      .describe("List of file paths to attach to the reply"),
+    inlineImages: z
+      .array(InlineImageSchema)
+      .optional()
+      .describe('Images embedded in htmlBody and referenced via <img src="cid:CID">'),
+  })
+  .superRefine(requireHtmlForInlineImages);
 
 // Robustness — does NOT touch the Gmail API.
 export const HealthCheckSchema = z
@@ -400,6 +496,8 @@ export const ReadEmailOutputSchema = z.object({
   subject: z.string(),
   from: z.string(),
   to: z.string(),
+  cc: z.string(),
+  bcc: z.string(),
   date: z.string(),
   rfcMessageId: z.string(),
   body: z.string(),
@@ -528,8 +626,35 @@ export const DeleteFilterOutputSchema = z.object({
 
 export const SendOrDraftOutputSchema = z.object({
   messageId: z.string(),
+  draftId: z.string().optional(),
   action: z.enum(["sent", "drafted"]),
   threadId: z.string().optional(),
+});
+
+export const SendDraftOutputSchema = z.object({
+  draftId: z.string(),
+  messageId: z.string(),
+  threadId: z.string().optional(),
+  status: z.literal("sent"),
+});
+
+export const UpdateDraftOutputSchema = z.object({
+  draftId: z.string(),
+  messageId: z.string().optional(),
+  threadId: z.string().optional(),
+  status: z.literal("updated"),
+});
+
+export const DeleteDraftOutputSchema = z.object({
+  draftId: z.string(),
+  status: z.literal("deleted"),
+});
+
+export const ReportPhishingOutputSchema = z.object({
+  messageId: z.string(),
+  labelApplied: z.literal("SPAM"),
+  status: z.literal("reported_as_spam"),
+  limitation: z.string(),
 });
 
 export const ReplyAllOutputSchema = z.object({
@@ -551,7 +676,7 @@ export const ModifyThreadOutputSchema = z.object({
 });
 
 export const BatchOpOutputSchema = z.object({
-  action: z.enum(["modify", "delete"]),
+  action: z.enum(["modify", "delete", "report_phishing"]),
   successCount: z.number(),
   failureCount: z.number(),
   failures: z.array(z.object({ messageId: z.string(), error: z.string() })),
@@ -707,17 +832,38 @@ export const toolDefinitions: ToolDefinition[] = [
   // Email write operations
   {
     name: "send_email",
-    description: "Sends a new email",
+    description: "Sends a new email with optional attachments and inline CID images",
     schema: SendEmailSchema,
     scopes: ["gmail.modify", "gmail.compose", "gmail.send"],
     annotations: { title: "Send Email", destructiveHint: false },
   },
   {
     name: "draft_email",
-    description: "Draft a new email",
+    description: "Creates a draft email with optional attachments and inline CID images",
     schema: SendEmailSchema,
     scopes: ["gmail.modify", "gmail.compose"],
     annotations: { title: "Draft Email", destructiveHint: false },
+  },
+  {
+    name: "send_draft",
+    description: "Sends an existing draft atomically and removes it from Drafts",
+    schema: SendDraftSchema,
+    scopes: ["gmail.modify", "gmail.compose", "gmail.send"],
+    annotations: { title: "Send Draft", destructiveHint: false },
+  },
+  {
+    name: "update_draft",
+    description: "Replaces an existing draft's content while preserving its draft ID",
+    schema: UpdateDraftSchema,
+    scopes: ["gmail.modify", "gmail.compose"],
+    annotations: { title: "Update Draft", destructiveHint: false },
+  },
+  {
+    name: "delete_draft",
+    description: "Deletes an existing draft",
+    schema: DeleteDraftSchema,
+    scopes: ["gmail.modify", "gmail.compose"],
+    annotations: { title: "Delete Draft", destructiveHint: true },
   },
   {
     name: "modify_email",
@@ -728,9 +874,10 @@ export const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: "delete_email",
-    description: "Permanently deletes an email",
+    description:
+      "Permanently deletes an email. Requires gmail.full because gmail.modify does not authorize permanent deletion.",
     schema: DeleteEmailSchema,
-    scopes: ["gmail.modify"],
+    scopes: ["gmail.full"],
     annotations: { title: "Delete Email", destructiveHint: true },
   },
   {
@@ -742,10 +889,27 @@ export const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: "batch_delete_emails",
-    description: "Permanently deletes multiple emails in batches",
+    description:
+      "Permanently deletes multiple emails in batches. Requires gmail.full because gmail.modify does not authorize permanent deletion.",
     schema: BatchDeleteEmailsSchema,
-    scopes: ["gmail.modify"],
+    scopes: ["gmail.full"],
     annotations: { title: "Batch Delete Emails", destructiveHint: true },
+  },
+  {
+    name: "report_phishing",
+    description:
+      "Applies the SPAM label as the closest public Gmail API approximation of reporting phishing; Gmail exposes no native report-phishing endpoint",
+    schema: ReportPhishingSchema,
+    scopes: ["gmail.modify"],
+    annotations: { title: "Report Phishing", destructiveHint: true, idempotentHint: true },
+  },
+  {
+    name: "batch_report_phishing",
+    description:
+      "Applies the SPAM label to multiple messages as the closest public Gmail API approximation of reporting phishing",
+    schema: BatchReportPhishingSchema,
+    scopes: ["gmail.modify"],
+    annotations: { title: "Batch Report Phishing", destructiveHint: true, idempotentHint: true },
   },
 
   // Label operations

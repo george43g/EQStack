@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:24-slim
 
 WORKDIR /app
 
@@ -13,13 +13,16 @@ COPY src ./src
 RUN npm ci --ignore-scripts
 RUN npm run build
 
+# The runtime image only needs production dependencies and current dist output.
+RUN npm prune --omit=dev
+
 # Create directory for credentials and config
 RUN mkdir -p /gmail-server /root/.gmail-mcp
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json
-ENV GMAIL_OAUTH_PATH=/root/.gmail-mcp/gcp-oauth.keys.json
+ENV GMAIL_CONFIG_DIR=/gmail-server
+ENV GMAIL_OAUTH_PATH=/gmail-server/gcp-oauth.keys.json
 
 # Expose port for OAuth flow
 EXPOSE 3000

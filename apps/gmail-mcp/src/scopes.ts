@@ -6,6 +6,7 @@
 //   - gmail.compose: Create drafts and send emails
 //   - gmail.send: Send emails only
 //   - gmail.labels: Manage labels only
+//   - gmail.full: Full mailbox access, including permanent deletion
 //   - gmail.settings.basic: Manage filters and settings
 //
 // Note: gmail.modify includes all capabilities of gmail.readonly,
@@ -18,6 +19,7 @@ export const SCOPE_MAP: Record<string, string> = {
   "gmail.compose": "https://www.googleapis.com/auth/gmail.compose",
   "gmail.send": "https://www.googleapis.com/auth/gmail.send",
   "gmail.labels": "https://www.googleapis.com/auth/gmail.labels",
+  "gmail.full": "https://mail.google.com/",
   "gmail.settings.basic": "https://www.googleapis.com/auth/gmail.settings.basic",
   "gmail.settings.sharing": "https://www.googleapis.com/auth/gmail.settings.sharing",
 };
@@ -54,7 +56,18 @@ export function hasScope(authorizedScopes: string[], requiredScopes: string[]): 
   if (requiredScopes.length === 0) return true; // tools that need no Gmail scope (e.g. health_check)
   // Normalize to shorthand names for comparison (handles both URL and shorthand input)
   const normalizedAuth = authorizedScopes.map(scopeUrlToName);
-  return requiredScopes.some((scope) => normalizedAuth.includes(scope));
+  const fullMailScopes = new Set([
+    "gmail.readonly",
+    "gmail.modify",
+    "gmail.compose",
+    "gmail.send",
+    "gmail.labels",
+    "gmail.full",
+  ]);
+  const hasFull = normalizedAuth.includes("gmail.full");
+  return requiredScopes.some(
+    (scope) => normalizedAuth.includes(scope) || (hasFull && fullMailScopes.has(scope)),
+  );
 }
 
 // Parse scope input from CLI (comma-separated or space-separated)

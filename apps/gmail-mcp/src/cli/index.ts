@@ -23,17 +23,32 @@ import { Command } from "commander";
 import { validateAccountId } from "../core/accounts.js";
 import { buildAccountCommand } from "./commands/account.js";
 import { buildAuthCommand } from "./commands/auth.js";
-import { buildBatchDeleteCommand, buildBatchModifyCommand } from "./commands/batch.js";
+import {
+  buildBatchDeleteCommand,
+  buildBatchModifyCommand,
+  buildBatchReportPhishingCommand,
+} from "./commands/batch.js";
 import { buildConsoleCommand } from "./commands/console.js";
 import { buildDownloadAttachmentCommand, buildDownloadEmailCommand } from "./commands/downloads.js";
 import { buildFiltersCommand } from "./commands/filters.js";
 import { buildHealthCommand } from "./commands/health.js";
 import { buildLabelsCommand } from "./commands/labels.js";
 import { buildMcpCommand } from "./commands/mcp.js";
-import { buildDeleteCommand, buildModifyCommand } from "./commands/messages.js";
+import {
+  buildDeleteCommand,
+  buildModifyCommand,
+  buildReportPhishingCommand,
+} from "./commands/messages.js";
 import { buildReadCommand } from "./commands/read.js";
 import { buildSearchCommand } from "./commands/search.js";
-import { buildDraftCommand, buildReplyAllCommand, buildSendCommand } from "./commands/send.js";
+import {
+  buildDeleteDraftCommand,
+  buildDraftCommand,
+  buildReplyAllCommand,
+  buildSendCommand,
+  buildSendDraftCommand,
+  buildUpdateDraftCommand,
+} from "./commands/send.js";
 import { buildInboxAliasCommand, buildThreadsCommand } from "./commands/threads.js";
 import { buildTuiCommand } from "./commands/tui.js";
 
@@ -137,10 +152,15 @@ Scopes (space=toggle, a=all, i=invert in interactive mode):
   program.addCommand(buildSendCommand());
   program.addCommand(buildReplyAllCommand());
   program.addCommand(buildDraftCommand());
+  program.addCommand(buildSendDraftCommand());
+  program.addCommand(buildUpdateDraftCommand());
+  program.addCommand(buildDeleteDraftCommand());
   program.addCommand(buildModifyCommand());
   program.addCommand(buildDeleteCommand());
   program.addCommand(buildBatchModifyCommand());
   program.addCommand(buildBatchDeleteCommand());
+  program.addCommand(buildReportPhishingCommand());
+  program.addCommand(buildBatchReportPhishingCommand());
   program.addCommand(buildLabelsCommand());
   program.addCommand(buildFiltersCommand());
   program.addCommand(buildDownloadEmailCommand());

@@ -38,3 +38,13 @@ export function buildDeleteCommand(): Command {
     });
   return cmd;
 }
+
+export function buildReportPhishingCommand(): Command {
+  return new Command("report-phishing")
+    .description("Mark a message as spam (closest Gmail API approximation to reporting phishing)")
+    .argument("<messageId>", "Gmail message ID")
+    .option("--json", "Emit typed JSON")
+    .action(async (messageId: string, options: { json?: boolean }) => {
+      await runCliOp("report_phishing", { messageId }, { json: options.json });
+    });
+}

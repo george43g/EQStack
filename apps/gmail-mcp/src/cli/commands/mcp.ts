@@ -12,6 +12,7 @@ export interface McpCommandOptions {
   port?: number;
   bind?: string;
   tokenEnv?: string;
+  toolPrefix?: string;
 }
 
 export function buildMcpCommand(): Command {
@@ -19,6 +20,10 @@ export function buildMcpCommand(): Command {
   cmd
     .description("Run the MCP server (stdio by default; --http for remote-mode)")
     .option("--http", "Expose the MCP via Streamable HTTP instead of stdio")
+    .option(
+      "--tool-prefix <prefix>",
+      "Prefix MCP-advertised tool names (or set GMAIL_MCP_TOOL_PREFIX)",
+    )
     .option("--port <n>", "HTTP port (default: 8080)", (v) => Number.parseInt(v, 10), 8080)
     .option(
       "--bind <addr>",

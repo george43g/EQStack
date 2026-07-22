@@ -76,6 +76,8 @@ function describe(name: string): string {
       return "Send only (subset of gmail.compose)";
     case "gmail.labels":
       return "Manage labels only (subset of gmail.modify)";
+    case "gmail.full":
+      return "Full mailbox access, including permanent deletion. Does not include settings.";
     case "gmail.settings.basic":
       return "Manage filters and basic settings";
     case "gmail.settings.sharing":

@@ -4,12 +4,12 @@
 
 ## What this repo is
 
-Gmail integration exposed through 28 tools (read, search, send, draft, reply-all, labels, filters, threads, downloads, batch ops, plus a `health_check` canary and the M2-light `list_accounts` / `switch_account` meta-tools). Authenticates via OAuth2 against a personal Google project. **One binary** ships in this package — `gmail` — with mode subcommands:
+Gmail integration exposed through 33 tools (read, search, send, draft lifecycle, reply-all, phishing-to-spam, labels, filters, threads, downloads, batch ops, plus a `health_check` canary and the M2-light `list_accounts` / `switch_account` meta-tools). Authenticates via OAuth2 against a personal Google project. **One binary** ships in this package — `gmail` — with mode subcommands:
 
 | Subcommand | Purpose | Transport |
 |---|---|---|
 | `gmail mcp` | MCP server (default = stdio, `--http` enables Streamable HTTP) | stdio / HTTP |
-| `gmail tui` | Ink/React multi-pane TUI (Phase D MVP — browse + compose) | n/a |
+| `gmail tui` | Ink/React multi-pane TUI with browse, search, accounts, labels, attachments, and compose | n/a |
 | `gmail console` | Interactive REPL for ad-hoc Gmail operations | n/a (in-process calls) |
 | `gmail account`, `gmail search`, … | Per-op CLI subcommands for humans + scripts | n/a (in-process calls) |
 
@@ -17,10 +17,10 @@ Bare `gmail` prints help; the CLI is the default surface.
 
 - **Runtime**: Node.js ≥20.6 (uses native `--env-file`).
 - **Module system**: ESM only (`type: "module"`).
-- **Build**: `tsc` → `dist/`. Run via `npm start` or `node dist/cli/index.js`.
+- **Build**: clean `dist/`, then `tsc`. Run via `npm start` or `node dist/cli/index.js`.
 - **Auth flow** (canonical): `gmail account auth [id] [--scopes=…] [--headless] [--print-json]`. Loads OAuth client keys from `GMAIL_OAUTH_KEYS_JSON` env or `~/.gmail-mcp/gcp-oauth.keys.json`, runs the loopback OAuth flow, writes credentials to `~/.gmail-mcp/accounts/<id>/credentials.json` (or prints them to stdout for env-driven deploys with `--print-json`). Bare `gmail account` opens the Inquirer account CRUD manager in a TTY. `gmail auth` is a deprecated stub that points users to `gmail account`.
 - **Test runner**: vitest (`pnpm test` / `npm test`).
-- **Quality scripts**: `pnpm lint` (biome), `pnpm typecheck` (`tsc --noEmit`), `pnpm format` (biome write), `pnpm verify` (lint+typecheck+test+build).
+- **Quality scripts**: `pnpm lint` (biome), `pnpm typecheck` (`tsc --noEmit`), `pnpm format` (biome write), `pnpm verify` (lint+typecheck+test+clean build+e2e+usage+package+production audit).
 - **Package manager**: both `npm` and `pnpm` are supported. `pnpm-lock.yaml` and `package-lock.json` both live in the repo. Locally, `pnpm` is preferred. **When adding a dep, run `pnpm add <pkg>` followed by `npm install --package-lock-only` to keep both lockfiles in sync without disturbing pnpm's `node_modules` layout.** CI/published-package consumers using `npm` or `bunx` are unaffected.
 
 ## Branch workflow
@@ -57,12 +57,12 @@ src/
 │   └── ops/              # Per-category tool handlers — registry-registered at module load
 │       ├── index.ts      # Barrel: imports each op file for side-effect registration
 │       ├── health.ts     # health_check (no Gmail call)
-│       ├── messages.ts   # read_email, search_emails, modify_email, delete_email
+│       ├── messages.ts   # read/search/modify/delete/report_phishing
 │       ├── threads.ts    # get_thread, list_inbox_threads, get_inbox_with_threads, modify_thread
 │       ├── labels.ts     # list_email_labels + create/update/delete/get_or_create_label
 │       ├── send.ts       # send_email, reply_all + shared handleEmailAction helper
-│       ├── drafts.ts     # draft_email (delegates to handleEmailAction)
-│       ├── batch-ops.ts  # batch_modify_emails, batch_delete_emails
+│       ├── drafts.ts     # draft_email + send/update/delete lifecycle
+│       ├── batch-ops.ts  # batch modify/delete/report phishing
 │       ├── filters.ts    # list/get/create/delete/template filter ops
 │       └── downloads.ts  # download_email, download_attachment
 │
@@ -85,9 +85,9 @@ src/
 │       ├── search.ts     # search <query>
 │       ├── read.ts       # read <messageId>
 │       ├── threads.ts    # threads {list, get, modify, inbox} + top-level inbox alias
-│       ├── send.ts       # send, draft, reply-all (shared body resolution; @file / stdin / literal)
-│       ├── messages.ts   # modify, delete (per-message)
-│       ├── batch.ts      # batch-modify, batch-delete (--ids comma | @file)
+│       ├── send.ts       # send/draft lifecycle/reply-all + inline images
+│       ├── messages.ts   # modify, delete, report-phishing
+│       ├── batch.ts      # batch-modify/delete/report-phishing
 │       ├── labels.ts     # labels {list, create, update, delete, get-or-create}
 │       ├── filters.ts    # filters {list, get, create, delete, template}
 │       └── downloads.ts  # download-email, download-attachment
@@ -334,11 +334,16 @@ Every Gmail tool has a corresponding `gmail` CLI subcommand. All commands accept
 | `threads inbox` | `get_inbox_with_threads` | `--expand` to fetch full message content per thread |
 | `send` | `send_email` | `-t`, `-s`, `-b` (literal / `'-'` for stdin / `'@file'`), `--cc`, `--bcc`, `--attach` (repeatable), `--thread-id`, `--in-reply-to`, `--from` (send-as alias), `--mime-type` |
 | `draft` | `draft_email` | Same flags as `send`; creates draft instead of sending |
+| `send-draft <draftId>` | `send_draft` | Atomically sends and removes an existing draft |
+| `update-draft <draftId>` | `update_draft` | Same message flags as `send`; replaces draft content |
+| `delete-draft <draftId>` | `delete_draft` | Deletes a draft |
 | `reply-all <messageId>` | `reply_all` | Auto-builds To/CC and threading headers from the original; `-b` body required |
 | `modify <messageId>` | `modify_email` | `--add ids`, `--remove ids` |
 | `delete <messageId>` | `delete_email` | Permanent (irreversible) |
 | `batch-modify` | `batch_modify_emails` | `--ids` comma-separated or `@file.txt`; `--add`, `--remove`, `--batch-size`; max 500 |
 | `batch-delete` | `batch_delete_emails` | `--ids` same syntax; `--batch-size`; max 500 |
+| `report-phishing <messageId>` | `report_phishing` | Applies SPAM; Gmail has no native public phishing endpoint |
+| `batch-report-phishing` | `batch_report_phishing` | Applies SPAM to `--ids`; max 500 |
 | `labels list` | `list_email_labels` | |
 | `labels create <name>` | `create_label` | `--show`, `--label-list` |
 | `labels update <id>` | `update_label` | `--name`, `--show`/`--hide`, `--label-list` |
@@ -351,8 +356,8 @@ Every Gmail tool has a corresponding `gmail` CLI subcommand. All commands accept
 | `filters template <name>` | `create_filter_from_template` | Templates: `fromSender`, `withSubject`, `withAttachments`, `largeEmails`, `containingText`, `mailingList` |
 | `download-email <id>` | `download_email` | `-o save-dir`, `-f json|eml|txt|html` |
 | `download-attachment <id> <attId>` | `download_attachment` | `-o save-dir`, `--filename` |
-| `mcp [--http]` | (transport) | Starts the MCP server; `--http` + `--port`, `--bind`, `--token-env` for Streamable HTTP mode |
-| `tui` | — | Multi-pane Ink/React TUI (Phase D; currently a stub) |
+| `mcp [--http]` | (transport) | Starts the MCP server; supports `--tool-prefix`, plus HTTP `--port`, `--bind`, `--token-env` |
+| `tui` | — | Full multi-pane Ink/React terminal client |
 | `console` | — | Interactive REPL. Supports snappy aliases plus `accounts` and `switch <id>` / `sw <id>` for in-session account switching. |
 
 CLI commands are thin wrappers over `callMcpTool(name, args)` (in-process; no child-process spawn). The common boilerplate is `runCliOp(toolName, args, {json}) -> Promise<never>` in `src/cli/runtime.ts`.
@@ -432,6 +437,6 @@ Optional capture+anonymise scripts (`scripts/capture-fixtures.ts`, `scripts/anon
 - **TUI follow-ups.** `gmail tui` opens a 3-pane Ink/React UI against the in-process dispatcher: vim-modal keymap, `$EDITOR` suspend for compose / reply / reply-all / draft-edit, 8 themes (`:theme` overlay), account switcher (`:account` modal that subscribes to `sessionEvents.accountChanged`), dev stats overlay (`~` / `:stats`), per-thread LRU cache (`GMAIL_TUI_CACHE_MB`). Reads `~/.gmail-mcp/config.json` for `theme` / `editor` / `cacheMB`; `GMAIL_TUI_*` env wins over the file. Follow-ups: visual-mode batch ops, filter/label CRUD UI, attachment preview, sent/drafts folder UIs.
 - **VHS screenshot pipeline** ✅ shipped. `pnpm screenshots` regenerates `docs/screenshots/*.{png,gif}` from `scripts/screenshots/*.tape` against `GMAIL_FIXTURE_MODE=1`. The 6 stills + animated workflow GIF feed the top-level README and `docs/SCREENSHOTS.md` gallery. CI (`.github/workflows/screenshots.yml`) auto-regenerates on push (auto-commits with `[skip ci]`) and gates PRs (`git diff --exit-code`). Local pre-push hook at `.githooks/pre-push` refuses to push TUI changes that drift the captures.
 - **Phase G2 — multi-tenant HTTP mode.** Defer until a real use case appears. Would add per-request OAuth introspection, per-tenant credential lookup, scope-isolated rate limiting.
-- **`zod` 3 → 4** (with `zod-to-json-schema` co-bump). zod 4 changes the discriminated-union surface, default-value semantics, and error format. The 27 schemas in `tools.ts` plus the test fixtures all need review. Defer until there's a concrete reason — currently no zod 3 bug is biting us.
+- **`zod` 3 → 4** (with `zod-to-json-schema` co-bump). zod 4 changes the discriminated-union surface, default-value semantics, and error format. The schemas in `tools.ts` plus the test fixtures all need review. Defer until there's a concrete reason — currently no zod 3 bug is biting us.
 - **Wrap remaining Gmail call sites with `withRetry` / `rateLimitAcquire`**. The library is in place and is wired into `read_email` and `search_emails` as the canonical pattern. The other read paths (`list_inbox_threads`, `get_thread`, `download_*`, etc.) and the idempotent writes (`modify_*`, `delete_*`, `batch_*`) are progressive-adoption candidates. Send/draft creation must remain unwrapped (non-idempotent).
 - **`mcp-evals` 1 → 2**, **`nodemailer` 7 → 8**, **`open` 10 → 11**, **TypeScript 5.x → 6.x** — defer until a concrete need.

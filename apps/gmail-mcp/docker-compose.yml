@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   gmail-mcp:
     build:
@@ -8,7 +6,7 @@ services:
     volumes:
       - mcp-gmail:/gmail-server
     environment:
-      - GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json
+      - GMAIL_CONFIG_DIR=/gmail-server
     ports:
       - "3000:3000"
     restart: unless-stopped

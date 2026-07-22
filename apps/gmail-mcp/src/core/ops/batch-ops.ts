@@ -6,6 +6,7 @@ import {
   BatchDeleteEmailsSchema,
   BatchModifyEmailsSchema,
   BatchOpOutputSchema,
+  BatchReportPhishingSchema,
 } from "../../tools.js";
 import { processBatches } from "../batch.js";
 import { type Operation, registry } from "../registry.js";
@@ -79,7 +80,7 @@ const batchDeleteEmails: Operation<unknown, BatchOpOutput> = {
   name: "batch_delete_emails",
   schema: BatchDeleteEmailsSchema,
   outputSchema: BatchOpOutputSchema,
-  scopes: ["gmail.modify"],
+  scopes: ["gmail.full"],
   handler: async (input, ctx) => {
     const args = input as { messageIds: string[]; batchSize?: number };
     const batchSize = args.batchSize || 50;
@@ -129,5 +130,49 @@ const batchDeleteEmails: Operation<unknown, BatchOpOutput> = {
   },
 };
 
+const batchReportPhishing: Operation<unknown, BatchOpOutput> = {
+  name: "batch_report_phishing",
+  schema: BatchReportPhishingSchema,
+  outputSchema: BatchOpOutputSchema,
+  scopes: ["gmail.modify"],
+  handler: async (input, ctx) => {
+    const args = input as z.infer<typeof BatchReportPhishingSchema>;
+    const { successes, failures } = await processBatches(
+      args.messageIds,
+      args.batchSize,
+      async (batch) => {
+        await ctx.gmail.users.messages.batchModify({
+          userId: "me",
+          requestBody: { ids: batch, addLabelIds: ["SPAM"] },
+        });
+        return batch.map((messageId) => ({ messageId, success: true }));
+      },
+      { toolName: ctx.toolName, signal: ctx.signal },
+    );
+
+    const limitation =
+      "Gmail exposes no native phishing-report endpoint; this operation applies the SPAM label.";
+    const failureEntries = failures.map((failure) => ({
+      messageId: failure.item,
+      error: failure.error.message,
+    }));
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Batch phishing approximation complete. Marked as spam: ${successes.length}. Failed: ${failures.length}.\n${limitation}`,
+        },
+      ],
+      structuredContent: {
+        action: "report_phishing",
+        successCount: successes.length,
+        failureCount: failures.length,
+        failures: failureEntries,
+      },
+    };
+  },
+};
+
 registry.register(batchModifyEmails);
 registry.register(batchDeleteEmails);
+registry.register(batchReportPhishing);
