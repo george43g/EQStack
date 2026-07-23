@@ -5,6 +5,11 @@
 // output text, same retry/rate-limit wrapping for the read paths.
 
 import type { z } from "zod";
+import {
+  type ParsedAddress,
+  parseEmailAddress,
+  parseEmailAddresses,
+} from "../../email-export.js";
 import { rateLimitAcquire, withRetry } from "../../robustness/index.js";
 import {
   DeleteEmailSchema,
@@ -25,6 +30,13 @@ import {
   readableEmailBody,
 } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
+
+/** Lowercase the email of a parsed address (names are left untouched) so
+    downstream consumers can correlate addresses case-insensitively. */
+const lowerEmail = (a: ParsedAddress): ParsedAddress => ({
+  name: a.name,
+  email: a.email.toLowerCase(),
+});
 
 type ReadEmailOutput = z.infer<typeof ReadEmailOutputSchema>;
 type SearchEmailsOutput = z.infer<typeof SearchEmailsOutputSchema>;
@@ -121,14 +133,22 @@ const searchEmails: Operation<unknown, SearchEmailsOutput> = {
           userId: "me",
           id: msg.id!,
           format: "metadata",
-          metadataHeaders: ["Subject", "From", "Date"],
+          metadataHeaders: ["Subject", "From", "To", "Cc", "Date"],
         });
         const headers = detail.data.payload?.headers || [];
+        const header = (name: string) => headers.find((h) => h.name === name)?.value || "";
+        const from = header("From");
         return {
           id: msg.id ?? null,
-          subject: headers.find((h) => h.name === "Subject")?.value || "",
-          from: headers.find((h) => h.name === "From")?.value || "",
-          date: headers.find((h) => h.name === "Date")?.value || "",
+          // msg.threadId is already present on the messages.list entry — no
+          // extra RPC. Lets callers jump straight to get_thread.
+          threadId: msg.threadId ?? null,
+          subject: header("Subject"),
+          from,
+          fromAddress: lowerEmail(parseEmailAddress(from)),
+          to: parseEmailAddresses(header("To")).map(lowerEmail),
+          cc: parseEmailAddresses(header("Cc")).map(lowerEmail),
+          date: header("Date"),
         };
       }),
     );

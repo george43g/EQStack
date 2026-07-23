@@ -122,14 +122,21 @@ describe("read_email handler", () => {
 describe("search_emails handler", () => {
   it("defaults maxResults to 10 and fetches metadata per hit (1.3)", async () => {
     const listMock = vi.fn().mockResolvedValue({
-      data: { messages: [{ id: "m1" }, { id: "m2" }] },
+      data: {
+        messages: [
+          { id: "m1", threadId: "t1" },
+          { id: "m2", threadId: "t2" },
+        ],
+      },
     });
     const getMock = vi.fn().mockImplementation(async ({ id }: { id: string }) => ({
       data: {
         payload: {
           headers: [
             { name: "Subject", value: `subj-${id}` },
-            { name: "From", value: `from-${id}@x` },
+            { name: "From", value: `Sender ${id} <From-${id}@X.com>` },
+            { name: "To", value: `Me <ME-${id}@X.com>` },
+            { name: "Cc", value: `cc-${id}@x.com` },
             { name: "Date", value: `date-${id}` },
           ],
         },
@@ -145,13 +152,33 @@ describe("search_emails handler", () => {
       userId: "me",
       id: "m1",
       format: "metadata",
-      metadataHeaders: ["Subject", "From", "Date"],
+      metadataHeaders: ["Subject", "From", "To", "Cc", "Date"],
     });
+    // threadId surfaced (no extra RPC), from kept raw, structured recipients
+    // added with lowercased emails.
     expect(result.structuredContent).toEqual({
       resultCount: 2,
       results: [
-        { id: "m1", subject: "subj-m1", from: "from-m1@x", date: "date-m1" },
-        { id: "m2", subject: "subj-m2", from: "from-m2@x", date: "date-m2" },
+        {
+          id: "m1",
+          threadId: "t1",
+          subject: "subj-m1",
+          from: "Sender m1 <From-m1@X.com>",
+          fromAddress: { name: "Sender m1", email: "from-m1@x.com" },
+          to: [{ name: "Me", email: "me-m1@x.com" }],
+          cc: [{ name: "", email: "cc-m1@x.com" }],
+          date: "date-m1",
+        },
+        {
+          id: "m2",
+          threadId: "t2",
+          subject: "subj-m2",
+          from: "Sender m2 <From-m2@X.com>",
+          fromAddress: { name: "Sender m2", email: "from-m2@x.com" },
+          to: [{ name: "Me", email: "me-m2@x.com" }],
+          cc: [{ name: "", email: "cc-m2@x.com" }],
+          date: "date-m2",
+        },
       ],
     });
   });

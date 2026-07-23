@@ -474,10 +474,29 @@ const AttachmentMetaSchema = z.object({
   size: z.number(),
 });
 
+/** A parsed RFC-5322 address: display name + lowercased email. Emails are
+    lowercased so agents can correlate the same address across tools without
+    case-sensitive string matching (groundwork for a shared identity schema). */
+export const ParsedAddressSchema = z.object({
+  name: z.string(),
+  email: z.string(),
+});
+
 const SearchEmailResultSchema = z.object({
   id: z.string().nullable(),
+  /** Gmail thread id for this message — lets callers open the thread via
+      get_thread without a separate read_email round-trip. */
+  threadId: z.string().nullable(),
   subject: z.string(),
+  /** Raw `From:` header string (e.g. `"Name <a@b.com>"`) — kept for
+      back-compat with existing `gmail search --json` consumers. */
   from: z.string(),
+  /** Structured sender: display name + lowercased email. */
+  fromAddress: ParsedAddressSchema,
+  /** Structured `To:` recipients (display name + lowercased email). */
+  to: z.array(ParsedAddressSchema),
+  /** Structured `Cc:` recipients (display name + lowercased email). */
+  cc: z.array(ParsedAddressSchema),
   date: z.string(),
 });
 

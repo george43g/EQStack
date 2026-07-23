@@ -68,7 +68,18 @@ const cases: SchemaCase[] = [
     schema: SearchEmailsOutputSchema,
     valid: {
       resultCount: 1,
-      results: [{ id: "abc", subject: "s", from: "f@example.com", date: "2024-01-01" }],
+      results: [
+        {
+          id: "abc",
+          threadId: "t-abc",
+          subject: "s",
+          from: "Sender <f@example.com>",
+          fromAddress: { name: "Sender", email: "f@example.com" },
+          to: [{ name: "", email: "me@example.com" }],
+          cc: [],
+          date: "2024-01-01",
+        },
+      ],
     },
     // resultCount must be a number
     invalid: { resultCount: "1", results: [] },
