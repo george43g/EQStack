@@ -8,5 +8,10 @@
     "id": "FilterWorkIncidents",
     "criteria": { "subject": "INCIDENT" },
     "action": { "addLabelIds": ["Label_2", "STARRED"] }
+  },
+  {
+    "id": "FilterCatchAll",
+    "criteria": { "to": "catchall.fixture.test" },
+    "action": { "addLabelIds": ["Label_1"] }
   }
 ]

@@ -23,13 +23,17 @@ import path from "node:path";
 import {
   AttachmentBodySchema,
   FilterSchema,
+  ForwardingAddressSchema,
   LabelSchema,
   ListFiltersResponseSchema,
+  ListForwardingResponseSchema,
   ListLabelsResponseSchema,
   ListMessagesResponseSchema,
+  ListSendAsResponseSchema,
   ListThreadsResponseSchema,
   MessageSchema,
   ProfileSchema,
+  SendAsSchema,
   ThreadSchema,
 } from "./gmail-schemas.js";
 
@@ -295,6 +299,36 @@ export class GmailFixtureClient {
           return { data: {} };
         },
       },
+
+      sendAs: {
+        list: async (_params: { userId: string }): Promise<RestResponse<unknown>> => {
+          const sendAs = this.readSendAs();
+          return { data: ListSendAsResponseSchema.parse({ sendAs }) };
+        },
+
+        get: async (params: {
+          userId: string;
+          sendAsEmail: string;
+        }): Promise<RestResponse<unknown>> => {
+          const sendAs = this.readSendAs();
+          const match = sendAs.find((s) => s.sendAsEmail === params.sendAsEmail);
+          if (!match) {
+            const err = new Error(`sendAs ${params.sendAsEmail} not found`) as Error & {
+              code: number;
+            };
+            err.code = 404;
+            throw err;
+          }
+          return { data: SendAsSchema.parse(match) };
+        },
+      },
+
+      forwardingAddresses: {
+        list: async (_params: { userId: string }): Promise<RestResponse<unknown>> => {
+          const forwardingAddresses = this.readForwardingAddresses();
+          return { data: ListForwardingResponseSchema.parse({ forwardingAddresses }) };
+        },
+      },
     },
   };
 
@@ -338,6 +372,20 @@ export class GmailFixtureClient {
     if (!fs.existsSync(file)) return [];
     const arr = JSON.parse(fs.readFileSync(file, "utf8")) as unknown[];
     return arr.map((x) => FilterSchema.parse(x));
+  }
+
+  private readSendAs(): Array<ReturnType<typeof SendAsSchema.parse>> {
+    const file = path.join(this.accountDir, "sendas.json");
+    if (!fs.existsSync(file)) return [];
+    const arr = JSON.parse(fs.readFileSync(file, "utf8")) as unknown[];
+    return arr.map((x) => SendAsSchema.parse(x));
+  }
+
+  private readForwardingAddresses(): Array<ReturnType<typeof ForwardingAddressSchema.parse>> {
+    const file = path.join(this.accountDir, "forwarding.json");
+    if (!fs.existsSync(file)) return [];
+    const arr = JSON.parse(fs.readFileSync(file, "utf8")) as unknown[];
+    return arr.map((x) => ForwardingAddressSchema.parse(x));
   }
 
   private filterByQuery(

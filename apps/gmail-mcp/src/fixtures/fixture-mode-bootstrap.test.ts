@@ -45,7 +45,7 @@ describe("fixture-mode bootstrap end-to-end", () => {
 
     const bundle = await bootstrapSession();
     expect(bundle.accountId).toBe("work");
-    expect(bundle.authorizedScopes).toEqual(["gmail.modify"]);
+    expect(bundle.authorizedScopes).toEqual(["gmail.modify", "gmail.settings.basic"]);
 
     const result = await callMcpTool("list_email_labels", {});
     expect(result.isError).not.toBe(true);

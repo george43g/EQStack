@@ -40,6 +40,7 @@ describe("buildProgram (10.1)", () => {
       "draft",
       "filters",
       "health",
+      "identities",
       "inbox",
       "labels",
       "mcp",

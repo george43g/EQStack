@@ -183,7 +183,11 @@ describe("e2e: gmail CLI binary against fixtures", () => {
     try {
       await client.connect(transport);
       const catalog = await client.listTools();
-      expect(catalog.tools.length).toBe(26);
+      // The work fixture grants gmail.modify + gmail.settings.basic, so the
+      // catalog excludes only the gmail.full tools (delete_email,
+      // batch_delete_emails) and exposes the settings-scoped tools (the 5
+      // filter ops + list_send_identities).
+      expect(catalog.tools.length).toBe(32);
       expect(catalog.tools.every((tool) => tool.name.startsWith("fixture_"))).toBe(true);
       expect(catalog.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -192,6 +196,7 @@ describe("e2e: gmail CLI binary against fixtures", () => {
           "fixture_delete_draft",
           "fixture_report_phishing",
           "fixture_batch_report_phishing",
+          "fixture_list_send_identities",
         ]),
       );
 

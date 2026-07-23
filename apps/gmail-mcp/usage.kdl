@@ -433,6 +433,9 @@ cmd filters subcommand_required=#true help="Manage Gmail filters (server-side ru
 		arg <template>
 	}
 }
+cmd identities help="List send-as identities, forwarding addresses, and routing filters" {
+	flag --json help="Emit typed JSON"
+}
 cmd download-email help="Download an email to disk (json / eml / txt / html)" {
 	flag "-o --save-path" help="Directory to save the file in" required=#true {
 		arg <SAVE_PATH>

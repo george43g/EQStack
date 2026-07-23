@@ -32,6 +32,7 @@ import { buildConsoleCommand } from "./commands/console.js";
 import { buildDownloadAttachmentCommand, buildDownloadEmailCommand } from "./commands/downloads.js";
 import { buildFiltersCommand } from "./commands/filters.js";
 import { buildHealthCommand } from "./commands/health.js";
+import { buildIdentitiesCommand } from "./commands/identities.js";
 import { buildLabelsCommand } from "./commands/labels.js";
 import { buildMcpCommand } from "./commands/mcp.js";
 import {
@@ -163,6 +164,7 @@ Scopes (space=toggle, a=all, i=invert in interactive mode):
   program.addCommand(buildBatchReportPhishingCommand());
   program.addCommand(buildLabelsCommand());
   program.addCommand(buildFiltersCommand());
+  program.addCommand(buildIdentitiesCommand());
   program.addCommand(buildDownloadEmailCommand());
   program.addCommand(buildDownloadAttachmentCommand());
 

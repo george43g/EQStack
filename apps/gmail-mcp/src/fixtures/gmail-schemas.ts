@@ -175,6 +175,39 @@ export const ListFiltersResponseSchema = z
   })
   .passthrough();
 
+// ── Send-as / forwarding settings ────────────────────────────────────────────
+
+export const SendAsSchema = z
+  .object({
+    sendAsEmail: z.string(),
+    displayName: z.string().optional(),
+    replyToAddress: z.string().optional(),
+    isDefault: z.boolean().optional(),
+    isPrimary: z.boolean().optional(),
+    treatAsAlias: z.boolean().optional(),
+    verificationStatus: z.string().optional(),
+  })
+  .passthrough();
+
+export const ListSendAsResponseSchema = z
+  .object({
+    sendAs: z.array(SendAsSchema).optional(),
+  })
+  .passthrough();
+
+export const ForwardingAddressSchema = z
+  .object({
+    forwardingEmail: z.string(),
+    verificationStatus: z.string().optional(),
+  })
+  .passthrough();
+
+export const ListForwardingResponseSchema = z
+  .object({
+    forwardingAddresses: z.array(ForwardingAddressSchema).optional(),
+  })
+  .passthrough();
+
 // ── Profile ──────────────────────────────────────────────────────────────────
 
 export const ProfileSchema = z

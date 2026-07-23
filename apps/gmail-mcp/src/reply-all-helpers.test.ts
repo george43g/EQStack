@@ -5,7 +5,55 @@ import {
   buildReplyAllRecipients,
   filterOutEmail,
   parseEmailAddresses,
+  pickReplyFromIdentity,
+  type SendAsIdentity,
 } from "./reply-all-helpers.js";
+
+describe("pickReplyFromIdentity", () => {
+  const aliases: SendAsIdentity[] = [
+    { sendAsEmail: "me@gmail.com", isDefault: true },
+    { sendAsEmail: "admin@catchall.fixture.test", isDefault: false },
+    { sendAsEmail: "sales@catchall.fixture.test", isDefault: false },
+  ];
+
+  it("returns undefined when there are no aliases", () => {
+    expect(pickReplyFromIdentity(["anyone@x.example"], [])).toBeUndefined();
+  });
+
+  it("prefers an exact alias match", () => {
+    expect(pickReplyFromIdentity(["sales@catchall.fixture.test"], aliases)).toBe(
+      "sales@catchall.fixture.test",
+    );
+  });
+
+  it("falls back to a same-domain alias for a catch-all address (closest identity)", () => {
+    // Mail addressed to random@domain has no exact alias — reply as the
+    // configured @domain identity.
+    expect(pickReplyFromIdentity(["random@catchall.fixture.test"], aliases)).toBe(
+      "admin@catchall.fixture.test",
+    );
+  });
+
+  it("prefers the default alias among same-domain candidates", () => {
+    const withDomainDefault: SendAsIdentity[] = [
+      { sendAsEmail: "sales@catchall.fixture.test", isDefault: false },
+      { sendAsEmail: "admin@catchall.fixture.test", isDefault: true },
+    ];
+    expect(pickReplyFromIdentity(["random@catchall.fixture.test"], withDomainDefault)).toBe(
+      "admin@catchall.fixture.test",
+    );
+  });
+
+  it("is case-insensitive on both addresses and domains", () => {
+    expect(pickReplyFromIdentity(["RANDOM@CatchAll.Fixture.Test"], aliases)).toBe(
+      "admin@catchall.fixture.test",
+    );
+  });
+
+  it("returns undefined when no alias is closer than the account default", () => {
+    expect(pickReplyFromIdentity(["stranger@somewhere-else.example"], aliases)).toBeUndefined();
+  });
+});
 
 describe("parseEmailAddresses", () => {
   it("extracts email from simple email address", () => {

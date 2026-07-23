@@ -24,6 +24,7 @@ import {
   ListEmailLabelsOutputSchema,
   ListFiltersOutputSchema,
   ListInboxThreadsOutputSchema,
+  ListSendIdentitiesOutputSchema,
   ModifyOrDeleteEmailOutputSchema,
   ModifyThreadOutputSchema,
   ReadEmailOutputSchema,
@@ -204,6 +205,38 @@ const cases: SchemaCase[] = [
     invalid: { criteria: {}, action: {} },
   },
   {
+    name: "ListSendIdentitiesOutputSchema",
+    schema: ListSendIdentitiesOutputSchema,
+    valid: {
+      sendAsIdentities: [
+        {
+          email: "me@example.com",
+          displayName: null,
+          isDefault: true,
+          isPrimary: true,
+          treatAsAlias: false,
+          verificationStatus: null,
+        },
+      ],
+      forwardingAddresses: [],
+      inboundRoutingFilters: [
+        {
+          id: "f1",
+          to: "team@example.com",
+          from: null,
+          query: null,
+          addLabelIds: ["Label_1"],
+          removeLabelIds: [],
+          forward: null,
+        },
+      ],
+      truncated: false,
+      total_available: 1,
+    },
+    // sendAsIdentities must be an array
+    invalid: { sendAsIdentities: {}, forwardingAddresses: [], inboundRoutingFilters: [] },
+  },
+  {
     name: "CreateFilterOutputSchema",
     schema: CreateFilterOutputSchema,
     valid: { id: "f1", criteria: { from: "x" }, action: { addLabelIds: ["L1"] } },
@@ -232,6 +265,7 @@ const cases: SchemaCase[] = [
       subject: "Re: hi",
       threadId: "t1",
       inReplyTo: "<rfc@id>",
+      fromIdentity: null,
     },
     // to must be an array
     invalid: {
@@ -240,6 +274,7 @@ const cases: SchemaCase[] = [
       subject: "Re: hi",
       threadId: "t1",
       inReplyTo: "<rfc@id>",
+      fromIdentity: null,
     },
   },
   {

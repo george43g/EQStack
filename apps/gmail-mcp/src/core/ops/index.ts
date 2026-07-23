@@ -14,4 +14,5 @@ import "./health.js";
 import "./labels.js";
 import "./messages.js";
 import "./send.js";
+import "./settings.js";
 import "./threads.js";

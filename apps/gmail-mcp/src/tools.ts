@@ -429,6 +429,12 @@ export const ReplyAllSchema = z
       .optional()
       .default("text/plain")
       .describe("Email content type"),
+    from: z
+      .string()
+      .optional()
+      .describe(
+        "Override the send-as identity to reply from (must be a configured alias). When omitted, the closest-matching send-as identity to the original recipient is chosen automatically (exact alias > same-domain alias > account default).",
+      ),
     attachments: z
       .array(z.string())
       .optional()
@@ -668,6 +674,46 @@ export const ListFiltersOutputSchema = z.object({
 
 export const GetFilterOutputSchema = FilterEntrySchema;
 
+// Send-as identities + inbound routing (catch-all awareness). Read-only.
+export const ListSendIdentitiesSchema = z
+  .object({})
+  .describe("Lists configured send-as identities, forwarding addresses, and routing filters.");
+
+const SendIdentitySchema = z.object({
+  email: z.string(),
+  displayName: z.string().nullable(),
+  isDefault: z.boolean(),
+  isPrimary: z.boolean(),
+  treatAsAlias: z.boolean(),
+  verificationStatus: z.string().nullable(),
+});
+
+const InboundRoutingFilterSchema = z.object({
+  id: z.string(),
+  /** `to:` criterion — the recipient address/pattern this filter matches on. */
+  to: z.string().nullable(),
+  from: z.string().nullable(),
+  query: z.string().nullable(),
+  addLabelIds: z.array(z.string()),
+  removeLabelIds: z.array(z.string()),
+  forward: z.string().nullable(),
+});
+
+export const ListSendIdentitiesOutputSchema = z.object({
+  /** Identities the account can send as (primary + verified aliases). */
+  sendAsIdentities: z.array(SendIdentitySchema),
+  /** Gmail-side forwarding addresses configured on the account. */
+  forwardingAddresses: z.array(
+    z.object({ email: z.string(), verificationStatus: z.string().nullable() }),
+  ),
+  /** Filters that route inbound mail (label/forward actions, or a `to:`
+      criterion) — lets an agent infer "mail to X@domain lands in label Y",
+      the signal for a catch-all/forwarding setup. */
+  inboundRoutingFilters: z.array(InboundRoutingFilterSchema),
+  truncated: z.boolean(),
+  total_available: z.number(),
+});
+
 export const CreateFilterOutputSchema = z.object({
   id: z.string(),
   criteria: z.record(z.string(), z.unknown()),
@@ -719,6 +765,10 @@ export const ReplyAllOutputSchema = z.object({
   subject: z.string(),
   threadId: z.string(),
   inReplyTo: z.string(),
+  /** The send-as identity the reply was sent from, when a closer identity than
+      the account default was chosen (or an explicit `from` was given). Null
+      when the account default send-as was used. */
+  fromIdentity: z.string().nullable(),
 });
 
 export const ModifyOrDeleteEmailOutputSchema = z.object({
@@ -1016,6 +1066,14 @@ export const toolDefinitions: ToolDefinition[] = [
     schema: ListFiltersSchema,
     scopes: ["gmail.settings.basic"],
     annotations: { title: "List Filters", readOnlyHint: true },
+  },
+  {
+    name: "list_send_identities",
+    description:
+      "Lists send-as identities (aliases), forwarding addresses, and inbound routing filters. Surfaces catch-all/forwarding setups so an agent can send as, or reply from, the right identity.",
+    schema: ListSendIdentitiesSchema,
+    scopes: ["gmail.settings.basic"],
+    annotations: { title: "List Send Identities", readOnlyHint: true },
   },
   {
     name: "get_filter",

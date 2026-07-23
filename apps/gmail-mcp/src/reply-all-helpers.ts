@@ -112,3 +112,56 @@ export function buildReplyAllRecipients(
     cc: replyCc,
   };
 }
+
+/** A configured Gmail "Send mail as" identity (subset we rank on). */
+export interface SendAsIdentity {
+  sendAsEmail: string;
+  isDefault?: boolean;
+}
+
+/**
+ * Choose the closest send-as identity to reply *from*, given the addresses the
+ * original message was delivered to (its To / Cc / Delivered-To) and the
+ * account's configured send-as aliases.
+ *
+ * Ranking (first match wins):
+ *   1. **Exact alias** — an alias whose address is one of the delivered-to
+ *      addresses (the mail was addressed to an identity we can send as).
+ *   2. **Same-domain alias** — an alias sharing a domain with a delivered-to
+ *      address. This is the catch-all case: mail to `random@domain` has no
+ *      exact alias, so we reply as the configured `@domain` alias. The default
+ *      alias wins ties.
+ *   3. **undefined** — no closer identity than the account default; the caller
+ *      leaves `from` unset so Gmail uses its default send-as ("me").
+ *
+ * Comparison is case-insensitive. Returns the alias's `sendAsEmail` verbatim
+ * (original case) so the built header uses the configured spelling.
+ */
+export function pickReplyFromIdentity(
+  deliveredToAddresses: string[],
+  sendAsAliases: SendAsIdentity[],
+): string | undefined {
+  if (sendAsAliases.length === 0) return undefined;
+
+  const delivered = deliveredToAddresses.map((a) => a.toLowerCase()).filter(Boolean);
+  const deliveredSet = new Set(delivered);
+  const deliveredDomains = new Set(
+    delivered.map((a) => a.split("@")[1]).filter((d): d is string => Boolean(d)),
+  );
+
+  // 1. exact alias match
+  const exact = sendAsAliases.find((a) => deliveredSet.has(a.sendAsEmail.toLowerCase()));
+  if (exact) return exact.sendAsEmail;
+
+  // 2. same-domain alias — prefer the default alias among the candidates
+  const sameDomain = sendAsAliases.filter((a) => {
+    const domain = a.sendAsEmail.split("@")[1]?.toLowerCase();
+    return domain ? deliveredDomains.has(domain) : false;
+  });
+  if (sameDomain.length > 0) {
+    return (sameDomain.find((a) => a.isDefault) ?? sameDomain[0]).sendAsEmail;
+  }
+
+  // 3. no closer identity than the account default
+  return undefined;
+}

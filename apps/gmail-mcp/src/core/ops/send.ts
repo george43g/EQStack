@@ -7,7 +7,10 @@ import {
   addRePrefix,
   buildReferencesHeader,
   buildReplyAllRecipients,
+  parseEmailAddresses,
+  pickReplyFromIdentity,
 } from "../../reply-all-helpers.js";
+import { listSendAs } from "../../sendas-manager.js";
 import {
   ReplyAllOutputSchema,
   ReplyAllSchema,
@@ -208,6 +211,8 @@ const replyAll: Operation<unknown, ReplyAllOutput> = {
     const originalFrom = headers.find((h) => h.name?.toLowerCase() === "from")?.value || "";
     const originalTo = headers.find((h) => h.name?.toLowerCase() === "to")?.value || "";
     const originalCc = headers.find((h) => h.name?.toLowerCase() === "cc")?.value || "";
+    const originalDeliveredTo =
+      headers.find((h) => h.name?.toLowerCase() === "delivered-to")?.value || "";
     const originalSubject = headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "";
     const originalMessageId =
       headers.find((h) => h.name?.toLowerCase() === "message-id")?.value || "";
@@ -229,6 +234,27 @@ const replyAll: Operation<unknown, ReplyAllOutput> = {
       throw new Error("Could not determine recipient for reply");
     }
 
+    // Closest-matching reply-from selection. An explicit `from` in the args
+    // always wins; otherwise pick the send-as identity nearest to whatever
+    // address the original was delivered to (exact alias > same-domain alias),
+    // which handles catch-all domains where no exact alias exists. Reading
+    // send-as settings is best-effort — a failure degrades to the account
+    // default ("me") rather than breaking the reply.
+    let fromIdentity: string | undefined = args.from;
+    if (!fromIdentity) {
+      try {
+        const aliases = await listSendAs(ctx.gmail);
+        const deliveredTo = [
+          ...parseEmailAddresses(originalTo),
+          ...parseEmailAddresses(originalCc),
+          ...parseEmailAddresses(originalDeliveredTo),
+        ];
+        fromIdentity = pickReplyFromIdentity(deliveredTo, aliases);
+      } catch {
+        // Settings unreadable (scope/permission) — fall back to default send-as.
+      }
+    }
+
     const replySubject = addRePrefix(originalSubject);
     // References header is built but unused here — handleEmailAction recomputes
     // from validatedArgs.references; preserves legacy behavior by computing it
@@ -246,15 +272,17 @@ const replyAll: Operation<unknown, ReplyAllOutput> = {
       inReplyTo: originalMessageId,
       attachments: args.attachments,
       inlineImages: args.inlineImages,
+      ...(fromIdentity ? { from: fromIdentity } : {}),
     };
 
     await handleEmailAction("send", emailArgs, ctx.gmail);
 
+    const fromLine = fromIdentity ? `\nFrom: ${fromIdentity}` : "";
     return {
       content: [
         {
           type: "text",
-          text: `Reply-all sent successfully!\nTo: ${replyTo.join(", ")}${replyCc.length > 0 ? `\nCC: ${replyCc.join(", ")}` : ""}\nSubject: ${replySubject}\nThread ID: ${threadId}`,
+          text: `Reply-all sent successfully!${fromLine}\nTo: ${replyTo.join(", ")}${replyCc.length > 0 ? `\nCC: ${replyCc.join(", ")}` : ""}\nSubject: ${replySubject}\nThread ID: ${threadId}`,
         },
       ],
       structuredContent: {
@@ -263,6 +291,7 @@ const replyAll: Operation<unknown, ReplyAllOutput> = {
         subject: replySubject,
         threadId,
         inReplyTo: originalMessageId,
+        fromIdentity: fromIdentity ?? null,
       },
     };
   },
