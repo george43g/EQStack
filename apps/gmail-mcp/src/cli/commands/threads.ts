@@ -128,16 +128,26 @@ export function buildThreadsCommand(): Command {
     });
 
   cmd
-    .command("get <threadId>")
-    .description("Fetch a thread's messages")
+    .command("get [threadId]")
+    .description("Fetch a thread's messages (by thread id, or -m <messageId>)")
+    .option("-m, --message-id <id>", "Resolve the thread from a message id instead of a thread id")
     .option("-f, --format <fmt>", "full | metadata | minimal (default: full)", "full")
     .option("--json", "Emit typed JSON")
     .action(
       async (
-        threadId: string,
-        options: { format?: "full" | "metadata" | "minimal"; json?: boolean },
+        threadId: string | undefined,
+        options: {
+          messageId?: string;
+          format?: "full" | "metadata" | "minimal";
+          json?: boolean;
+        },
       ) => {
-        await runCliOp("get_thread", { threadId, format: options.format }, { json: options.json });
+        if (Boolean(threadId) === Boolean(options.messageId)) {
+          process.stderr.write("Error: provide exactly one of <threadId> or -m <messageId>\n");
+          process.exit(3);
+        }
+        const idArgs = threadId ? { threadId } : { messageId: options.messageId };
+        await runCliOp("get_thread", { ...idArgs, format: options.format }, { json: options.json });
       },
     );
 

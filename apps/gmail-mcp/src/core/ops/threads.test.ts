@@ -3,6 +3,7 @@
 // process registry.
 
 import { describe, expect, it, vi } from "vitest";
+import { GetThreadSchema } from "../../tools.js";
 import type { OperationContext } from "../context.js";
 import { registry } from "../registry.js";
 // Side-effect import: registers get_thread, list_inbox_threads,
@@ -14,11 +15,14 @@ import "./threads.js";
  * Only the methods each test exercises are wired; missing methods will
  * deliberately throw if a handler reaches for them.
  */
-function buildCtx(threadsStub: {
-  get?: ReturnType<typeof vi.fn>;
-  list?: ReturnType<typeof vi.fn>;
-  modify?: ReturnType<typeof vi.fn>;
-}): OperationContext {
+function buildCtx(
+  threadsStub: {
+    get?: ReturnType<typeof vi.fn>;
+    list?: ReturnType<typeof vi.fn>;
+    modify?: ReturnType<typeof vi.fn>;
+  },
+  messagesGet?: ReturnType<typeof vi.fn>,
+): OperationContext {
   return {
     gmail: {
       users: {
@@ -26,6 +30,9 @@ function buildCtx(threadsStub: {
           get: threadsStub.get ?? vi.fn(),
           list: threadsStub.list ?? vi.fn(),
           modify: threadsStub.modify ?? vi.fn(),
+        },
+        messages: {
+          get: messagesGet ?? vi.fn(),
         },
       },
     },
@@ -36,6 +43,15 @@ function buildCtx(threadsStub: {
     // biome-ignore lint/suspicious/noExplicitAny: minimal stub for tests
   } as any;
 }
+
+describe("GetThreadSchema", () => {
+  it("requires exactly one of threadId / messageId", () => {
+    expect(GetThreadSchema.parse({ threadId: "t" })).toMatchObject({ threadId: "t" });
+    expect(GetThreadSchema.parse({ messageId: "m" })).toMatchObject({ messageId: "m" });
+    expect(() => GetThreadSchema.parse({})).toThrow(/exactly one/);
+    expect(() => GetThreadSchema.parse({ threadId: "t", messageId: "m" })).toThrow(/exactly one/);
+  });
+});
 
 describe("get_thread handler", () => {
   it("returns per-message summary with headers + body and skips body when format=minimal", async () => {
@@ -87,6 +103,37 @@ describe("get_thread handler", () => {
     expect(msg.cc).toBe("c@example.com");
     expect(msg.body).toBe("body text");
     expect(msg.labelIds).toEqual(["INBOX", "UNREAD"]);
+  });
+
+  it("accepts a messageId: resolves its threadId (minimal fetch) then loads the thread", async () => {
+    const messagesGet = vi.fn().mockResolvedValue({ data: { threadId: "thread-R" } });
+    const threadsGet = vi.fn().mockResolvedValue({
+      data: {
+        messages: [
+          {
+            id: "msg-9",
+            threadId: "thread-R",
+            payload: { headers: [{ name: "Subject", value: "Resolved" }], mimeType: "text/plain" },
+          },
+        ],
+      },
+    });
+    const ctx = buildCtx({ get: threadsGet }, messagesGet);
+
+    const op = registry.get("get_thread")!;
+    const result = await op.handler({ messageId: "msg-9", format: "full" }, ctx);
+
+    // Cheap minimal fetch just to get the threadId, then the real thread load.
+    expect(messagesGet).toHaveBeenCalledWith({ userId: "me", id: "msg-9", format: "minimal" });
+    expect(threadsGet).toHaveBeenCalledWith({ userId: "me", id: "thread-R", format: "full" });
+    expect(result.structuredContent).toMatchObject({ threadId: "thread-R", messageCount: 1 });
+  });
+
+  it("throws when a messageId resolves to no threadId", async () => {
+    const messagesGet = vi.fn().mockResolvedValue({ data: {} });
+    const ctx = buildCtx({ get: vi.fn() }, messagesGet);
+    const op = registry.get("get_thread")!;
+    await expect(op.handler({ messageId: "orphan" }, ctx)).rejects.toThrow(/resolve a threadId/);
   });
 
   it("skips body extraction when format=minimal", async () => {

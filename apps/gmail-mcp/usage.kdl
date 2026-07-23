@@ -110,12 +110,15 @@ cmd threads subcommand_required=#true help="Thread-level operations (groups of r
 		flag --all help="Stream every page (shorthand for --max 0)"
 		flag --json help="Emit typed JSON"
 	}
-	cmd get help="Fetch a thread's messages" {
+	cmd get help="Fetch a thread's messages (by thread id, or -m <messageId>)" {
+		flag "-m --message-id" help="Resolve the thread from a message id instead of a thread id" {
+			arg <MESSAGE_ID>
+		}
 		flag "-f --format" help="full | metadata | minimal (default: full)" default=full {
 			arg <FORMAT>
 		}
 		flag --json help="Emit typed JSON"
-		arg <threadId>
+		arg "[threadId]" required=#false
 	}
 	cmd modify help="Add/remove labels on every message in a thread" {
 		flag --add help="Comma-separated label IDs to add" {

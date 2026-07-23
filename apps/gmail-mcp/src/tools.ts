@@ -354,14 +354,27 @@ export const ModifyThreadSchema = z.object({
 });
 
 // Thread-level schemas
-export const GetThreadSchema = z.object({
-  threadId: z.string().describe("ID of the email thread to retrieve"),
-  format: z
-    .enum(["full", "metadata", "minimal"])
-    .optional()
-    .default("full")
-    .describe("Format of the email messages returned (default: full)"),
-});
+export const GetThreadSchema = z
+  .object({
+    threadId: z
+      .string()
+      .optional()
+      .describe("ID of the email thread to retrieve. Provide either this or messageId."),
+    messageId: z
+      .string()
+      .optional()
+      .describe(
+        "ID of a message in the thread. Resolves to its threadId first — pass this when a search returned a message id but not a thread id, to avoid a separate read_email round-trip.",
+      ),
+    format: z
+      .enum(["full", "metadata", "minimal"])
+      .optional()
+      .default("full")
+      .describe("Format of the email messages returned (default: full)"),
+  })
+  .refine((v) => Boolean(v.threadId) !== Boolean(v.messageId), {
+    message: "Provide exactly one of threadId or messageId",
+  });
 
 export const ListInboxThreadsSchema = z.object({
   query: z

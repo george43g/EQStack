@@ -54,10 +54,31 @@ const getThread: Operation<unknown, GetThreadOutput> = {
   outputSchema: GetThreadOutputSchema,
   scopes: ["gmail.readonly", "gmail.modify"],
   handler: async (input, ctx) => {
-    const args = input as { threadId: string; format?: "full" | "metadata" | "minimal" };
+    const args = input as {
+      threadId?: string;
+      messageId?: string;
+      format?: "full" | "metadata" | "minimal";
+    };
+
+    // Accept a messageId as an alternative to threadId: resolve it to its
+    // thread with a cheap `minimal` fetch (only .threadId is needed). This
+    // removes the read_email round-trip callers otherwise need after a search.
+    let threadId = args.threadId;
+    if (!threadId && args.messageId) {
+      const msg = await ctx.gmail.users.messages.get({
+        userId: "me",
+        id: args.messageId,
+        format: "minimal",
+      });
+      threadId = msg.data.threadId || undefined;
+      if (!threadId) {
+        throw new Error(`Could not resolve a threadId from message ${args.messageId}`);
+      }
+    }
+
     const threadResponse = await ctx.gmail.users.threads.get({
       userId: "me",
-      id: args.threadId,
+      id: threadId!,
       format: args.format || "full",
     });
 
@@ -99,7 +120,7 @@ const getThread: Operation<unknown, GetThreadOutput> = {
     });
 
     const structured = {
-      threadId: args.threadId,
+      threadId: threadId!,
       messageCount: messagesOutput.length,
       messages: messagesOutput,
     };
