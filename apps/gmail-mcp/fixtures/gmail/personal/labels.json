@@ -1,6 +1,6 @@
 [
-  { "id": "INBOX", "name": "INBOX", "type": "system", "messageListVisibility": "show", "labelListVisibility": "labelShow" },
+  { "id": "INBOX", "name": "INBOX", "type": "system", "messageListVisibility": "show", "labelListVisibility": "labelShow", "messagesTotal": 12, "messagesUnread": 1, "threadsTotal": 12, "threadsUnread": 1 },
   { "id": "STARRED", "name": "STARRED", "type": "system", "messageListVisibility": "show" },
-  { "id": "UNREAD", "name": "UNREAD", "type": "system" },
+  { "id": "UNREAD", "name": "UNREAD", "type": "system", "messagesUnread": 2, "threadsUnread": 2 },
   { "id": "Label_P1", "name": "Newsletters", "type": "user", "messageListVisibility": "show" }
 ]

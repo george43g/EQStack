@@ -473,6 +473,19 @@ export const SwitchAccountSchema = z
     "Switches the active Gmail account for subsequent tool calls. State change, not destructive.",
   );
 
+export const UnreadSummarySchema = z
+  .object({
+    includeSamples: z
+      .boolean()
+      .optional()
+      .describe(
+        "When true, include up to 5 sample unread inbox messages (from/subject/date) per account. Costs one messages.list + metadata fetch per account; off by default.",
+      ),
+  })
+  .describe(
+    "Read-only cross-account summary of unread mail. Aggregates unread counts across every configured account WITHOUT changing the active account. Does not fetch message bodies unless includeSamples is set.",
+  );
+
 // ----------------------------------------------------------------------------
 // Output schemas (Phase B2)
 //
@@ -855,6 +868,42 @@ export const SwitchAccountOutputSchema = z.object({
   note: z.string().optional(),
 });
 
+export const UnreadSummaryAccountSchema = z.object({
+  id: z.string(),
+  emailAddress: z.string().nullable(),
+  /** Unread messages in the inbox (INBOX label messagesUnread), or null if unavailable. */
+  unreadInbox: z.number().nullable(),
+  /** Total unread messages account-wide (UNREAD label messagesUnread), or null. */
+  unreadTotal: z.number().nullable(),
+  /** Set when this account's query failed (build/credentials/API error). */
+  error: z.string().optional(),
+  /** Set when the account was skipped (e.g. stored scopes lack read access). */
+  skippedReason: z.string().optional(),
+  /** Present only when includeSamples was requested. */
+  samples: z
+    .array(
+      z.object({
+        id: z.string(),
+        from: z.string().nullable(),
+        subject: z.string().nullable(),
+        date: z.string().nullable(),
+      }),
+    )
+    .optional(),
+});
+
+export const UnreadSummaryOutputSchema = z.object({
+  /** The active account id at call time — unchanged by this tool. */
+  activeAccountId: z.string().nullable(),
+  /** Sum of unreadInbox across all included accounts. */
+  totalUnread: z.number(),
+  accounts: z.array(UnreadSummaryAccountSchema),
+  /** The account list is local + fully enumerated, so this is always false. */
+  truncated: z.boolean(),
+  /** Total accounts returned (equals accounts.length). */
+  total_available: z.number(),
+});
+
 // Tool definition type
 export interface ToolAnnotations {
   title: string;
@@ -1141,6 +1190,14 @@ export const toolDefinitions: ToolDefinition[] = [
     schema: SwitchAccountSchema,
     scopes: [],
     annotations: { title: "Switch Gmail Account", destructiveHint: false, idempotentHint: false },
+  },
+  {
+    name: "unread_summary",
+    description:
+      "Read-only summary of unread mail across ALL configured Gmail accounts. Returns per-account unread counts (inbox + total) plus an aggregate, without changing the active account (no switch needed). Accounts whose stored scopes lack read access are skipped. Cheap: one labels.get per account; set includeSamples for up to 5 sample unread subjects per account.",
+    schema: UnreadSummarySchema,
+    scopes: ["gmail.readonly", "gmail.modify"],
+    annotations: { title: "Unread Summary (All Accounts)", readOnlyHint: true },
   },
 ];
 

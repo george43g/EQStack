@@ -52,6 +52,7 @@ import {
 } from "./commands/send.js";
 import { buildInboxAliasCommand, buildThreadsCommand } from "./commands/threads.js";
 import { buildTuiCommand } from "./commands/tui.js";
+import { buildUnreadCommand } from "./commands/unread.js";
 
 // Read version from package.json at runtime to avoid hand-syncing.
 function readVersion(): string {
@@ -147,6 +148,7 @@ Scopes (space=toggle, a=all, i=invert in interactive mode):
   program.addCommand(buildAuthCommand());
   program.addCommand(buildHealthCommand());
   program.addCommand(buildInboxAliasCommand());
+  program.addCommand(buildUnreadCommand());
   program.addCommand(buildSearchCommand());
   program.addCommand(buildReadCommand());
   program.addCommand(buildThreadsCommand());

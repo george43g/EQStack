@@ -87,6 +87,10 @@ cmd inbox help="Shortcut: list recent inbox threads (alias for `threads list -q 
 	flag --json help="Emit typed JSON"
 	arg "[max]" help="Max threads — 0 = stream all up to 5000 (default: 10)" required=#false
 }
+cmd unread help="Summarise unread mail across all configured accounts (read-only)" {
+	flag --samples help="Include up to 5 sample unread inbox subjects per account"
+	flag --json help="Emit typed JSON"
+}
 cmd search help="Search emails (Gmail query syntax — e.g. 'from:foo newer_than:7d')" {
 	flag "-n --max" help="Max results — 0 = stream all pages up to 5000 (default: 25)" default="25" {
 		arg <MAX>

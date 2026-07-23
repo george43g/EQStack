@@ -12,16 +12,18 @@
 // scopes than the previous one, the host's cached tools/list is stale and
 // affected tools will reject at call-time with the usual re-auth hint.
 
-import { OAuth2Client } from "google-auth-library";
-import { google } from "googleapis";
 import type { z } from "zod";
 import { info as logInfo } from "../../robustness/index.js";
+import { hasScope } from "../../scopes.js";
 import {
   ListAccountsOutputSchema,
   ListAccountsSchema,
   SwitchAccountOutputSchema,
   SwitchAccountSchema,
+  UnreadSummaryOutputSchema,
+  UnreadSummarySchema,
 } from "../../tools.js";
+import { AccountGmailError, buildAccountGmail } from "../account-gmail.js";
 import {
   AccountNotFoundError,
   listAccounts,
@@ -29,9 +31,6 @@ import {
   resolveActiveAccount,
   validateAccountId,
 } from "../accounts.js";
-import { loadOAuthKeys } from "../auth-flow.js";
-import { getConfigDir, getOAuthPath } from "../config-paths.js";
-import { attachTokenPersistence, loadCredentials } from "../credentials.js";
 import { listMeta } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
 import { getCurrentAccountId, setSession } from "../session.js";
@@ -40,6 +39,9 @@ type ListAccountsInput = z.infer<typeof ListAccountsSchema>;
 type ListAccountsOutput = z.infer<typeof ListAccountsOutputSchema>;
 type SwitchAccountInput = z.infer<typeof SwitchAccountSchema>;
 type SwitchAccountOutput = z.infer<typeof SwitchAccountOutputSchema>;
+type UnreadSummaryInput = z.infer<typeof UnreadSummarySchema>;
+type UnreadSummaryOutput = z.infer<typeof UnreadSummaryOutputSchema>;
+type UnreadSummaryAccount = UnreadSummaryOutput["accounts"][number];
 
 const listOp: Operation<ListAccountsInput, ListAccountsOutput> = {
   name: "list_accounts",
@@ -140,119 +142,69 @@ const switchOp: Operation<SwitchAccountInput, SwitchAccountOutput> = {
 
     const env = process.env;
 
-    // Fixture-mode short-circuit: skip OAuth + credentials entirely; swap in
-    // a new GmailFixtureClient for the named account dir. The OAuth2Client
-    // proxy stays throwing-on-access (same contract as bootstrap fixture mode).
-    if (env.GMAIL_FIXTURE_MODE === "1") {
-      const fixtureDir = env.GMAIL_FIXTURE_DIR ?? "./fixtures/gmail";
-      const { loadFixtureGmail } = await import("../../fixtures/loader.js");
-      let bundle;
-      try {
-        bundle = loadFixtureGmail(fixtureDir, accountId);
-      } catch (err) {
+    // Build a fresh handle for the target account WITHOUT going through the
+    // session first — buildAccountGmail folds in fixture mode, OAuth-keys
+    // loading, and the credential loader chain (the same code bootstrap and
+    // the cross-account unread summary use). Map its typed stage error back
+    // onto switch_account's historical messages.
+    let bundle: Awaited<ReturnType<typeof buildAccountGmail>>;
+    try {
+      bundle = await buildAccountGmail(accountId, {
+        env,
+        onPersistError: (error) =>
+          logInfo("failed to persist refreshed OAuth tokens", {
+            account: accountId,
+            error: error.message,
+          }),
+      });
+    } catch (err) {
+      if (err instanceof AccountGmailError) {
+        if (err.stage === "oauth-keys") {
+          throw new Error(
+            `switch_account: failed to load OAuth keys for "${accountId}": ${err.message}`,
+          );
+        }
+        if (err.stage === "credentials") {
+          throw new Error(
+            `switch_account: failed to load credentials for "${accountId}": ${err.message}. Run \`gmail account auth ${accountId}\` to mint them.`,
+          );
+        }
         throw new Error(
-          `switch_account: failed to load fixture client for "${accountId}": ${(err as Error).message}`,
+          `switch_account: failed to load fixture client for "${accountId}": ${err.message}`,
         );
       }
-      const stubOAuth = new Proxy({} as OAuth2Client, {
-        get: () => {
-          throw new Error(
-            "OAuth2Client is stubbed in fixture mode — production code MUST NOT depend on it.",
-          );
-        },
-      });
-      setSession({
-        oauth2Client: stubOAuth,
-        gmail: bundle.gmail,
-        authorizedScopes: bundle.scopes,
-        accountId,
-      });
-      logInfo("account swapped (fixture)", {
-        account: accountId,
-        previousAccount: previousAccountId,
-        scopes: bundle.scopes,
-      });
-
-      const entry = manifest.accounts[accountId];
-      const structured: SwitchAccountOutput = {
-        previousAccountId: previousAccountId ?? null,
-        newAccountId: accountId,
-        emailAddress: entry?.emailAddress ?? null,
-        scopes: bundle.scopes,
-        note: "Active account swapped (fixture mode).",
-      };
-      const lines = [
-        `Switched active Gmail account: ${previousAccountId ?? "(none)"} → ${accountId} (fixture)`,
-        `Scopes now granted: ${bundle.scopes.length > 0 ? bundle.scopes.join(", ") : "(none)"}`,
-      ];
-      if (entry?.emailAddress) lines.push(`Email: ${entry.emailAddress}`);
-      return {
-        content: [{ type: "text", text: lines.join("\n") }],
-        structuredContent: structured,
-      };
+      throw err;
     }
 
-    const configDir = getConfigDir(env);
-    const oauthPath = getOAuthPath(env);
-
-    let keys;
-    try {
-      keys = loadOAuthKeys({
-        oauthPath,
-        cwd: process.cwd(),
-        configDir,
-        accountId,
-      });
-    } catch (err) {
-      throw new Error(
-        `switch_account: failed to load OAuth keys for "${accountId}": ${(err as Error).message}`,
-      );
-    }
-
-    let loaded;
-    try {
-      loaded = await loadCredentials({ env, accountId });
-    } catch (err) {
-      throw new Error(
-        `switch_account: failed to load credentials for "${accountId}": ${(err as Error).message}. Run \`gmail account auth ${accountId}\` to mint them.`,
-      );
-    }
-
-    const oauth2Client = new OAuth2Client(
-      keys.client_id,
-      keys.client_secret,
-      "http://localhost:3000/oauth2callback",
-    );
-    oauth2Client.setCredentials(loaded.credentials.tokens);
-    attachTokenPersistence(oauth2Client, loaded, {
-      onError: (error) =>
-        logInfo("failed to persist refreshed OAuth tokens", {
-          account: accountId,
-          error: error.message,
-        }),
+    setSession({
+      oauth2Client: bundle.oauth2Client,
+      gmail: bundle.gmail,
+      authorizedScopes: bundle.scopes,
+      accountId,
     });
-    const gmail = google.gmail({ version: "v1", auth: oauth2Client });
-
-    const scopes = loaded.credentials.scopes ?? [];
-    setSession({ oauth2Client, gmail, authorizedScopes: scopes, accountId });
-    logInfo("account swapped", {
+    logInfo(bundle.fixture ? "account swapped (fixture)" : "account swapped", {
       account: accountId,
       previousAccount: previousAccountId,
-      scopes,
+      scopes: bundle.scopes,
     });
 
     const entry = manifest.accounts[accountId];
+    const note = bundle.fixture
+      ? "Active account swapped (fixture mode)."
+      : "Active account swapped. The host's cached tools/list does not auto-refresh; tools relying on scopes the new account lacks will reject at call-time.";
     const structured: SwitchAccountOutput = {
       previousAccountId: previousAccountId ?? null,
       newAccountId: accountId,
       emailAddress: entry?.emailAddress ?? null,
-      scopes,
-      note: "Active account swapped. The host's cached tools/list does not auto-refresh; tools relying on scopes the new account lacks will reject at call-time.",
+      scopes: bundle.scopes,
+      note,
     };
 
     const lines = [
-      `Switched active Gmail account: ${previousAccountId ?? "(none)"} → ${accountId}`,
-      `Scopes now granted: ${scopes.length > 0 ? scopes.join(", ") : "(none)"}`,
+      `Switched active Gmail account: ${previousAccountId ?? "(none)"} → ${accountId}${
+        bundle.fixture ? " (fixture)" : ""
+      }`,
+      `Scopes now granted: ${bundle.scopes.length > 0 ? bundle.scopes.join(", ") : "(none)"}`,
     ];
     if (entry?.emailAddress) lines.push(`Email: ${entry.emailAddress}`);
 
@@ -263,5 +215,152 @@ const switchOp: Operation<SwitchAccountInput, SwitchAccountOutput> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// unread_summary — read-only cross-account unread aggregate (Milestone C)
+// ---------------------------------------------------------------------------
+//
+// The ONLY tool that reads more than one account. Strictly read-only: it builds
+// an independent per-account Gmail handle via buildAccountGmail and NEVER calls
+// setSession, so the active account is untouched. Accounts whose stored scopes
+// lack a read scope are skipped (reported, not errored). One cheap labels.get
+// per account (INBOX + UNREAD carry messagesUnread/threadsUnread) — no message
+// fetch unless `includeSamples` is set.
+
+/** Summarise a single account's unread counts. Never throws — folds every
+ *  failure into an `error` / `skippedReason` field so allSettled stays clean. */
+async function summariseAccount(
+  item: ReturnType<typeof listAccounts>[number],
+  env: NodeJS.ProcessEnv,
+  includeSamples: boolean,
+): Promise<UnreadSummaryAccount> {
+  const base = { id: item.id, emailAddress: item.entry.emailAddress ?? null };
+  const scopes = item.entry.scopes ?? [];
+  // labels.get needs gmail.readonly / gmail.modify (gmail.full also grants it).
+  if (!hasScope(scopes, ["gmail.readonly", "gmail.modify"])) {
+    return { ...base, unreadInbox: null, unreadTotal: null, skippedReason: "no read scope" };
+  }
+
+  let gmail: Awaited<ReturnType<typeof buildAccountGmail>>["gmail"];
+  try {
+    // persistTokens:false — a summary must not rewrite N credential files as a
+    // side effect; the throwaway handle is discarded after the call.
+    ({ gmail } = await buildAccountGmail(item.id, { env, persistTokens: false }));
+  } catch (err) {
+    const message =
+      err instanceof AccountGmailError ? `${err.stage}: ${err.message}` : (err as Error).message;
+    return { ...base, unreadInbox: null, unreadTotal: null, error: message };
+  }
+
+  try {
+    const [inbox, unread] = await Promise.all([
+      gmail.users.labels.get({ userId: "me", id: "INBOX" }).then((r) => r.data),
+      gmail.users.labels.get({ userId: "me", id: "UNREAD" }).then((r) => r.data),
+    ]);
+    const result: UnreadSummaryAccount = {
+      ...base,
+      unreadInbox: typeof inbox.messagesUnread === "number" ? inbox.messagesUnread : null,
+      unreadTotal: typeof unread.messagesUnread === "number" ? unread.messagesUnread : null,
+    };
+    if (includeSamples) {
+      const list = await gmail.users.messages.list({
+        userId: "me",
+        q: "is:unread in:inbox",
+        maxResults: 5,
+      });
+      const ids = (list.data.messages ?? [])
+        .map((m) => m.id)
+        .filter((id): id is string => Boolean(id));
+      result.samples = await Promise.all(
+        ids.map(async (id) => {
+          const msg = await gmail.users.messages.get({
+            userId: "me",
+            id,
+            format: "metadata",
+            metadataHeaders: ["From", "Subject", "Date"],
+          });
+          const headers = msg.data.payload?.headers ?? [];
+          const header = (name: string) =>
+            headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? null;
+          return { id, from: header("From"), subject: header("Subject"), date: header("Date") };
+        }),
+      );
+    }
+    return result;
+  } catch (err) {
+    return { ...base, unreadInbox: null, unreadTotal: null, error: (err as Error).message };
+  }
+}
+
+const unreadSummaryOp: Operation<UnreadSummaryInput, UnreadSummaryOutput> = {
+  name: "unread_summary",
+  schema: UnreadSummarySchema,
+  outputSchema: UnreadSummaryOutputSchema,
+  // Gated on the ACTIVE account having a read scope; per-account read
+  // capability is checked in summariseAccount (out-of-scope accounts skip, not
+  // reject). Read-only aggregate; never mutates session or Gmail.
+  scopes: ["gmail.readonly", "gmail.modify"],
+  handler: async (input, _ctx) => {
+    const env = process.env;
+    const includeSamples = input.includeSamples ?? false;
+    const items = listAccounts(env);
+    const activeAccountId = getCurrentAccountId();
+
+    const settled = await Promise.allSettled(
+      items.map((item) => summariseAccount(item, env, includeSamples)),
+    );
+    const accounts: UnreadSummaryAccount[] = settled.map((res, i) => {
+      if (res.status === "fulfilled") return res.value;
+      const item = items[i]!;
+      return {
+        id: item.id,
+        emailAddress: item.entry.emailAddress ?? null,
+        unreadInbox: null,
+        unreadTotal: null,
+        error: (res.reason as Error)?.message ?? String(res.reason),
+      };
+    });
+
+    const totalUnread = accounts.reduce((sum, a) => sum + (a.unreadInbox ?? 0), 0);
+    const structured: UnreadSummaryOutput = {
+      activeAccountId: activeAccountId ?? null,
+      totalUnread,
+      accounts,
+      // The manifest is local + fully enumerated — never truncated.
+      ...listMeta(accounts.length),
+    };
+
+    const lines: string[] = [];
+    if (accounts.length === 0) {
+      lines.push("No accounts in the manifest yet.");
+      lines.push("Run `gmail account auth <id>` from the shell to add one.");
+    } else {
+      lines.push(`Unread across ${accounts.length} account(s): ${totalUnread} in inbox(es)`);
+      for (const a of accounts) {
+        const marker = a.id === activeAccountId ? " *" : "";
+        const email = a.emailAddress ? ` <${a.emailAddress}>` : "";
+        if (a.skippedReason) {
+          lines.push(`  - ${a.id}${email}${marker}: skipped (${a.skippedReason})`);
+        } else if (a.error) {
+          lines.push(`  - ${a.id}${email}${marker}: error — ${a.error}`);
+        } else {
+          lines.push(
+            `  - ${a.id}${email}${marker}: ${a.unreadInbox ?? 0} inbox / ${a.unreadTotal ?? 0} total`,
+          );
+        }
+        for (const s of a.samples ?? []) {
+          lines.push(`      · ${s.from ?? "(unknown)"} — ${s.subject ?? "(no subject)"}`);
+        }
+      }
+      lines.push("", "(* = active account)");
+    }
+
+    return {
+      content: [{ type: "text", text: lines.join("\n") }],
+      structuredContent: structured,
+    };
+  },
+};
+
 registry.register(listOp);
 registry.register(switchOp);
+registry.register(unreadSummaryOp);

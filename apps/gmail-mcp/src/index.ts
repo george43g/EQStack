@@ -28,15 +28,11 @@
 import fs from "node:fs";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { OAuth2Client } from "google-auth-library";
-import { type gmail_v1, google } from "googleapis";
+import type { OAuth2Client } from "google-auth-library";
+import type { gmail_v1 } from "googleapis";
+import { AccountGmailError, buildAccountGmail } from "./core/account-gmail.js";
 import { getAccountCredentialsPath, resolveActiveAccount } from "./core/accounts.js";
-import { loadOAuthKeys } from "./core/auth-flow.js";
-import { getConfigDir, getCredentialsPath, getOAuthPath } from "./core/config-paths.js";
-import {
-  attachTokenPersistence,
-  loadCredentials as coreLoadCredentials,
-} from "./core/credentials.js";
+import { getCredentialsPath } from "./core/config-paths.js";
 // Side-effect import: each op file under core/ops/ registers itself with
 // the registry at module load time. Adding an import here exposes the op
 // to the dispatcher constructed by server/build.ts.
@@ -196,70 +192,53 @@ export async function bootstrapSession(opts: BootstrapOptions = {}): Promise<Ses
   const accountId = active.id ?? undefined;
   logInfo("active account", { account: accountId ?? null, source: active.source });
 
-  const configDir = getConfigDir(env);
-  const oauthPath = getOAuthPath(env);
   const credentialsPath = getCredentialsPath(env);
 
-  let keys;
+  // Build the active-account handle via the shared factory. requireCredentials:
+  // false → a missing credentials file is tolerated (first-time `gmail account
+  // auth` needs a client before tokens exist); any other loader failure throws
+  // an AccountGmailError whose stage we map onto BootstrapError so the TUI can
+  // render a stage-specific message.
+  let bundle: Awaited<ReturnType<typeof buildAccountGmail>>;
   try {
-    keys = loadOAuthKeys({
-      oauthPath,
-      cwd: process.cwd(),
-      configDir,
-      accountId,
-      env,
-    });
-  } catch (err) {
-    throw new BootstrapError((err as Error).message, "oauth-keys", err);
-  }
-
-  const oauth2Client = new OAuth2Client(
-    keys.client_id,
-    keys.client_secret,
-    "http://localhost:3000/oauth2callback",
-  );
-
-  // Load stored access/refresh tokens via the multi-source loader chain.
-  // Missing tokens are NOT fatal — required for first-time account auth bootstrap.
-  // Any other error (malformed JSON, 1Password CLI missing, etc.) IS fatal.
-  let authorizedScopes: string[] = DEFAULT_SCOPES;
-  try {
-    const loaded = await coreLoadCredentials({
+    bundle = await buildAccountGmail(accountId ?? null, {
       env,
       fallbackPath: credentialsPath,
-      accountId,
-    });
-    oauth2Client.setCredentials(loaded.credentials.tokens);
-    attachTokenPersistence(oauth2Client, loaded, {
-      onError: (error) =>
+      requireCredentials: false,
+      onPersistError: (error) =>
         logWarn("failed to persist refreshed OAuth tokens", { error: error.message }),
     });
-    if (loaded.credentials.scopes) authorizedScopes = loaded.credentials.scopes;
-    // Warn when a legacy <configDir>/credentials.json shadows a per-account
-    // file the user is no longer reading from. Common after migrating from
-    // single- to multi-account: the legacy file lingers and used to be loaded
-    // by mistake (prior versions of the loader). Surfacing it lets the user
-    // delete it; not fatal.
-    if (accountId && loaded.source === "file") {
-      const perAccountPath = getAccountCredentialsPath(accountId, env);
-      if (loaded.locator === perAccountPath && fs.existsSync(credentialsPath)) {
-        logWarn("legacy credentials.json shadowed by per-account file", {
-          legacy: credentialsPath,
-          perAccount: perAccountPath,
-          account: accountId,
-        });
-      }
-    }
   } catch (err) {
-    const e = err as { source?: string; name?: string; message?: string };
-    if (e.name === "CredentialLoadError" && e.source === "file") {
-      // No file yet — `gmail account auth <id>` will create it. Not a bootstrap failure.
-    } else {
-      throw new BootstrapError(e.message ?? String(err), "credentials", err);
+    if (err instanceof AccountGmailError) {
+      throw new BootstrapError(
+        err.message,
+        err.stage === "oauth-keys" ? "oauth-keys" : "credentials",
+        err.cause,
+      );
+    }
+    throw new BootstrapError((err as Error).message, "unknown", err);
+  }
+
+  const { oauth2Client, gmail } = bundle;
+  // Scopes: honour the stored list (even an explicit empty []); fall back to
+  // DEFAULT_SCOPES only when credentials were absent or carried no scope list.
+  const authorizedScopes = bundle.loaded?.credentials.scopes ?? DEFAULT_SCOPES;
+
+  // Warn when a legacy <configDir>/credentials.json shadows a per-account file
+  // the user is no longer reading from. Common after migrating from single- to
+  // multi-account: the legacy file lingers. Surfacing it lets the user delete
+  // it; not fatal.
+  if (accountId && bundle.loaded?.source === "file") {
+    const perAccountPath = getAccountCredentialsPath(accountId, env);
+    if (bundle.loaded.locator === perAccountPath && fs.existsSync(credentialsPath)) {
+      logWarn("legacy credentials.json shadowed by per-account file", {
+        legacy: credentialsPath,
+        perAccount: perAccountPath,
+        account: accountId,
+      });
     }
   }
 
-  const gmail = google.gmail({ version: "v1", auth: oauth2Client });
   setSession({
     oauth2Client,
     gmail,

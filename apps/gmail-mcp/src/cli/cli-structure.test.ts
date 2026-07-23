@@ -53,6 +53,7 @@ describe("buildProgram (10.1)", () => {
       "send-draft",
       "threads",
       "tui",
+      "unread",
       "update-draft",
     ].sort();
     expect(names).toEqual(expected);

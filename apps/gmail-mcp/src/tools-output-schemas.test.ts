@@ -32,6 +32,7 @@ import {
   SearchEmailsOutputSchema,
   SendOrDraftOutputSchema,
   SwitchAccountOutputSchema,
+  UnreadSummaryOutputSchema,
 } from "./tools.js";
 
 type SchemaCase = {
@@ -428,6 +429,34 @@ const cases: SchemaCase[] = [
       previousAccountId: "work",
       emailAddress: null,
       scopes: [],
+    },
+  },
+  {
+    name: "UnreadSummaryOutputSchema",
+    schema: UnreadSummaryOutputSchema,
+    valid: {
+      activeAccountId: "work",
+      totalUnread: 4,
+      truncated: false,
+      total_available: 2,
+      accounts: [
+        { id: "work", emailAddress: "w@example.com", unreadInbox: 3, unreadTotal: 5 },
+        {
+          id: "personal",
+          emailAddress: null,
+          unreadInbox: null,
+          unreadTotal: null,
+          skippedReason: "no read scope",
+        },
+      ],
+    },
+    // totalUnread must be a number
+    invalid: {
+      activeAccountId: null,
+      totalUnread: "lots",
+      truncated: false,
+      total_available: 0,
+      accounts: [],
     },
   },
 ];

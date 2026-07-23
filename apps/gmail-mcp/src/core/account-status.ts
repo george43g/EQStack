@@ -1,9 +1,6 @@
 import fs from "node:fs";
-import { OAuth2Client } from "google-auth-library";
-import { google } from "googleapis";
+import { buildAccountGmail } from "./account-gmail.js";
 import { getAccountCredentialsPath, listAccounts, loadManifest, saveManifest } from "./accounts.js";
-import { loadOAuthKeys } from "./auth-flow.js";
-import { getConfigDir, getOAuthPath } from "./config-paths.js";
 import { loadCredentials, type StoredCredentials } from "./credentials.js";
 
 export type AccountAuthStatusCode =
@@ -230,20 +227,10 @@ async function defaultLiveVerifier({
   env,
   credentials,
 }: AccountLiveVerifierInput): Promise<AccountLiveVerification> {
-  const keys = loadOAuthKeys({
-    oauthPath: getOAuthPath(env),
-    cwd: process.cwd(),
-    configDir: getConfigDir(env),
-    accountId: id,
-    env,
-  });
-  const oauth2Client = new OAuth2Client(
-    keys.client_id,
-    keys.client_secret,
-    "http://localhost:3000/oauth2callback",
-  );
-  oauth2Client.setCredentials(credentials.tokens);
-  const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+  // Reuse the shared handle factory with the already-loaded credentials — it
+  // loads the OAuth keys, builds the client, and skips token persistence (this
+  // is a throwaway probe). No session mutation.
+  const { gmail } = await buildAccountGmail(id, { env, credentials });
   const profile = await gmail.users.getProfile({ userId: "me" });
   return { emailAddress: profile.data.emailAddress ?? null };
 }
