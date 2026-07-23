@@ -5,11 +5,7 @@
 // output text, same retry/rate-limit wrapping for the read paths.
 
 import type { z } from "zod";
-import {
-  type ParsedAddress,
-  parseEmailAddress,
-  parseEmailAddresses,
-} from "../../email-export.js";
+import { type ParsedAddress, parseEmailAddress, parseEmailAddresses } from "../../email-export.js";
 import { rateLimitAcquire, withRetry } from "../../robustness/index.js";
 import {
   DeleteEmailSchema,
@@ -27,6 +23,7 @@ import {
   extractEmailContent,
   extractHeaders,
   type GmailMessagePart,
+  listMeta,
   readableEmailBody,
 } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
@@ -156,6 +153,10 @@ const searchEmails: Operation<unknown, SearchEmailsOutput> = {
     const structured: SearchEmailsOutput = {
       resultCount: results.length,
       results,
+      ...listMeta(results.length, {
+        estimate: response.data.resultSizeEstimate,
+        nextPageToken: response.data.nextPageToken,
+      }),
     };
     if (response.data.nextPageToken) {
       structured.nextPageToken = response.data.nextPageToken;

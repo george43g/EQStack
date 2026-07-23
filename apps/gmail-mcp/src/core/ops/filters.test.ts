@@ -87,7 +87,12 @@ describe("list_filters handler (6.2)", () => {
 
     expect(listMock).toHaveBeenCalledWith({ userId: "me" });
     expect(result.content[0].text).toBe("No filters found.");
-    expect(result.structuredContent).toEqual({ count: 0, filters: [] });
+    expect(result.structuredContent).toEqual({
+      count: 0,
+      filters: [],
+      truncated: false,
+      total_available: 0,
+    });
   });
 
   it("renders each filter and populates structuredContent.filters when results are present", async () => {
@@ -110,6 +115,8 @@ describe("list_filters handler (6.2)", () => {
     expect(result.content[0].text).toContain("ID: F1");
     expect(result.structuredContent).toEqual({
       count: 1,
+      truncated: false,
+      total_available: 1,
       filters: [
         {
           id: "F1",

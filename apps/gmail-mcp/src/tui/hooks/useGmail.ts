@@ -86,9 +86,13 @@ export async function listInboxThreadsForScope(
         : scope.accountIds.filter((id) => accounts.accounts.some((a) => a.id === id));
     const emailById = new Map(accounts.accounts.map((a) => [a.id, a.emailAddress]));
     const threads: ScopedThreadList["threads"] = [];
+    let anyTruncated = false;
+    let totalAvailable = 0;
     for (const accountId of ids) {
       await switchAccount(accountId, signal);
       const list = await listInboxThreads(opts, signal);
+      anyTruncated ||= list.truncated;
+      totalAvailable += list.total_available;
       threads.push(
         ...list.threads.map((thread) => ({
           ...thread,
@@ -100,8 +104,14 @@ export async function listInboxThreadsForScope(
     // Cross-account pagination is not supported — nextPageToken is
     // per-account and combining them would interleave inboxes in unstable
     // ways. The caller's UI just shows the per-account union of first
-    // pages; for deep browsing the user picks a single account.
-    return { resultCount: threads.length, threads };
+    // pages; for deep browsing the user picks a single account. The union is
+    // truncated if any account was, and total_available sums the estimates.
+    return {
+      resultCount: threads.length,
+      threads,
+      truncated: anyTruncated,
+      total_available: totalAvailable,
+    };
   });
 }
 
@@ -153,7 +163,13 @@ export function switchAccount(
 }
 
 function emptyLabels(): LabelList {
-  return { count: { total: 0, system: 0, user: 0 }, system: [], user: [] };
+  return {
+    count: { total: 0, system: 0, user: 0 },
+    system: [],
+    user: [],
+    truncated: false,
+    total_available: 0,
+  };
 }
 
 async function withRestoredAccount<T>(fn: () => Promise<T>): Promise<T> {

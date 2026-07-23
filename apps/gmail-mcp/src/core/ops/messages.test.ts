@@ -158,6 +158,8 @@ describe("search_emails handler", () => {
     // added with lowercased emails.
     expect(result.structuredContent).toEqual({
       resultCount: 2,
+      truncated: false,
+      total_available: 2,
       results: [
         {
           id: "m1",
@@ -196,7 +198,12 @@ describe("search_emails handler", () => {
 
     expect(listMock).toHaveBeenCalledWith({ userId: "me", q: "label:important", maxResults: 25 });
     expect(getMock).not.toHaveBeenCalled();
-    expect(result.structuredContent).toEqual({ resultCount: 0, results: [] });
+    expect(result.structuredContent).toEqual({
+      resultCount: 0,
+      results: [],
+      truncated: false,
+      total_available: 0,
+    });
   });
 });
 

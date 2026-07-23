@@ -68,6 +68,8 @@ const cases: SchemaCase[] = [
     schema: SearchEmailsOutputSchema,
     valid: {
       resultCount: 1,
+      truncated: false,
+      total_available: 1,
       results: [
         {
           id: "abc",
@@ -123,6 +125,8 @@ const cases: SchemaCase[] = [
       threadId: "t1",
       messageCount: 1,
       messages: [threadMessageSummary],
+      truncated: false,
+      total_available: 1,
     },
     // messages must be an array
     invalid: { threadId: "t1", messageCount: 1, messages: threadMessageSummary },
@@ -130,14 +134,14 @@ const cases: SchemaCase[] = [
   {
     name: "ListInboxThreadsOutputSchema",
     schema: ListInboxThreadsOutputSchema,
-    valid: { resultCount: 1, threads: [threadSummary] },
+    valid: { resultCount: 1, threads: [threadSummary], truncated: false, total_available: 1 },
     // missing threads
     invalid: { resultCount: 1 },
   },
   {
     name: "GetInboxWithThreadsOutputSchema (summary arm)",
     schema: GetInboxWithThreadsOutputSchema,
-    valid: { resultCount: 1, threads: [threadSummary] },
+    valid: { resultCount: 1, threads: [threadSummary], truncated: false, total_available: 1 },
     // neither arm: missing both threadId and required summary fields
     invalid: { resultCount: 1, threads: [{ foo: "bar" }] },
   },
@@ -147,6 +151,8 @@ const cases: SchemaCase[] = [
     valid: {
       resultCount: 1,
       threads: [{ threadId: "t1", messageCount: 1, messages: [threadMessageSummary] }],
+      truncated: false,
+      total_available: 1,
     },
     // resultCount missing
     invalid: { threads: [] },
@@ -158,6 +164,8 @@ const cases: SchemaCase[] = [
       count: { total: 1, system: 1, user: 0 },
       system: [{ id: "INBOX", name: "INBOX", type: "system" }],
       user: [],
+      truncated: false,
+      total_available: 1,
     },
     // count.total missing
     invalid: { count: { system: 1, user: 0 }, system: [], user: [] },
@@ -182,6 +190,8 @@ const cases: SchemaCase[] = [
     valid: {
       count: 1,
       filters: [{ id: "f1", criteria: { from: "x" }, action: { addLabelIds: ["L1"] } }],
+      truncated: false,
+      total_available: 1,
     },
     // count must be a number
     invalid: { count: "1", filters: [] },
@@ -348,6 +358,8 @@ const cases: SchemaCase[] = [
     valid: {
       active: { id: "work", source: "manifest-default", isLegacyImplicit: false },
       count: 1,
+      truncated: false,
+      total_available: 1,
       accounts: [
         {
           id: "work",

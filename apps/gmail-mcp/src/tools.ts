@@ -520,6 +520,10 @@ export const SearchEmailsOutputSchema = z.object({
   nextPageToken: z.string().optional(),
   /** Gmail's server-side estimate of the total result-set size. */
   resultSizeEstimate: z.number().optional(),
+  /** True if more results exist server-side than were returned here. */
+  truncated: z.boolean(),
+  /** Best-effort total matching count (Gmail's estimate for paginated queries). */
+  total_available: z.number(),
 });
 
 export const ReadEmailOutputSchema = z.object({
@@ -567,6 +571,10 @@ export const GetThreadOutputSchema = z.object({
   threadId: z.string(),
   messageCount: z.number(),
   messages: z.array(ThreadMessageSummarySchema),
+  /** A thread is fully enumerated, so this is always false. */
+  truncated: z.boolean(),
+  /** Total messages in the thread (equals messageCount). */
+  total_available: z.number(),
 });
 
 const ThreadSummarySchema = z.object({
@@ -591,6 +599,10 @@ export const ListInboxThreadsOutputSchema = z.object({
       across all pages (server-side estimate, not exact). Used by the TUI
       header to show "X of ~Y" before all pages have been fetched. */
   resultSizeEstimate: z.number().optional(),
+  /** True if more threads exist server-side than were returned here. */
+  truncated: z.boolean(),
+  /** Best-effort total matching thread count (Gmail's estimate). */
+  total_available: z.number(),
 });
 
 export const GetInboxWithThreadsOutputSchema = z.object({
@@ -605,6 +617,10 @@ export const GetInboxWithThreadsOutputSchema = z.object({
       }),
     ]),
   ),
+  /** True if more threads matched than were returned here. */
+  truncated: z.boolean(),
+  /** Best-effort total matching thread count. */
+  total_available: z.number(),
 });
 
 const LabelEntrySchema = z.object({
@@ -617,6 +633,10 @@ export const ListEmailLabelsOutputSchema = z.object({
   count: z.object({ total: z.number(), system: z.number(), user: z.number() }),
   system: z.array(LabelEntrySchema),
   user: z.array(LabelEntrySchema),
+  /** Labels are fully enumerated, so this is always false. */
+  truncated: z.boolean(),
+  /** Total labels returned (equals count.total). */
+  total_available: z.number(),
 });
 
 export const LabelMutationOutputSchema = z.object({
@@ -640,6 +660,10 @@ export const FilterEntrySchema = z.object({
 export const ListFiltersOutputSchema = z.object({
   count: z.number(),
   filters: z.array(FilterEntrySchema),
+  /** Filters are fully enumerated, so this is always false. */
+  truncated: z.boolean(),
+  /** Total filters returned (equals count). */
+  total_available: z.number(),
 });
 
 export const GetFilterOutputSchema = FilterEntrySchema;
@@ -767,6 +791,10 @@ export const ListAccountsOutputSchema = z.object({
   }),
   count: z.number(),
   accounts: z.array(AccountListEntrySchema),
+  /** The account list is local and fully enumerated, so this is always false. */
+  truncated: z.boolean(),
+  /** Total accounts returned (equals count). */
+  total_available: z.number(),
 });
 
 export const SwitchAccountOutputSchema = z.object({

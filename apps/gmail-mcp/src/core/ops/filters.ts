@@ -19,6 +19,7 @@ import {
   ListEmailLabelsSchema,
   ListFiltersOutputSchema,
 } from "../../tools.js";
+import { listMeta } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
 
 type ListFiltersOutput = z.infer<typeof ListFiltersOutputSchema>;
@@ -77,7 +78,7 @@ const listFiltersOp: Operation<unknown, ListFiltersOutput> = {
     if (filters.length === 0) {
       return {
         content: [{ type: "text", text: "No filters found." }],
-        structuredContent: { count: 0, filters: [] },
+        structuredContent: { count: 0, filters: [], ...listMeta(0) },
       };
     }
 
@@ -113,6 +114,8 @@ const listFiltersOp: Operation<unknown, ListFiltersOutput> = {
           criteria: f.criteria,
           action: f.action,
         })),
+        // Filters are fully enumerated in one call — never truncated.
+        ...listMeta(result.count),
       },
     };
   },

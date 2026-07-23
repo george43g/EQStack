@@ -32,6 +32,7 @@ import {
 import { loadOAuthKeys } from "../auth-flow.js";
 import { getConfigDir, getOAuthPath } from "../config-paths.js";
 import { attachTokenPersistence, loadCredentials } from "../credentials.js";
+import { listMeta } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
 import { getCurrentAccountId, setSession } from "../session.js";
 
@@ -73,6 +74,8 @@ const listOp: Operation<ListAccountsInput, ListAccountsOutput> = {
       },
       count: accounts.length,
       accounts,
+      // The manifest is local and fully enumerated — never truncated.
+      ...listMeta(accounts.length),
     };
 
     // Human-readable text for the legacy MCP envelope.

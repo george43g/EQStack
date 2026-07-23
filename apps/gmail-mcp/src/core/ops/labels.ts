@@ -20,6 +20,7 @@ import {
   ListEmailLabelsSchema,
   UpdateLabelSchema,
 } from "../../tools.js";
+import { listMeta } from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
 
 type ListLabelsOutput = z.infer<typeof ListEmailLabelsOutputSchema>;
@@ -57,6 +58,8 @@ const listEmailLabels: Operation<unknown, ListLabelsOutput> = {
           name: l.name ?? "",
           type: l.type ?? undefined,
         })),
+        // Labels are fully enumerated in one call — never truncated.
+        ...listMeta(labelResults.count.total),
       },
     };
   },

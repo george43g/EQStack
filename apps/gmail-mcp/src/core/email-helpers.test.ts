@@ -5,7 +5,35 @@ import {
   extractHeaders,
   type GmailMessagePart,
   htmlToText,
+  listMeta,
 } from "./email-helpers.js";
+
+describe("listMeta", () => {
+  it("marks a fully-enumerated list as not truncated", () => {
+    expect(listMeta(3)).toEqual({ truncated: false, total_available: 3 });
+    expect(listMeta(0)).toEqual({ truncated: false, total_available: 0 });
+  });
+
+  it("truncates when a nextPageToken exists", () => {
+    expect(listMeta(10, { estimate: 42, nextPageToken: "tok" })).toEqual({
+      truncated: true,
+      total_available: 42,
+    });
+  });
+
+  it("truncates when the estimate exceeds the returned count even without a token", () => {
+    expect(listMeta(10, { estimate: 25 })).toEqual({ truncated: true, total_available: 25 });
+  });
+
+  it("never reports total_available below the returned count", () => {
+    // A stale/low estimate must not undercount what we actually returned.
+    expect(listMeta(10, { estimate: 4 })).toEqual({ truncated: false, total_available: 10 });
+  });
+
+  it("falls back to the count when no estimate is given", () => {
+    expect(listMeta(7, { nextPageToken: null })).toEqual({ truncated: false, total_available: 7 });
+  });
+});
 
 describe("extractHeaders", () => {
   it("returns empty strings for missing payload", () => {

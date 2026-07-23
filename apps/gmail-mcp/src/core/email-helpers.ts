@@ -26,6 +26,33 @@ export interface EmailContent {
   html: string;
 }
 
+/** Completeness metadata attached to every list-shaped tool output so callers
+    never have to guess whether a result set was silently capped. */
+export interface ListMeta {
+  /** True if the server has more results than were returned in this response
+      (a nextPageToken exists, or the estimate exceeds the returned count). */
+  truncated: boolean;
+  /** Best-effort total number of matching items. Equals the returned count for
+      fully-enumerated lists (labels, filters, accounts); for paginated queries
+      it is Gmail's server-side estimate across all pages. */
+  total_available: number;
+}
+
+/**
+ * Derive {@link ListMeta} for a list response. `count` is what this response
+ * returns; `estimate` is a server-side total estimate when available (e.g.
+ * Gmail's resultSizeEstimate); `nextPageToken` marks that more pages exist.
+ */
+export function listMeta(
+  count: number,
+  opts: { estimate?: number | null; nextPageToken?: string | null } = {},
+): ListMeta {
+  const hasMore = Boolean(opts.nextPageToken);
+  const estimate = typeof opts.estimate === "number" ? opts.estimate : count;
+  const total_available = Math.max(estimate, count);
+  return { truncated: hasMore || total_available > count, total_available };
+}
+
 export interface ExtractedHeaders {
   subject: string;
   from: string;

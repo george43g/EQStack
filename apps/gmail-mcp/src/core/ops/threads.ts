@@ -13,7 +13,12 @@ import {
   ModifyThreadOutputSchema,
   ModifyThreadSchema,
 } from "../../tools.js";
-import { extractEmailContent, type GmailMessagePart, readableEmailBody } from "../email-helpers.js";
+import {
+  extractEmailContent,
+  type GmailMessagePart,
+  listMeta,
+  readableEmailBody,
+} from "../email-helpers.js";
 import { type Operation, registry } from "../registry.js";
 
 type GetThreadOutput = z.infer<typeof GetThreadOutputSchema>;
@@ -123,6 +128,8 @@ const getThread: Operation<unknown, GetThreadOutput> = {
       threadId: threadId!,
       messageCount: messagesOutput.length,
       messages: messagesOutput,
+      // A thread is fully enumerated in one call — never truncated.
+      ...listMeta(messagesOutput.length),
     };
     return {
       content: [{ type: "text", text: renderThreadTranscript(structured) }],
@@ -177,6 +184,10 @@ const listInboxThreads: Operation<unknown, ListInboxThreadsOutput> = {
     const structured: ListInboxThreadsOutput = {
       resultCount: threadDetails.length,
       threads: threadDetails,
+      ...listMeta(threadDetails.length, {
+        estimate: threadsResponse.data.resultSizeEstimate,
+        nextPageToken: threadsResponse.data.nextPageToken,
+      }),
     };
     if (threadsResponse.data.nextPageToken) {
       structured.nextPageToken = threadsResponse.data.nextPageToken;
@@ -238,6 +249,9 @@ const getInboxWithThreads: Operation<unknown, GetInboxWithThreadsOutput> = {
       const summaryStructured = {
         resultCount: threadSummaries.length,
         threads: threadSummaries,
+        ...listMeta(threadSummaries.length, {
+          estimate: threadsResponse.data.resultSizeEstimate,
+        }),
       };
       return {
         content: [{ type: "text", text: JSON.stringify(summaryStructured, null, 2) }],
@@ -302,6 +316,9 @@ const getInboxWithThreads: Operation<unknown, GetInboxWithThreadsOutput> = {
     const expandedStructured = {
       resultCount: expandedThreads.length,
       threads: expandedThreads,
+      ...listMeta(expandedThreads.length, {
+        estimate: threadsResponse.data.resultSizeEstimate,
+      }),
     };
     return {
       content: [{ type: "text", text: JSON.stringify(expandedStructured, null, 2) }],
