@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+# [1.17.0](https://github.com/george43g/imsg-mcp/compare/v1.16.0...v1.17.0) (2026-07-25)
+
+
+### Features
+
+* **get_messages:** signal global vs conversation scope; tighten identifier over-match ([784361b](https://github.com/george43g/imsg-mcp/commit/784361b3f351c8b214bcfa592f425f711dfcb0ed))
+
 # [1.16.0](https://github.com/george43g/imsg-mcp/compare/v1.15.1...v1.16.0) (2026-07-25)
 
 
