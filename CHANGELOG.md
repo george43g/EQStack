@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## [1.15.1](https://github.com/george43g/imsg-mcp/compare/v1.15.0...v1.15.1) (2026-07-25)
+
+
+### Bug Fixes
+
+* **tui:** refresh sidebar after in-thread send + navigable filter results ([f6552be](https://github.com/george43g/imsg-mcp/commit/f6552be71a6c11abb240d38c853d0dadefcb25a9))
+* **tui:** show identity-canonical service on conversation badges ([0b05827](https://github.com/george43g/imsg-mcp/commit/0b05827eb48b2d217b0d56c6af6b0dbe66e7829b))
+
 # [1.15.0](https://github.com/george43g/imsg-mcp/compare/v1.14.0...v1.15.0) (2026-07-23)
 
 
