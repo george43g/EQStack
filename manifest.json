@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.3",
   "name": "imsg-mcp",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "description": "iMessage / SMS MCP for macOS — read, search, send, attach.",
   "long_description": "Read chat.db, send iMessage/SMS via AppleScript with auto-fallback, search messages with fuzzy + literal modes, fetch attachments (HEIC→PNG auto-conversion), browse via MCP Resources, run analytics, and search/list/resolve contacts — all from your Mac. End-user data never leaves the device.",
   "author": {

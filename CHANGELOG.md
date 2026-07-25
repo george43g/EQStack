@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+# [1.18.0](https://github.com/george43g/imsg-mcp/compare/v1.17.0...v1.18.0) (2026-07-25)
+
+
+### Features
+
+* **tools:** uniform completeness metadata across list responses ([d8fd930](https://github.com/george43g/imsg-mcp/commit/d8fd930dfd28f28ac677ec4ffefd1addb39afbf5))
+
 # [1.17.0](https://github.com/george43g/imsg-mcp/compare/v1.16.0...v1.17.0) (2026-07-25)
 
 
