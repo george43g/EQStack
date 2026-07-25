@@ -1420,18 +1420,35 @@ export class IMessageDB {
   private resolveChatsForConversation(identifier: string): ChatRow[] {
     const chats = this.getAllChatsWithLastDate();
     const normalized = identifier.replace(/[\s\-()]/g, "").toLowerCase();
+    const chatNorm = (chat: ChatWithLastDate) =>
+      (chat.chat_identifier ?? "").replace(/[\s\-()]/g, "").toLowerCase();
 
-    const directMatches = chats.filter(
+    // Exact matches win outright: raw identifier, guid, or normalized-equal
+    // (tolerates phone punctuation/format differences without over-matching).
+    const exactMatches = chats.filter(
       (chat) =>
         chat.chat_identifier === identifier ||
         chat.guid === identifier ||
-        (chat.chat_identifier != null &&
-          (chat.chat_identifier
-            .replace(/[\s\-()]/g, "")
-            .toLowerCase()
-            .includes(normalized) ||
-            normalized.includes(chat.chat_identifier.replace(/[\s\-()]/g, "").toLowerCase()))),
+        (chat.chat_identifier != null && chatNorm(chat) === normalized),
     );
+
+    // Fuzzy fallback ONLY when nothing matched exactly, and ONLY for phone-like
+    // numbers — a SUFFIX comparison with a minimum overlap (country-code
+    // tolerance: "5551234567" ↔ "+15551234567"). The previous bidirectional
+    // `includes` over-matched: a short shared fragment could fold in the wrong
+    // identity, and near-identical emails collided ("a@b.co" ⊂ "a@b.com").
+    const MIN_FUZZY_PHONE_LEN = 7;
+    const directMatches =
+      exactMatches.length > 0
+        ? exactMatches
+        : normalized.includes("@") || normalized.length < MIN_FUZZY_PHONE_LEN
+          ? []
+          : chats.filter((chat) => {
+              if (chat.chat_identifier == null) return false;
+              const cn = chatNorm(chat);
+              if (cn.length < MIN_FUZZY_PHONE_LEN || cn.includes("@")) return false;
+              return cn.endsWith(normalized) || normalized.endsWith(cn);
+            });
 
     if (directMatches.length === 0) return [];
 

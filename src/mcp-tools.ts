@@ -116,14 +116,21 @@ export const TOOLS: Tool[] = [
   {
     name: "get_messages",
     description:
-      "Get recent iMessages. Optionally filter by conversation. Response footer includes oldestMessageId for beforeMessageId pagination; use export_messages for very large histories. When a humans/v1 relationship file exists for the conversation's participants, the response includes its path and usage guidance (`humans`).",
+      "Get recent iMessages. To read ONE conversation, pass chatIdentifier OR threadSlug (get either from list_conversations / resolve_conversation). Omit both ONLY for a global overview: you get an interleaved newest-first timeline spanning ALL conversations (response `scope: \"global\"`), NOT one person's thread. Response footer includes oldestMessageId for beforeMessageId pagination; use export_messages for very large histories. When a humans/v1 relationship file exists for the conversation's participants, the response includes its path and usage guidance (`humans`).",
     annotations: annotations.read,
     inputSchema: {
       type: "object",
       properties: {
         limit: { type: "number", default: 20, description: "Number of messages. 0 = unlimited." },
-        chatIdentifier: { type: "string", description: "Phone number, email, or chat ID" },
-        threadSlug: { type: "string", description: "Thread slug from list_conversations" },
+        chatIdentifier: {
+          type: "string",
+          description:
+            "Scope to one conversation by phone number, email, or chat ID. Omit (with no threadSlug) for the global cross-conversation timeline.",
+        },
+        threadSlug: {
+          type: "string",
+          description: "Scope to one conversation by thread slug from list_conversations.",
+        },
         beforeMessageId: {
           type: "number",
           description: "Fetch messages older than this message id",

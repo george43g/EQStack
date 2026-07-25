@@ -580,6 +580,7 @@ export class IMessageMCPServer {
     const limit = Math.min(requested, HARD_PAGE_CAP);
     const wasCapped = requested > HARD_PAGE_CAP;
 
+    const scoped = Boolean(chatIdentifier || threadSlug);
     let messages: Message[];
     let threadHeader = "";
     let humansHint: ReturnType<HumansIndex["hintFor"]> = null;
@@ -608,11 +609,20 @@ export class IMessageMCPServer {
 
     const durMs = span.end({ limit, returned: messages.length });
 
+    // When neither chatIdentifier nor threadSlug was passed, the result is an
+    // interleaved feed across ALL conversations — make that explicit so the
+    // caller doesn't mistake it for one person's thread (structured `scope`
+    // carries the same signal for programmatic consumers).
+    const globalNotice = scoped
+      ? ""
+      : "⚠ Global timeline: these messages are interleaved across ALL conversations (newest first), not one thread. To read a single conversation, pass chatIdentifier or threadSlug (see list_conversations / resolve_conversation).\n\n";
+
     if (messages.length === 0) {
-      return toolText(`${threadHeader}No messages found.`, {
+      return toolText(`${globalNotice}${threadHeader}No messages found.`, {
         messages: [],
         count: 0,
         hasMore: false,
+        scope: scoped ? "conversation" : "global",
       });
     }
 
@@ -630,12 +640,13 @@ export class IMessageMCPServer {
     const perfLine = `\n_Engine: ${engineLabel()} | Query: ${durMs.toFixed(0)}ms | Messages: ${messages.length}_`;
     const humansLine = humansHint ? humansHintText(humansHint) : "";
     return toolText(
-      `${threadHeader}Found ${messages.length} message(s):\n\n${formatted}${paginationLine}${perfLine}${humansLine}`,
+      `${globalNotice}${threadHeader}Found ${messages.length} message(s):\n\n${formatted}${paginationLine}${perfLine}${humansLine}`,
       {
         messages: messages.map(messageToStructured),
         count: messages.length,
         hasMore,
-        oldestMessageId: chatIdentifier || threadSlug ? oldestId : undefined,
+        scope: scoped ? "conversation" : "global",
+        oldestMessageId: scoped ? oldestId : undefined,
         ...(humansHint ? { humans: humansHint } : {}),
       },
     );
