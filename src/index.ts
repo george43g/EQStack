@@ -751,7 +751,7 @@ export class IMessageMCPServer {
         messages: [],
         count: 0,
         hasMore: false,
-        nextOffset: null,
+        truncated: false,
       });
     }
 
@@ -767,7 +767,7 @@ export class IMessageMCPServer {
       messages: results.map(messageToStructured),
       count: results.length,
       hasMore,
-      nextOffset: null,
+      truncated: hasMore,
     });
   }
 
@@ -1147,6 +1147,7 @@ export class IMessageMCPServer {
         conversations: [],
         count: 0,
         hasMore: false,
+        truncated: false,
         nextOffset: null,
       });
     }
@@ -1197,6 +1198,7 @@ export class IMessageMCPServer {
       }),
       count: results.length,
       hasMore,
+      truncated: hasMore,
       nextOffset: hasMore ? startAfter : null,
     });
   }
@@ -1232,7 +1234,7 @@ export class IMessageMCPServer {
         messages: [],
         count: 0,
         hasMore: false,
-        nextOffset: null,
+        truncated: false,
         softCapWarning,
       });
     }
@@ -1250,7 +1252,7 @@ export class IMessageMCPServer {
       messages: results.map(messageToStructured),
       count: results.length,
       hasMore,
-      nextOffset: null,
+      truncated: hasMore,
       softCapWarning,
     });
   }
@@ -1271,6 +1273,8 @@ export class IMessageMCPServer {
         contacts: [],
         count: 0,
         hasMore: false,
+        truncated: false,
+        totalAvailable: total,
         totalCount: total,
       });
     }
@@ -1286,6 +1290,8 @@ export class IMessageMCPServer {
       contacts,
       count: contacts.length,
       hasMore,
+      truncated: hasMore,
+      totalAvailable: total,
       totalCount: total,
     });
   }
@@ -1308,6 +1314,8 @@ export class IMessageMCPServer {
         query,
         contacts: [],
         count: 0,
+        truncated: false,
+        totalAvailable: 0,
       });
     }
 
@@ -1344,6 +1352,8 @@ export class IMessageMCPServer {
           matchedField: m.matchedField,
         })),
         count: results.length,
+        truncated: ranked.length > results.length,
+        totalAvailable: ranked.length,
       },
     );
   }
@@ -1517,14 +1527,19 @@ export class IMessageMCPServer {
     const sinceMs = since ? parseUserDate(since)?.getTime() : undefined;
     const untilMs = until ? parseUserDate(until)?.getTime() : undefined;
     const resolvedLimit = resolveLimit(limit);
+    // Over-fetch one row (when bounded) so we can honestly report `truncated`
+    // without a second COUNT query. limit:0 → UNLIMITED, so nothing is cut.
+    const bounded = resolvedLimit < Number.MAX_SAFE_INTEGER;
     const opts: Parameters<typeof this.db.searchAttachments>[0] = {
-      limit: resolvedLimit,
+      limit: bounded ? resolvedLimit + 1 : resolvedLimit,
     };
     if (mimePrefix !== undefined) opts.mimePrefix = mimePrefix;
     if (chatIdentifier !== undefined) opts.chatIdentifier = chatIdentifier;
     if (sinceMs !== undefined) opts.sinceMs = sinceMs;
     if (untilMs !== undefined) opts.untilMs = untilMs;
-    const results = this.db.searchAttachments(opts);
+    const raw = this.db.searchAttachments(opts);
+    const truncated = raw.length > resolvedLimit;
+    const results = raw.slice(0, resolvedLimit);
 
     const formatted = results
       .map(
@@ -1543,6 +1558,7 @@ export class IMessageMCPServer {
         chatId: a.chatId,
       })),
       count: results.length,
+      truncated,
     });
   }
 
