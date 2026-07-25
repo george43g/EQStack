@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+# [1.19.0](https://github.com/george43g/imsg-mcp/compare/v1.18.0...v1.19.0) (2026-07-25)
+
+
+### Features
+
+* **contacts:** attach a normalized identity block to get_contact + resolve_handle ([99dfc72](https://github.com/george43g/imsg-mcp/commit/99dfc723e2a5bf8508f1b3940a63a0aeb684d120))
+
 # [1.18.0](https://github.com/george43g/imsg-mcp/compare/v1.17.0...v1.18.0) (2026-07-25)
 
 
