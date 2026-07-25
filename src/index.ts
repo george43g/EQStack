@@ -45,6 +45,7 @@ import { ExportInterpretGuardError, streamExport } from "./exportStream.js";
 import { rankFuzzy } from "./fuzzy.js";
 import { HUMANS_INIT_HINT, HumansIndex, humansHintText } from "./humans-hints.js";
 import { HumansScaffold } from "./humans-scaffold.js";
+import { buildIdentity, buildIdentityFromHandle } from "./identity.js";
 import { IMessageDB } from "./imessage-db.js";
 import {
   appendLog,
@@ -1407,10 +1408,18 @@ export class IMessageMCPServer {
     const humansFile = humansHint?.files[0]?.path ?? null;
     const humansLine = humansHint ? humansHintText(humansHint) : `\n\n_${HUMANS_INIT_HINT}_`;
 
+    const identity = buildIdentity(
+      contact.displayName,
+      contact.phoneNumbers,
+      contact.emails,
+      defaultCountryFromEnv(),
+    );
+
     return toolText(
       `${sanitizeUserText(contact.displayName)} (id ${contact.id})${phones}${emails}${org}${threadLines}${humansLine}`,
       {
         contact,
+        identity,
         threads,
         humansFile,
         humansGuidance: humansHint?.guidance ?? HUMANS_INIT_HINT,
@@ -1471,13 +1480,20 @@ export class IMessageMCPServer {
     const selectorHit = resolveContactSelector(handle);
     const effectiveHandle = selectorHit?.handle ?? handle;
     const lookup = this.db.contacts.lookupContact(effectiveHandle);
+    const country = defaultCountryFromEnv();
     if (lookup) {
+      // Prefer the full contact's handles; fall back to the single input handle.
+      const contact = this.db.contacts.getContact(lookup.contactId);
+      const identity = contact
+        ? buildIdentity(contact.displayName, contact.phoneNumbers, contact.emails, country)
+        : buildIdentityFromHandle(effectiveHandle, lookup.displayName, country);
       return toolText(`${handle} → ${sanitizeUserText(lookup.displayName)}`, {
         handle,
         displayName: lookup.displayName,
         contactId: lookup.contactId,
         label: lookup.label ?? null,
         resolved: true,
+        identity,
       });
     }
     return toolText(`No contact for ${handle}.`, {
@@ -1486,6 +1502,7 @@ export class IMessageMCPServer {
       contactId: null,
       label: null,
       resolved: false,
+      identity: buildIdentityFromHandle(effectiveHandle, null, country),
     });
   }
 

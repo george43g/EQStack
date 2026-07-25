@@ -426,8 +426,24 @@ export const GetContactSchema = z
   .refine((v) => v.handle !== undefined || v.id !== undefined, {
     message: "Provide either `handle` or `id`.",
   });
+/**
+ * A normalized, cross-tool view of a person's reachable handles — phones in
+ * E.164 where derivable, emails lowercased, and a deduped union. Attached by
+ * the contact-resolving tools so agents key off one consistent shape.
+ */
+export const IdentitySchema = z.object({
+  canonicalName: z.string().describe("Best display name for this person (or the handle itself)."),
+  phones: z.array(z.string()).describe("Phone handles, E.164-normalized where derivable."),
+  emails: z.array(z.string()).describe("Email handles, trimmed + lowercased."),
+  handles: z
+    .array(z.string())
+    .describe("Every reachable handle, deduped — phones first, then emails."),
+});
+
 export const GetContactOutputSchema = z.object({
   contact: ContactSchema.nullable(),
+  /** Normalized cross-tool handle view (E.164 phones, lowercased emails). */
+  identity: IdentitySchema.optional(),
   /** Per-handle conversation mapping: which thread slug each handle chats under. */
   threads: z.array(
     z.object({
@@ -469,6 +485,8 @@ export const ResolveHandleOutputSchema = z.object({
   contactId: z.number().int().nullable(),
   label: z.string().nullable(),
   resolved: z.boolean(),
+  /** Normalized cross-tool handle view — populated even when unresolved. */
+  identity: IdentitySchema.optional(),
 });
 
 export const CheckImessageAvailabilitySchema = z.object({

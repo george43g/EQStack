@@ -355,7 +355,7 @@ export const TOOLS: Tool[] = [
   {
     name: "get_contact",
     description:
-      "Fetch a single contact by handle (phone/email) or by numeric id, including each handle's thread slug (for send_message/get_messages). Returns null if not found. Includes `humansFile` — the path to this person's humans/v1 relationship file if one exists (read it for relationship context; init_human scaffolds one otherwise).",
+      "Fetch a single contact by handle (phone/email) or by numeric id, including each handle's thread slug (for send_message/get_messages) and an `identity` block (canonicalName + E.164-normalized phones + lowercased emails + deduped handles). Returns null if not found. Includes `humansFile` — the path to this person's humans/v1 relationship file if one exists (read it for relationship context; init_human scaffolds one otherwise).",
     annotations: annotations.read,
     inputSchema: {
       type: "object",
@@ -387,7 +387,7 @@ export const TOOLS: Tool[] = [
   {
     name: "resolve_handle",
     description:
-      "Resolve a phone number or email to its contact display name. Pass-through if unknown.",
+      "Resolve a phone number or email to its contact display name. Pass-through if unknown. Always returns an `identity` block (canonicalName + E.164-normalized phones + lowercased emails + deduped handles) — even for an unknown handle, so you get it in canonical form.",
     annotations: annotations.read,
     inputSchema: {
       type: "object",
