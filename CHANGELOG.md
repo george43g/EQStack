@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+# [1.16.0](https://github.com/george43g/imsg-mcp/compare/v1.15.1...v1.16.0) (2026-07-25)
+
+
+### Features
+
+* **contacts:** rank search_contacts by relevance with matchedField ([352ccd2](https://github.com/george43g/imsg-mcp/commit/352ccd2da1263f26baa31ef38737a9d52bdf3aa0))
+
 ## [1.15.1](https://github.com/george43g/imsg-mcp/compare/v1.15.0...v1.15.1) (2026-07-25)
 
 
