@@ -132,6 +132,12 @@ export const GetMessagesOutputSchema = z.object({
   messages: z.array(MessageSchema),
   count: z.number().int(),
   hasMore: z.boolean(),
+  scope: z
+    .enum(["conversation", "global"])
+    .optional()
+    .describe(
+      "`conversation` = messages from the single thread you scoped by chatIdentifier/threadSlug. `global` = an interleaved newest-first feed across ALL conversations (returned when neither was passed).",
+    ),
   oldestMessageId: z.number().int().optional(),
   humans: HumansHintSchema.optional(),
 });
