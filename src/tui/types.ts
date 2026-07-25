@@ -6,6 +6,7 @@ import {
   type Message,
   minMessageId,
 } from "../types.js";
+import { filterMatchIndices } from "./filter.js";
 import type { ModuleInstance } from "./modules/types.js";
 
 export type FocusPane = "sidebar" | "thread";
@@ -41,6 +42,8 @@ export interface AppState {
   threadScroll: number;
   composeText: string;
   filterQuery: string;
+  /** Cursor into the FILTERED result set (filter mode only); 0-based. */
+  filterCursor: number;
   pending: PendingMessage[];
   loading: boolean;
   status: string;
@@ -121,6 +124,7 @@ export type Action =
   | { type: "SET_STATUS"; status: string }
   | { type: "ENTER_FILTER" }
   | { type: "UPDATE_FILTER"; query: string }
+  | { type: "FILTER_MOVE"; delta: number; visibleCount?: number }
   | { type: "EXIT_FILTER" }
   | { type: "OPEN_DRAWER" }
   | { type: "CLOSE_DRAWER" }
@@ -179,6 +183,7 @@ export const initialState: AppState = {
   threadScroll: 0,
   composeText: "",
   filterQuery: "",
+  filterCursor: 0,
   pending: [],
   loading: true,
   status: "Loading...",
@@ -538,18 +543,39 @@ export function reducer(state: AppState, action: Action): AppState {
         selectedIdx: 0,
         selectedModuleIdx: null,
         sidebarScroll: 0,
+        filterCursor: 0,
       };
     case "UPDATE_FILTER":
-      // Each keystroke re-filters; keep the top matches in view.
+      // Each keystroke re-filters; snap the filtered cursor + scroll back to the
+      // top so the highlight lands on the first match of the new query.
       return {
         ...state,
         filterQuery: action.query,
         selectedIdx: 0,
         selectedModuleIdx: null,
         sidebarScroll: 0,
+        filterCursor: 0,
       };
+    case "FILTER_MOVE": {
+      // Walk the FILTERED result set (arrows / Ctrl-n/p in filter mode). The
+      // cursor is a position into the matches, not the full array — clamp it to
+      // the match count and scroll the combined [modules, ...filtered] list so
+      // the highlighted match stays on screen.
+      const matchCount = filterMatchIndices(state.conversations, state.filterQuery).length;
+      if (matchCount === 0) return state;
+      const cursor = Math.max(0, Math.min(state.filterCursor + action.delta, matchCount - 1));
+      const sidebarScroll = action.visibleCount
+        ? ensureVisibleScroll(
+            state.moduleInstances.length + cursor,
+            state.sidebarScroll,
+            action.visibleCount,
+            state.moduleInstances.length + matchCount,
+          )
+        : state.sidebarScroll;
+      return { ...state, filterCursor: cursor, sidebarScroll };
+    }
     case "EXIT_FILTER":
-      return { ...state, mode: "browse", filterQuery: "" };
+      return { ...state, mode: "browse", filterQuery: "", filterCursor: 0 };
     case "OPEN_DRAWER":
       return { ...state, mode: "drawer", drawerAttachmentIdx: 0 };
     case "CLOSE_DRAWER":
