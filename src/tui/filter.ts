@@ -27,3 +27,19 @@ export function firstFilterMatchIndex(conversations: Conversation[], query: stri
   }
   return null;
 }
+
+/**
+ * Indices (into the ORIGINAL conversations array) of every row matching
+ * `query`, in order. An empty query yields every index — mirroring the Sidebar,
+ * which renders the full list unfiltered when the query is blank. This is the
+ * ordered set the in-filter cursor walks, so `matches[filterCursor]` maps a
+ * filtered position back to a real conversation index for SELECT/loadMessages.
+ */
+export function filterMatchIndices(conversations: Conversation[], query: string): number[] {
+  const q = query.toLowerCase();
+  const out: number[] = [];
+  for (let i = 0; i < conversations.length; i++) {
+    if (!q || matchesConversationFilter(conversations[i]!, q)) out.push(i);
+  }
+  return out;
+}

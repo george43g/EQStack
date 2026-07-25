@@ -35,7 +35,7 @@ import { SettingsPanel } from "./components/SettingsPanel.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { nextGroupBoundary, prevGroupBoundary, ThreadPane } from "./components/ThreadPane.js";
-import { firstFilterMatchIndex } from "./filter.js";
+import { filterMatchIndices } from "./filter.js";
 import { useDevStats } from "./hooks/useDevStats.js";
 import { useImsg } from "./hooks/useImsg.js";
 import { useMouse } from "./hooks/useMouse.js";
@@ -233,6 +233,21 @@ export function App() {
     dispatch({ type: "SET_LOADING", loading: false, status: "" });
   }, [imsg, loadMessages, selected?.threadSlug, state.selectedIdx, sidebarVisibleCount]);
 
+  // Reload ONLY the conversation list (e.g. right after sending) so the
+  // messaged thread reappears / bumps to the top and stays selectable — without
+  // refreshAll's full-reload flash or its redundant message re-fetch (the send
+  // path already set the messages). Re-selects the current thread by slug so the
+  // cursor follows it to its new position instead of landing on a stale row.
+  const refreshConversations = useCallback(async () => {
+    const slug = selected?.threadSlug;
+    const convs = await imsg.loadConversations();
+    dispatch({ type: "SET_CONVERSATIONS", data: convs });
+    if (slug) {
+      const idx = convs.findIndex((c) => c.threadSlug === slug);
+      if (idx >= 0) dispatch({ type: "SELECT", index: idx, visibleCount: sidebarVisibleCount });
+    }
+  }, [imsg, selected?.threadSlug, sidebarVisibleCount]);
+
   // ── Lazy-load more conversations when user nears the end ──────────────
   const NEAR_END_THRESHOLD = 20;
   const CONV_BATCH_SIZE = 100;
@@ -361,6 +376,10 @@ export function App() {
           } else if (found) {
             dispatch({ type: "SET_MESSAGES", data: msgs });
             dispatch({ type: "RESOLVE_PENDING", text });
+            // Bump/insert the messaged thread in the sidebar so its row moves to
+            // the top and is immediately selectable — previously it stayed stale
+            // (or absent, for a brand-new thread) until a manual `r` refresh.
+            void refreshConversations();
           } else if (attempt < 7) {
             pollTimerRef.current = setTimeout(poll, 1500);
           } else {
@@ -379,7 +398,7 @@ export function App() {
     } catch {
       dispatch({ type: "FAIL_PENDING", text });
     }
-  }, [selected, state.composeText, imsg]);
+  }, [selected, state.composeText, imsg, refreshConversations]);
 
   /**
    * Move the sidebar cursor to a combined index that spans
@@ -464,27 +483,29 @@ export function App() {
       return;
     }
 
-    // Filter mode
+    // Filter mode. Type to narrow the list; ↑/↓ (or Ctrl-p/Ctrl-n) walk the
+    // matches; Enter commits the HIGHLIGHTED match; Esc cancels. Printable keys
+    // (incl. j/k) edit the query — navigation is on the arrows so you can still
+    // type any contact name — while the filterCursor tracks the selected match.
     if (state.mode === "filter") {
       if (key.return) {
-        // Enter commits the filter: jump cursor to the first matching
-        // conversation, then exit filter. Esc-only path below preserves the
-        // pre-filter cursor (cancel semantics). Previously both keys exited
-        // without navigating, which made the filter feel inert.
-        const matchIdx = firstFilterMatchIndex(state.conversations, state.filterQuery);
-        if (matchIdx !== null) {
+        // Commit the currently-highlighted match (filterCursor), not just the
+        // first. The SELECT moves the cursor; loadMessages loads the thread —
+        // without it the pane keeps showing the previously-loaded conversation
+        // under the newly-selected header (every other selection path loads).
+        const matches = filterMatchIndices(state.conversations, state.filterQuery);
+        const matchIdx = matches[state.filterCursor];
+        if (matchIdx !== undefined) {
           dispatch({ type: "SELECT", index: matchIdx, visibleCount: sidebarVisibleCount });
-          // Committing the filter must also LOAD the matched thread — the
-          // SELECT above only moves the cursor (updating the header +
-          // chatIdentifier), so without this the message pane kept showing the
-          // previously-loaded conversation under the newly-selected header.
-          // Every other selection path (j/k, gg/G, group/numbered jump) loads
-          // via selectSidebarCombined; the filter-commit path was the one gap.
           void loadMessages(matchIdx, state.conversations[matchIdx]);
         }
         dispatch({ type: "EXIT_FILTER" });
       } else if (key.escape) {
         dispatch({ type: "EXIT_FILTER" });
+      } else if (key.downArrow || (key.ctrl && input === "n")) {
+        dispatch({ type: "FILTER_MOVE", delta: 1, visibleCount: sidebarVisibleCount });
+      } else if (key.upArrow || (key.ctrl && input === "p")) {
+        dispatch({ type: "FILTER_MOVE", delta: -1, visibleCount: sidebarVisibleCount });
       } else if (key.backspace || key.delete) {
         dispatch({ type: "UPDATE_FILTER", query: state.filterQuery.slice(0, -1) });
       } else if (input && !key.ctrl && !key.meta) {
@@ -1221,6 +1242,7 @@ export function App() {
               moduleInstances={state.moduleInstances}
               selectedIdx={state.selectedIdx}
               selectedModuleIdx={state.selectedModuleIdx}
+              filterCursor={state.filterCursor}
               scrollOffset={state.sidebarScroll}
               filterQuery={state.filterQuery}
               focused={state.focus === "sidebar"}

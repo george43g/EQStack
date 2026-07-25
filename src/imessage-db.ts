@@ -481,6 +481,25 @@ export class IMessageDB {
   }
 
   /**
+   * Identity-canonical service for a conversation's badge (prefer iMessage).
+   * Unlike detectServiceForChat (one leg's service), this reflects the whole
+   * identity: if ANY leg is iMessage the thread is iMessage. It matches the
+   * ~imsg~/~sms~ slug segment (computeSlugForChat) and the slug-store send
+   * route, so the badge can't disagree with them. Without this, a single newer
+   * SMS leg of a fundamentally-iMessage thread wins the merge cascade and flips
+   * the badge to "SMS" while the slug stays ~imsg~. Groups have no cross-service
+   * identity, so fall back to the chat's own service.
+   */
+  private canonicalServiceForChat(chat: ChatWithLastDate): "iMessage" | "SMS" {
+    if (isGroupGuid(chat.guid) || isGroupChatIdentifier(chat.chat_identifier)) {
+      return this.detectServiceForChat(chat);
+    }
+    this.ensureIdentityServiceMap();
+    const mergeKey = this.getConversationMergeKey(chat.chat_identifier, chat.guid, false);
+    return this.identityServiceMap?.get(mergeKey) ?? this.detectServiceForChat(chat);
+  }
+
+  /**
    * Get the N most recent messages across all conversations
    * By default excludes reactions (tapbacks) for cleaner output
    */
@@ -952,10 +971,10 @@ export class IMessageDB {
       // persists, so the store lookup misses. Compute + persist the canonical
       // slug synchronously so `imsg list` shows ~service~hash slugs, not raw ids.
       const slug = this.getSlugForChatGuid(chat.guid) ?? this.syncSlugForChat(chat);
-      const chatData = this.slugMap.get(slug);
-      const serviceType = chatData
-        ? this.detectServiceForChat(chatData)
-        : this.detectServiceForChat(chat);
+      // Badge reflects the identity's canonical service (prefer iMessage), not
+      // whichever leg won the merge — otherwise a single newer SMS leg flips a
+      // fundamentally-iMessage thread to "SMS" and disagrees with the ~imsg~ slug.
+      const serviceType = this.canonicalServiceForChat(chat);
 
       return {
         last,
@@ -1029,10 +1048,8 @@ export class IMessageDB {
     }
 
     const slug = this.getSlugForChatGuid(found.guid) ?? this.syncSlugForChat(found);
-    const chatData = this.slugMap.get(slug);
-    const serviceType = chatData
-      ? this.detectServiceForChat(chatData)
-      : this.detectServiceForChat(found);
+    // Identity-canonical service (prefer iMessage) — matches the slug + send route.
+    const serviceType = this.canonicalServiceForChat(found);
 
     return {
       chatId: found.guid,

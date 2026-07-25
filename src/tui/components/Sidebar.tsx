@@ -14,6 +14,8 @@ interface Props {
   selectedIdx: number;
   /** Index into `moduleInstances` when a virtual row is selected; null otherwise. */
   selectedModuleIdx: number | null;
+  /** Cursor into the FILTERED result set — drives the highlight while filtering. */
+  filterCursor: number;
   scrollOffset: number;
   filterQuery: string;
   focused: boolean;
@@ -26,6 +28,7 @@ export function Sidebar({
   moduleInstances,
   selectedIdx,
   selectedModuleIdx,
+  filterCursor,
   scrollOffset,
   filterQuery,
   focused,
@@ -57,8 +60,11 @@ export function Sidebar({
   const visible = combined.slice(scrollOffset, scrollOffset + visibleCount);
   const moduleCount = moduleInstances.length;
 
-  // The displayed cursor index in the combined list.
-  const combinedCursor = selectedModuleIdx != null ? selectedModuleIdx : moduleCount + selectedIdx;
+  // The displayed cursor index in the combined list. While filtering, the
+  // conversation cursor is a position into `filtered` (filterCursor) — not the
+  // full-array selectedIdx — because `combined` is built from `filtered`.
+  const convCursor = filterQuery ? filterCursor : selectedIdx;
+  const combinedCursor = selectedModuleIdx != null ? selectedModuleIdx : moduleCount + convCursor;
 
   return (
     <Box
