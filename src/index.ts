@@ -1287,8 +1287,10 @@ export class IMessageMCPServer {
     // unbounded list_conversations path.
     const HARD_CAP = 1_000;
     const resolvedLimit = Math.min(resolveLimit(limit), HARD_CAP);
-    const all = this.db.contacts.searchContacts(query);
-    const results = all.slice(0, resolvedLimit);
+    // Ranked best-first (score + which field matched) so close matches are
+    // disambiguated instead of returned in address-book order.
+    const ranked = this.db.contacts.searchContactsRanked(query);
+    const results = ranked.slice(0, resolvedLimit);
 
     if (results.length === 0) {
       return toolText(`No contacts match "${query}".`, {
@@ -1302,17 +1304,19 @@ export class IMessageMCPServer {
     // Use the first phone or email as the canonical "handle" for the selector.
     rememberSearch(
       query,
-      results.map((c) => ({
-        handle: c.phoneNumbers[0] ?? c.emails[0] ?? c.displayName,
-        displayName: c.displayName,
+      results.map((m) => ({
+        handle: m.contact.phoneNumbers[0] ?? m.contact.emails[0] ?? m.contact.displayName,
+        displayName: m.contact.displayName,
       })),
     );
 
     const formatted = results
-      .map((c, i) => {
+      .map((m, i) => {
+        const c = m.contact;
         const phones = c.phoneNumbers.length > 0 ? ` 📱 ${c.phoneNumbers.join(", ")}` : "";
         const emails = c.emails.length > 0 ? ` ✉ ${c.emails.join(", ")}` : "";
-        return `[contact:${i + 1}] ${sanitizeUserText(c.displayName)}${phones}${emails}`;
+        const why = ` — ${m.matchedField} ${m.score.toFixed(2)}`;
+        return `[contact:${i + 1}] ${sanitizeUserText(c.displayName)}${why}${phones}${emails}`;
       })
       .join("\n");
     const hint =
@@ -1323,7 +1327,11 @@ export class IMessageMCPServer {
       `Found ${results.length} contact(s) matching "${query}":\n\n${formatted}${hint}`,
       {
         query,
-        contacts: results,
+        contacts: results.map((m) => ({
+          ...m.contact,
+          score: m.score,
+          matchedField: m.matchedField,
+        })),
         count: results.length,
       },
     );
