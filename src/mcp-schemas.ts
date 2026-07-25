@@ -375,13 +375,21 @@ export const ListContactsOutputSchema = z.object({
   totalCount: z.number().int(),
 });
 
+/** A contact plus its relevance score + which field matched (search ranking). */
+export const RankedContactSchema = ContactSchema.extend({
+  score: z.number().describe("Relevance in [0,1]; higher = better. Results are sorted best-first."),
+  matchedField: z
+    .enum(["displayName", "firstName", "lastName", "nickname", "organization", "phone", "email"])
+    .describe("Which contact field the query matched best."),
+});
+
 export const SearchContactsSchema = z.object({
   query: nonEmptyString("Substring to match against name, phone, or email."),
   limit: z.number().int().min(0).default(20).describe("Max results. 0 = unlimited."),
 });
 export const SearchContactsOutputSchema = z.object({
   query: z.string(),
-  contacts: z.array(ContactSchema),
+  contacts: z.array(RankedContactSchema),
   count: z.number().int(),
 });
 

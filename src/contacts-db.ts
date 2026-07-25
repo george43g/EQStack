@@ -12,6 +12,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
+import { type ContactMatch, rankContacts } from "./contact-rank.js";
 
 export interface Contact {
   id: number;
@@ -458,6 +459,19 @@ export class ContactsDB {
         c.phoneNumbers.some((p) => p.includes(query)) ||
         c.emails.some((e) => e.toLowerCase().includes(lowerQuery)),
     );
+  }
+
+  /**
+   * Search contacts, ranked by relevance with the matched field annotated.
+   * Preserves the substring recall of searchContacts (a substring match scores
+   * 0.7, above the inclusion floor) while ordering best-first so callers can
+   * disambiguate close matches instead of eyeballing an unordered list.
+   */
+  searchContactsRanked(query: string): ContactMatch[] {
+    if (!this.initialized) {
+      this.initialize();
+    }
+    return rankContacts(query, Array.from(this.contactCache.values()));
   }
 
   /**
