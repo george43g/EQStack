@@ -189,7 +189,11 @@ export const GetUnreadMessagesOutputSchema = z.object({
   messages: z.array(MessageSchema),
   count: z.number().int(),
   hasMore: z.boolean(),
-  nextOffset: z.number().int().nullable(),
+  truncated: z
+    .boolean()
+    .describe(
+      "True if more unread messages exist than were returned — raise `limit` to get the rest.",
+    ),
 });
 
 export const SendMessageSchema = z.object({
@@ -266,6 +270,11 @@ export const ListConversationsOutputSchema = z.object({
   conversations: z.array(ConversationSchema),
   count: z.number().int(),
   hasMore: z.boolean(),
+  truncated: z
+    .boolean()
+    .describe(
+      "True if more conversations exist beyond this page — page on with `offset` + `nextOffset`.",
+    ),
   nextOffset: z.number().int().nullable(),
 });
 
@@ -294,7 +303,9 @@ export const SearchMessagesOutputSchema = z.object({
   messages: z.array(MessageSchema),
   count: z.number().int(),
   hasMore: z.boolean(),
-  nextOffset: z.number().int().nullable(),
+  truncated: z
+    .boolean()
+    .describe("True if more matches exist than were returned — raise `limit` or narrow the query."),
   softCapWarning: z.string().optional(),
 });
 
@@ -378,7 +389,11 @@ export const ListContactsOutputSchema = z.object({
   contacts: z.array(ContactSchema),
   count: z.number().int(),
   hasMore: z.boolean(),
-  totalCount: z.number().int(),
+  truncated: z
+    .boolean()
+    .describe("True if more contacts exist beyond this page — page on with `offset`."),
+  totalAvailable: z.number().int().describe("Total contacts available across all pages."),
+  totalCount: z.number().int().describe("Alias of `totalAvailable` (kept for back-compat)."),
 });
 
 /** A contact plus its relevance score + which field matched (search ranking). */
@@ -397,6 +412,10 @@ export const SearchContactsOutputSchema = z.object({
   query: z.string(),
   contacts: z.array(RankedContactSchema),
   count: z.number().int(),
+  truncated: z
+    .boolean()
+    .describe("True if more contacts matched than were returned — raise `limit`."),
+  totalAvailable: z.number().int().describe("Total contacts that matched the query."),
 });
 
 export const GetContactSchema = z
@@ -486,16 +505,14 @@ export const SearchAttachmentsSchema = z.object({
     .optional()
     .describe("ISO date or relative ('1 week ago'). Lower bound on attachment creation."),
   until: z.string().optional().describe("ISO date or relative. Upper bound on creation."),
-  limit: z
-    .number()
-    .int()
-    .min(0)
-    .default(20)
-    .describe("Max results. 0 = unlimited (capped at 1000)."),
+  limit: z.number().int().min(0).default(20).describe("Max results. 0 = unlimited."),
 });
 export const SearchAttachmentsOutputSchema = z.object({
   attachments: z.array(AttachmentRecordSchema),
   count: z.number().int(),
+  truncated: z
+    .boolean()
+    .describe("True if more attachments matched than were returned — raise `limit`."),
 });
 
 export const InitHumanSchema = z

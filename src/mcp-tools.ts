@@ -339,7 +339,8 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "search_contacts",
-    description: "Substring-match contacts by display name, phone number, or email.",
+    description:
+      "Substring-match contacts by display name, phone number, or email, ranked best-first (score + matchedField). Response reports `truncated` and `totalAvailable` so you know when more matched than were returned — raise `limit` to widen.",
     annotations: annotations.read,
     inputSchema: {
       type: "object",
@@ -417,7 +418,7 @@ export const TOOLS: Tool[] = [
   {
     name: "search_attachments",
     description:
-      "Search attachments (images, videos, files) by MIME type prefix, date range, and/or chat. Returns metadata only — use get_attachment to fetch bytes. Excludes stickers and Apple plugin payloads.",
+      "Search attachments (images, videos, files) by MIME type prefix, date range, and/or chat. Returns metadata only — use get_attachment to fetch bytes. Excludes stickers and Apple plugin payloads. Response reports `truncated` (more matched than returned — raise `limit`).",
     annotations: annotations.read,
     inputSchema: {
       type: "object",
