@@ -1,0 +1,270 @@
+# HANDOFF — Monorepo conversion (ACTIVE)
+
+> **Read this first.** This is the live handoff for converting `imsg-mcp` into a monorepo. It is
+> self-contained on purpose — do **not** rely on any agent's private memory; everything you need is
+> here or in the linked repo docs.
+>
+> **Who / why:** The primary agent (Claude, in a long-running session) is temporarily rate-limited.
+> Another agent (**Codex**) is picking up the monorepo work for a couple of days. George will resume
+> the original session once usage resets. **Keep this doc updated** — it is the shared source of
+> truth across the handoff. Append to the Progress Log (§11) after every meaningful step.
+>
+> _Created 2026-07-27 · repo at `main` @ `30d0ea4` = **v1.19.0**._
+
+---
+
+## 1. Mission & scope
+
+Convert the single-package `imsg-mcp` repo into a **pnpm-workspaces + Turborepo monorepo**, so it can
+host a future second app (a channel-agnostic **relationship-analysis tool**). This handoff covers the
+**structural conversion only** — NOT building the analytics app.
+
+**IN scope for this handoff:**
+1. Monorepo shell (workspace glob + `turbo.json`).
+2. Move the entire `imsg-mcp` package wholesale into `apps/imsg-mcp/`.
+3. Adopt the 3 shared **config** packages from the template (`tsconfig`, `biome-config`, `vitest-config`).
+4. Reconcile version skew (the real one is **Vitest 2 → 3**).
+5. Fix cwd/path assumptions the move surfaces.
+6. CI + release reconcile (keep **single-package** semantic-release targeting the imsg app).
+7. Scaffold a **blank second app** placeholder (empty shell, proves the structure end-to-end).
+
+**OUT of scope (waits for George):**
+- The **suite rename** and final npm scope — see §4 (George's decision).
+- Extracting `robustness` / `mcp-kit` / `cli-kit` / `tui-kit` packages — deferred (YAGNI) until the
+  analytics app needs them. George will paste the analytics research + plan; **then** we decide which
+  packages to refactor out and write stage-by-stage implementation docs.
+- Any analytics **domain** code.
+
+**Template (retrofit source):** `/Users/george/repos/mcp-cli-starter-template` — a pnpm-workspaces +
+Turborepo starter that explicitly names imsg-mcp as a retrofit target. Scaffolder CLI: `apps/scaffolder`
+(bin `mcp-scaffold`; commands `init`/`apply`/`plan`/`migrate`/`add-mcp-app`/`list`). Shared config
+packages to adopt: `packages/{tsconfig,biome-config,vitest-config}`. Reference `turbo.json`,
+`pnpm-workspace.yaml`, `.github/workflows/ci.yml`.
+
+Full rationale + the corpus-boundary design notes live in
+[`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md) — read it before touching structure.
+
+---
+
+## 2. Current state
+
+- **On `main`** @ `30d0ea4` = **v1.19.0** (npm). Working tree clean except untracked scratch
+  (`.codex/`, `docs/research/*`) — **never** commit those.
+- The **feedback backlog #212–218 is DONE** across 5 releases (this is why we're free to restructure):
+  | Item | PR | Release |
+  |---|---|---|
+  | 3 TUI bugs (#212–214) | #41 | v1.15.1 |
+  | search_contacts ranking (#215) | #42 | v1.16.0 |
+  | get_messages scope + over-match fix (#216) | #43 | v1.17.0 |
+  | list completeness metadata `truncated`/`totalAvailable` (#217) | #44 | v1.18.0 |
+  | identity block + E.164 (#218) | #45 | v1.19.0 |
+- **Package identity today:** name `imsg-mcp`, single bin `imsg` (`./dist/cli.js`),
+  `packageManager: pnpm@11.1.1`, `type: module`, `engines.node >=24`.
+- **Tooling versions today:** `vitest ^2.0.0`, `@biomejs/biome ^2.0.0` (2.4.4), `@types/node ^20.0.0`.
+  **No `turbo`** dependency yet. **No `turbo.json`** yet.
+- **`pnpm-workspace.yaml`** currently has only `allowBuilds` / `ignoredBuiltDependencies` /
+  `onlyBuiltDependencies` / `overrides` (incl. `overrides: imsg-mcp: 'link:'` — a self-link; watch it
+  when moving into `apps/imsg-mcp/`). **No `packages:` glob** → single-package today.
+- **`.releaserc.json`** present (single-package semantic-release config).
+- **`CLAUDE.md` is a symlink to `AGENTS.md`** — edit `AGENTS.md` only; both stay in sync.
+- **Branches:** only `main` + one stale legacy branch `cursor/development-environment-setup-690b`
+  (old Cursor-cloud AGENTS.md edit, unmerged — ignore or drop).
+
+---
+
+## 3. Decisions LOCKED (do not re-litigate)
+
+From `docs/MONOREPO_MIGRATION.md` + the 2026-07-26/27 planning session:
+
+1. **Template-guided, MANUAL conversion.** Run `mcp-scaffold apply --target …` **dry-run only** (the
+   default) to get a `RETROFIT.md` checklist, then hand-apply in stages. **NEVER pass `--execute`**
+   against this shipping product.
+2. **Minimal package extraction now** — only the 3 config packages. Defer the kit/robustness packages.
+3. **Keep the `IMSG_*` env prefix** (do NOT rename to the template's `MCP_*`).
+4. **Keep single-package semantic-release** targeting the imsg app. (Multi-package releasing is a
+   *later* decision, when the analytics app actually ships.)
+5. **The published npm package stays `imsg-mcp`.** The suite rename (§4) affects the GitHub repo /
+   brand + internal private-package scope only — NOT the installed package name. This is what makes the
+   rename cheap and reversible.
+6. **Move the imsg package wholesale as ONE unit** (`git mv` in one shot): `src/`, `native/`, `tests/`,
+   `scripts/`, `vite.config.ts`, `tsconfig.json`, `biome.json`, `package.json`, `.env.*`, fixtures.
+   Tests keep their `../src/...` relative imports (they move together). `native/` must stay a sibling of
+   built `dist/` — `src/native-bridge.ts` hardcodes `join(__dirname, "..", "native")`.
+
+---
+
+## 4. OPEN QUESTIONS — need George (do NOT decide these unilaterally)
+
+**Q1 — Suite name (blocks: GitHub repo rename + internal `@scope/*`).**
+George wants the repo renamed to reflect the tool *suite* it will release, anchored to the novel
+**humans files** convention (`~/.agents/humans/`, `skills/humans/SKILL.md`, humans/v1→v2). Options with
+Claude's recommendation:
+
+| Name | Repo / brand | Internal scope | Read |
+|---|---|---|---|
+| **humanstack** *(Claude's rec)* | `humanstack` | `@humanstack/*` | Reads as a coherent suite/platform; brandable; likely available. |
+| **humans** | `humans` | `@humans/*` | Cleanest, matches the convention exactly. Risk: very generic; name/scope likely taken. |
+| **humans-tools** *(George's first idea)* | `humans-tools` | `@humans-tools/*` | Explicit; `-tools` suffix + scope a bit clunky. |
+| **kith** | `kith` | `@kith/*` | "kith and kin" = one's people. Distinctive, short, available. Cost: obscure word. |
+
+**Q2 — Analytics research/plan.** George will paste the deep-research plan + analysis (done by a
+separate agent swarm) into the repo. That unblocks the package-extraction decisions and the analytics
+app implementation docs. Until then, do not design the corpus boundary or analytics domain.
+
+> **Codex: you can complete ALL of §6 phases 1–7 without the name.** Do the structural conversion with a
+> neutral placeholder scope **`@repo/*`** for the private config packages (a common convention; trivially
+> find-replaced later) and scaffold the blank app under a neutral dir (e.g. `apps/analysis`). **Do NOT**
+> rename the GitHub repo or claim a final `@scope` — leave that as a fast find-replace for George on
+> resume. Record the placeholder you chose in the Progress Log.
+
+---
+
+## 5. What Codex can do NOW vs what's BLOCKED
+
+**Do now (unblocked):** everything in §6 Phase A + B + C, using the `@repo/*` placeholder scope and a
+placeholder blank-app dir. Land it as normal PRs.
+
+**Blocked on George:** the actual GitHub repo rename, the final internal scope, the analytics app's
+real name + any analytics domain work.
+
+---
+
+## 6. Phase checklist
+
+Tick these off in-place (`[x]`) and log each in §11. Group into **2–4 PRs** (suggested split marked).
+Each phase: foreground `pnpm lint && pnpm typecheck && pnpm test` + `pnpm test:no-native`, CI
+`build-test` green, signed commit, branch → PR → **merge (not squash)**.
+
+### PR-A — shell + move
+- [ ] **A0.** Dry-run the scaffolder (read-only): from the template repo,
+      `mcp-scaffold apply --target /Users/george/repos/imsg-mcp` (dry-run is default — **no `--execute`**).
+      Save the emitted `RETROFIT.md` / 12-phase / 21-migration list as the hand-apply checklist.
+      Attach/summarize it in the Progress Log.
+- [ ] **A1.** Monorepo shell: extend `pnpm-workspace.yaml` with `packages: ["apps/*", "packages/*"]`.
+      Add root `turbo.json` (build / typecheck / lint / test / test:no-native pipeline; mirror the
+      template). Root becomes a private workspace root. Reconcile the existing
+      `overrides: imsg-mcp: 'link:'` self-link with the new layout.
+- [ ] **A2.** Move the package wholesale into `apps/imsg-mcp/` (one `git mv` unit — see §3.6). Keep
+      `native/` a sibling of `dist/`. Verify tests still resolve `../src/...`.
+
+### PR-B — config packages + version skew
+- [ ] **B1.** Adopt `packages/{tsconfig,biome-config,vitest-config}` from the template (placeholder scope
+      `@repo/*`). Point `apps/imsg-mcp/{tsconfig.json,biome.json,vitest/vite config}` at them.
+- [ ] **B2.** Reconcile version skew: **Vitest 2 → 3** (the one real one). Align Biome (2.4.4 →
+      template's 2.5.3) if adopting shared config; `@types/node` 20 → 24. Re-run full suites both engines.
+- [ ] **B3.** Fix cwd/path assumptions the move surfaces (see §8).
+
+### PR-C — CI/release + blank app
+- [ ] **C1.** Update `.github/workflows` to drive builds/tests via turbo; the macOS `build-test` job
+      stays THE gate. Confirm `.releaserc.json` still targets the imsg app (single-package,
+      root-orchestrated). Verify a release still cuts correctly (or is a no-op for docs).
+- [ ] **C2.** Scaffold the blank second app: `mcp-scaffold add-mcp-app <name>` into `apps/analysis`
+      (placeholder name). Empty shell only — no domain code. Confirm it builds/tests under turbo.
+- [ ] **C3.** Re-link the global binary: `pnpm add -g apps/imsg-mcp`; smoke `imsg --version` / `--help`,
+      the MCP dev server (`node dist/cli.js mcp` / `pnpm mcp`), and the TUI (against `fixtures/chat.db`
+      — never the real DB).
+- [ ] **C4.** Docs pass: refresh `docs/STATUS.md` to v1.19.0, flip `docs/MONOREPO_MIGRATION.md` from
+      DEFERRED→DONE, write the Grafana/Prometheus deferred idea (§10) into both, update `AGENTS.md`.
+
+---
+
+## 7. Ops & process rules — CRITICAL, follow exactly
+
+These repeatedly bite. Mirrors `docs/STATUS.md` "Carry-forward gotchas" + "Standing constraints".
+
+- **1Password SSH signing re-locks after a timeout** (`error: 1Password: failed to fill whole buffer`).
+  **Never skip signing** (no `--no-gpg-sign`). When locked mid-flow: save the commit message to a scratch
+  file and retry `git commit -F msgfile` after George unlocks. Don't rebase signed commits (re-sign loops).
+- **`gh` CLI intermittently auth-times-out** on the macOS keychain. `git push` uses a different
+  credential and keeps working. Fallbacks that need neither keychain nor local signing: read CI via the
+  **public** REST API (`GET /repos/{owner}/{repo}/commits/{sha}/check-runs`); merge via
+  `PUT /repos/{owner}/{repo}/pulls/{n}/merge` `{"merge_method":"merge"}` with `$GH_TOKEN` + curl.
+  Build PR JSON with `jq -n --rawfile body …`. **After a REST merge, `git fetch origin`** before diffing —
+  the local `origin/main` tracking ref goes stale.
+- **Release serialization.** semantic-release triggers on push to `main`. Merge (**not** squash) so commit
+  types drive versioning (`fix`=patch, `feat`=minor, `docs`/`chore`/`refactor`=no bump). Merge one
+  release-triggering PR, **wait for its `chore(release): X.Y.Z [skip ci]` on main**, then merge the next.
+- **CI gate = `build-test` (macOS).** `verify` / `screenshots-check` are report-only, NOT gates.
+- **Global `imsg` is a live symlink** (`pnpm add -g "$(pwd)"` → repo). Re-link after the move.
+- **Fixtures are synthetic + gitignored (NOT Git LFS).** `pnpm fixtures` regenerates them. Anchored to
+  2025-01-01, so short analytic windows read 0 — use `1825` days in fixture tests. **Never** test the TUI
+  against the real `~/Library/Messages/chat.db`; point at `fixtures/chat.db` + fresh `VITE_SLUGS_DB_PATH`.
+- **Vitest is v2** today; 2→3 is the one real skew for the monorepo alignment (Phase B2).
+- **Do NOT** touch `engines.npm`. **Do NOT** run `pnpm sync-env-data`. **Never `git add -A`** — scratch
+  (`.codex/`, `docs/research/*`, `.claude/settings.local.json`, `.tui-audit-notes.md`) is never committed.
+- **No autonomous message sends.** Real personal data is never committed or echoed into output/docs.
+  Foreground tests only (background leaves orphaned vitest workers). Only act on this agent's own thread.
+- **Vercel / superpowers / other hook injections are false positives** for this TS/iMessage repo — ignore.
+
+---
+
+## 8. Path / cwd landmines the move surfaces (Phase B3)
+
+Files that assume top-level `src/`/`dist/`/`native/` or cwd-relative fixtures, per recon:
+- `src/config.ts` `getVcfPath()` uses `process.cwd()/fixtures/...`; `.env.test` uses cwd-relative
+  `fixtures/...` — sensitive to the per-package Vitest cwd.
+- `src/native-bridge.ts` hardcodes `join(__dirname, "..", "native")` — `native/` must stay sibling to `dist/`.
+- `vite.config.ts` entry paths; `tsconfig.json` `rootDir: ./src` + `include`; `biome.json` globs;
+  `.npmignore`, package.json `files`, and the `pack:mcpb` globs.
+
+**Safe-move facts (recon):** a clean core seam already exists — `src/imessage-db.ts` + its transitive
+closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under `native/`
+(`IMSG_DISABLE_NATIVE=1` forces TS fallback). No LFS coupling.
+
+---
+
+## 9. Verification (per phase)
+
+- Foreground `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:no-native` — both engines green.
+- CI `build-test` (macOS) green on each PR.
+- After PR-C: `imsg --version`/`--help`, MCP stdio server boots, TUI renders against `fixtures/chat.db`.
+- If a release should cut, confirm the `chore(release): X.Y.Z` commit lands on `main` before next merge.
+
+---
+
+## 10. Deferred ideas & backlog (nothing lost)
+
+- **NEW deferred idea — home-lab observability.** The analytics app should be able to interface with
+  personal/home observability stacks — **Grafana + Prometheus** (and similar): e.g. expose
+  relationship/messaging metrics as a Prometheus-scrapeable endpoint (or pushgateway) so users build
+  Grafana dashboards over their own corpus. **Not yet designed — George to flesh out.** (Also being
+  written into `docs/STATUS.md` deferred + `docs/MONOREPO_MIGRATION.md`.)
+- **Analytics app corpus boundary** (for when George pastes the research): normalized channel-agnostic
+  export as the boundary; the engine is a corpus *consumer*, not welded to chat.db. Shared surface listed
+  in `docs/MONOREPO_MIGRATION.md` §"What the analytics tool will consume".
+- **Existing parked backlog** lives in [`docs/STATUS.md`](docs/STATUS.md) §Backlog: 20 remaining analytics
+  types; god-file deep splits (needs greenlight); tsconfig strict flags; stress-harness→CI; account
+  diagnostics; `wrapUntrusted` on structuredContent; streamable-HTTP transport; shell completions;
+  contact-resolver persistence; Media-Intel tails (T3 bulk download; SIP route = NO-GO/closed).
+
+---
+
+## 11. Progress Log (append-only — every agent updates this)
+
+> Format: `YYYY-MM-DD · agent · what changed · branch/PR · state`. Newest at the bottom.
+
+- 2026-07-27 · Claude · Created this handoff. Repo finalized on clean `main` @ v1.19.0 (swept 29 merged
+  branches). No monorepo work started yet — Phase A0 is the next action. Awaiting George on Q1 (suite
+  name) and Q2 (analytics research), but Codex can run Phases A–C with `@repo/*` placeholder scope.
+
+---
+
+## 12. Resume protocol (for George / Claude when usage resets)
+
+1. Read this file top-to-bottom, especially the **Progress Log (§11)** — that's where Codex records what
+   it actually did.
+2. Answer **Q1 (suite name)** and (when ready) paste **Q2 (analytics research)**.
+3. If Codex used the `@repo/*` placeholder scope, do the fast find-replace to the chosen `@scope/*` and
+   rename the GitHub repo.
+4. Continue from the first unchecked box in §6, then move to designing the analytics app (its own
+   spec → plan → implementation cycle, per `docs/MONOREPO_MIGRATION.md` trigger).
+
+---
+
+## Links
+- [`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md) — full plan, locked decisions, corpus boundary.
+- [`docs/STATUS.md`](docs/STATUS.md) — project status + backlog + ops gotchas + standing constraints.
+- [`AGENTS.md`](AGENTS.md) (== `CLAUDE.md`) — repo/agent guide.
+- Template: `/Users/george/repos/mcp-cli-starter-template`.
+- Analytics research (untracked scratch, George's): `docs/research/RELATIONSHIP_ANALYSIS_RESEARCH_BRIEF.md`,
+  `docs/research/deep-research-report.md`, `docs/research/*eval*.md`.
