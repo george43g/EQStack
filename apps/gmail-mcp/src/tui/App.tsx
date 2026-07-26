@@ -8,6 +8,7 @@ import { AccountSwitcher } from "./components/AccountSwitcher.js";
 import { CommandPalette } from "./components/CommandPalette.js";
 import { ConfirmModal } from "./components/ConfirmModal.js";
 import { DevStatsModal } from "./components/DevStatsModal.js";
+import { DraftsRecovery } from "./components/DraftsRecovery.js";
 import { HelpBar } from "./components/HelpBar.js";
 import { HelpModal } from "./components/HelpModal.js";
 import { LabelOverlay } from "./components/LabelOverlay.js";
@@ -20,6 +21,12 @@ import { ThemePicker } from "./components/ThemePicker.js";
 import { ThreadList } from "./components/ThreadList.js";
 import { buildComposeTemplate, parseCompose, quoteReplyBody } from "./compose-parser.js";
 import { type TuiConfig } from "./config.js";
+import {
+  discardLocalDraft,
+  type LocalDraft,
+  listLocalDrafts,
+  readLocalDraft,
+} from "./drafts-recovery.js";
 import { accountScopedCacheKey, defaultCacheBytes, LruCache } from "./hooks/useCache.js";
 import { useDevStats } from "./hooks/useDevStats.js";
 import { createEditorOpener, resolveEditor } from "./hooks/useEditor.js";
@@ -300,8 +307,13 @@ export function App({ initialTheme, config }: Props) {
           return;
         }
         const parsed = parseCompose(result.content);
+        // A recovered draft carries its threading via X-Gmail-MCP-* headers;
+        // prefer those so a resumed reply still threads even if the in-memory
+        // intent was reconstructed without them.
+        const sourceMessageId = parsed.sourceMessageId ?? intent.sourceMessageId;
+        const sourceThreadId = parsed.sourceThreadId ?? intent.sourceThreadId;
         if (intent.kind === "reply-all") {
-          if (!intent.sourceMessageId) {
+          if (!sourceMessageId) {
             dispatch({
               type: "SET_STATUS",
               payload: `reply-all: missing source message id — draft kept at ${result.draftPath}`,
@@ -309,27 +321,43 @@ export function App({ initialTheme, config }: Props) {
             dispatch({ type: "CLEAR_EDITOR" });
             return;
           }
-          await gmail.replyAll({ messageId: intent.sourceMessageId, body: parsed.body });
+          await gmail.replyAll({ messageId: sourceMessageId, body: parsed.body });
           await discardDraft();
           dispatch({ type: "SET_STATUS", payload: "Reply sent (reply-all)" });
         } else if (intent.kind === "draft-edit") {
-          if (parsed.to.length === 0 || !parsed.subject) {
-            dispatch({
-              type: "SET_STATUS",
-              payload: "Draft saved without send (missing To/Subject)",
+          if (intent.draftId) {
+            // Editing an existing draft — replace it in place so no duplicate
+            // draft is created (the pre-D2 behaviour always drafted anew).
+            await gmail.updateDraft({
+              draftId: intent.draftId,
+              to: parsed.to,
+              cc: parsed.cc,
+              bcc: parsed.bcc,
+              subject: parsed.subject,
+              body: parsed.body,
+              threadId: sourceThreadId,
             });
+            await discardDraft();
+            dispatch({ type: "SET_STATUS", payload: `Draft ${intent.draftId} updated` });
+          } else {
+            if (parsed.to.length === 0 || !parsed.subject) {
+              dispatch({
+                type: "SET_STATUS",
+                payload: "Draft saved without send (missing To/Subject)",
+              });
+            }
+            await gmail.draftEmail({
+              to: parsed.to,
+              cc: parsed.cc,
+              bcc: parsed.bcc,
+              subject: parsed.subject,
+              body: parsed.body,
+              threadId: sourceThreadId,
+            });
+            // Content now lives in Gmail drafts — the local copy is redundant.
+            await discardDraft();
+            dispatch({ type: "SET_STATUS", payload: "Draft saved" });
           }
-          await gmail.draftEmail({
-            to: parsed.to,
-            cc: parsed.cc,
-            bcc: parsed.bcc,
-            subject: parsed.subject,
-            body: parsed.body,
-            threadId: intent.sourceThreadId,
-          });
-          // Content now lives in Gmail drafts — the local copy is redundant.
-          await discardDraft();
-          dispatch({ type: "SET_STATUS", payload: "Draft saved" });
         } else {
           // compose / reply both call send_email
           if (parsed.to.length === 0) {
@@ -346,8 +374,8 @@ export function App({ initialTheme, config }: Props) {
             bcc: parsed.bcc,
             subject: parsed.subject,
             body: parsed.body,
-            threadId: intent.sourceThreadId,
-            inReplyTo: intent.sourceMessageId,
+            threadId: sourceThreadId,
+            inReplyTo: sourceMessageId,
           });
           await discardDraft();
           dispatch({
@@ -481,6 +509,32 @@ export function App({ initialTheme, config }: Props) {
       }
       return;
     }
+    // Draft recovery picker: j/k navigate, Enter/r resume, d discard, Esc close.
+    if (state.overlay.kind === "drafts") {
+      if (key.escape) {
+        dispatch({ type: "CLOSE_OVERLAY" });
+        return;
+      }
+      if (input === "j") {
+        dispatch({ type: "CURSOR_DOWN" });
+        return;
+      }
+      if (input === "k") {
+        dispatch({ type: "CURSOR_UP" });
+        return;
+      }
+      if (input === "d") {
+        discardSelectedDraft(state, dispatch);
+        return;
+      }
+      if (key.return || input === "r") {
+        const draft = state.localDrafts[state.overlay.cursor];
+        dispatch({ type: "CLOSE_OVERLAY" });
+        if (draft) resumeLocalDraft(draft, dispatch);
+        return;
+      }
+      return;
+    }
     // Insert mode (search / command palette): characters extend the buffer.
     if (state.mode === "insert") {
       if (key.escape) {
@@ -542,7 +596,8 @@ export function App({ initialTheme, config }: Props) {
     state.showStats ||
     state.overlay.kind === "confirm" ||
     state.overlay.kind === "theme" ||
-    state.overlay.kind === "account";
+    state.overlay.kind === "account" ||
+    state.overlay.kind === "drafts";
 
   return (
     <Box flexDirection="column" width="100%" height="100%">
@@ -562,6 +617,13 @@ export function App({ initialTheme, config }: Props) {
               list={state.accountList}
               cursor={state.overlay.cursor}
               selectedIds={state.overlay.selectedIds}
+              theme={theme}
+            />
+          ) : null}
+          {state.overlay.kind === "drafts" ? (
+            <DraftsRecovery
+              drafts={state.localDrafts}
+              cursor={state.overlay.cursor}
               theme={theme}
             />
           ) : null}
@@ -847,6 +909,12 @@ function runExCommand(
     case "account":
       openAccountSwitcher(state, dispatch);
       return;
+    case "drafts":
+      openDraftsRecovery(dispatch);
+      return;
+    case "resume":
+      resumeMostRecentDraft(dispatch);
+      return;
     default:
       dispatch({ type: "SET_STATUS", payload: `Unknown command: ${head}` });
   }
@@ -922,6 +990,9 @@ function runNormalCmd(
     }
     case "ui.account":
       openAccountSwitcher(state, dispatch);
+      return;
+    case "drafts.recover":
+      openDraftsRecovery(dispatch);
       return;
     case "nav.folder.inbox":
     case "nav.folder.sent":
@@ -1016,13 +1087,7 @@ function runNormalCmd(
       return;
     case "msg.draft.edit":
       if (!ensureSingleScope(state, dispatch)) return;
-      // For MVP, treat as "open compose form for a new draft" — selecting an
-      // existing draft for in-place editing comes in Session 3 when the
-      // drafts label is first-class.
-      dispatch({
-        type: "REQUEST_EDITOR",
-        payload: { kind: "draft-edit", initialContent: buildComposeTemplate({}) },
-      });
+      editDraft(state, dispatch);
       return;
     case "msg.delete": {
       if (!ensureSingleScope(state, dispatch)) return;
@@ -1132,6 +1197,153 @@ function requestReply(
       sourceThreadId: msg.threadId,
     },
   });
+}
+
+/** Map a recovered draft's kind onto the editor-intent kind union, defaulting
+    anything unrecognised to a plain compose. */
+function toEditorKind(
+  kind: string,
+): NonNullable<import("./reducer.js").AppState["pendingEditor"]>["kind"] {
+  return kind === "reply" || kind === "reply-all" || kind === "draft-edit" ? kind : "compose";
+}
+
+/** Load the local `.eml` recovery list and open the picker (or report empty). */
+function openDraftsRecovery(dispatch: (a: Action) => void) {
+  (async () => {
+    try {
+      const drafts = await listLocalDrafts();
+      dispatch({ type: "SET_LOCAL_DRAFTS", payload: drafts });
+      if (drafts.length === 0) {
+        dispatch({ type: "SET_STATUS", payload: "No local drafts to recover." });
+        return;
+      }
+      dispatch({ type: "OPEN_OVERLAY", payload: { kind: "drafts", cursor: 0 } });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: `Draft recovery failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  })();
+}
+
+/** Reopen a specific local draft in the editor, restoring its threading. */
+function resumeLocalDraft(draft: LocalDraft, dispatch: (a: Action) => void) {
+  (async () => {
+    try {
+      const content = await readLocalDraft(draft.path);
+      const payload: NonNullable<import("./reducer.js").AppState["pendingEditor"]> = {
+        kind: toEditorKind(draft.kind),
+        initialContent: content,
+      };
+      if (draft.sourceMessageId) payload.sourceMessageId = draft.sourceMessageId;
+      if (draft.sourceThreadId) payload.sourceThreadId = draft.sourceThreadId;
+      dispatch({ type: "REQUEST_EDITOR", payload });
+      dispatch({
+        type: "SET_STATUS",
+        payload: `Resuming draft: ${draft.subject || draft.filename}`,
+      });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: `Could not open draft: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  })();
+}
+
+/** `:resume` — reopen the most-recently-modified local draft. */
+function resumeMostRecentDraft(dispatch: (a: Action) => void) {
+  (async () => {
+    try {
+      const drafts = await listLocalDrafts();
+      const draft = drafts[0];
+      if (!draft) {
+        dispatch({ type: "SET_STATUS", payload: "No local drafts to resume." });
+        return;
+      }
+      resumeLocalDraft(draft, dispatch);
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: `Resume failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  })();
+}
+
+/** Discard the highlighted local draft, then refresh (or close) the picker. */
+function discardSelectedDraft(
+  state: import("./reducer.js").AppState,
+  dispatch: (a: Action) => void,
+) {
+  if (state.overlay.kind !== "drafts") return;
+  const draft = state.localDrafts[state.overlay.cursor];
+  if (!draft) return;
+  const cursor = state.overlay.cursor;
+  (async () => {
+    await discardLocalDraft(draft.path);
+    const remaining = await listLocalDrafts();
+    dispatch({ type: "SET_LOCAL_DRAFTS", payload: remaining });
+    if (remaining.length === 0) {
+      dispatch({ type: "CLOSE_OVERLAY" });
+      dispatch({ type: "SET_STATUS", payload: "Draft discarded — none left." });
+      return;
+    }
+    dispatch({
+      type: "OPEN_OVERLAY",
+      payload: { kind: "drafts", cursor: Math.min(cursor, remaining.length - 1) },
+    });
+    dispatch({ type: "SET_STATUS", payload: "Draft discarded." });
+  })();
+}
+
+/**
+ * `msg.draft.edit` — edit the focused draft in place. Correlates the focused
+ * message to a server-side draft via list_drafts so completion runs
+ * update_draft (no duplicate). Falls back to composing a fresh draft when
+ * there's no message context or no matching draft.
+ */
+function editDraft(state: import("./reducer.js").AppState, dispatch: (a: Action) => void) {
+  const msg = currentMessage(state);
+  if (!msg) {
+    dispatch({
+      type: "REQUEST_EDITOR",
+      payload: { kind: "draft-edit", initialContent: buildComposeTemplate({}) },
+    });
+    return;
+  }
+  (async () => {
+    try {
+      const drafts = await gmail.listDrafts();
+      const match = drafts.drafts.find(
+        (d) => d.messageId === msg.messageId || (d.threadId && d.threadId === msg.threadId),
+      );
+      const template = buildComposeTemplate({
+        to: match?.to ?? [],
+        subject: match?.subject || msg.subject,
+        body: msg.body,
+        kind: "draft-edit",
+        sourceThreadId: msg.threadId,
+      });
+      const payload: NonNullable<import("./reducer.js").AppState["pendingEditor"]> = {
+        kind: "draft-edit",
+        initialContent: template,
+      };
+      if (msg.threadId) payload.sourceThreadId = msg.threadId;
+      if (match) payload.draftId = match.draftId;
+      dispatch({ type: "REQUEST_EDITOR", payload });
+      dispatch({
+        type: "SET_STATUS",
+        payload: match ? `Editing draft ${match.draftId}` : "No matching draft — composing new",
+      });
+    } catch (err) {
+      dispatch({
+        type: "SET_ERROR",
+        payload: `Draft edit failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  })();
 }
 
 function toggleStar(state: import("./reducer.js").AppState, dispatch: (a: Action) => void) {

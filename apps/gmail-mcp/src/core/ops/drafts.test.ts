@@ -1,5 +1,6 @@
 import type { gmail_v1 } from "googleapis";
 import { describe, expect, it, vi } from "vitest";
+import { ListDraftsOutputSchema } from "../../tools.js";
 import type { OperationContext } from "../context.js";
 import { registry } from "../registry.js";
 import "./drafts.js";
@@ -80,5 +81,93 @@ describe("draft lifecycle operations", () => {
     );
     expect(del).toHaveBeenCalledWith({ userId: "me", id: "d1" });
     expect(result.structuredContent).toEqual({ draftId: "d1", status: "deleted" });
+  });
+
+  it("list_drafts enriches each stub with metadata via a per-draft get", async () => {
+    const list = vi.fn().mockResolvedValue({
+      data: {
+        drafts: [
+          { id: "d1", message: { id: "m1", threadId: "t1" } },
+          { id: "d2", message: { id: "m2" } },
+        ],
+        resultSizeEstimate: 2,
+      },
+    });
+    const get = vi.fn().mockImplementation(async ({ id }: { id: string }) => {
+      const byId: Record<string, unknown> = {
+        d1: {
+          id: "d1",
+          message: {
+            id: "m1",
+            threadId: "t1",
+            snippet: "first draft snippet",
+            payload: {
+              headers: [
+                { name: "Subject", value: "First draft" },
+                { name: "From", value: "me@example.com" },
+                { name: "To", value: "a@example.com, b@example.com" },
+                { name: "Date", value: "Mon, 03 Nov 2025 09:00:00 +0000" },
+              ],
+            },
+          },
+        },
+        d2: {
+          id: "d2",
+          message: {
+            id: "m2",
+            snippet: "second draft snippet",
+            payload: { headers: [{ name: "Subject", value: "Second draft" }] },
+          },
+        },
+      };
+      return { data: byId[id] };
+    });
+
+    const result = await registry.dispatch("list_drafts", {}, context({ list, get }));
+    expect(list).toHaveBeenCalledWith({ userId: "me" });
+    // format:"metadata" keeps each per-draft fetch body-free.
+    expect(get).toHaveBeenCalledWith({ userId: "me", id: "d1", format: "metadata" });
+
+    // The structured payload validates against the declared output schema.
+    const parsed = ListDraftsOutputSchema.parse(result.structuredContent);
+    expect(parsed.resultCount).toBe(2);
+    expect(parsed.truncated).toBe(false);
+    expect(parsed.total_available).toBe(2);
+    expect(parsed.drafts[0]).toEqual({
+      draftId: "d1",
+      messageId: "m1",
+      threadId: "t1",
+      subject: "First draft",
+      from: "me@example.com",
+      to: ["a@example.com", "b@example.com"],
+      date: "Mon, 03 Nov 2025 09:00:00 +0000",
+      snippet: "first draft snippet",
+    });
+    // A draft with no threadId / recipients degrades cleanly.
+    expect(parsed.drafts[1]).toMatchObject({ draftId: "d2", subject: "Second draft", to: [] });
+    expect(parsed.drafts[1]?.threadId).toBeUndefined();
+  });
+
+  it("list_drafts forwards paging args and marks truncation from nextPageToken", async () => {
+    const list = vi.fn().mockResolvedValue({
+      data: {
+        drafts: [{ id: "d9", message: { id: "m9" } }],
+        resultSizeEstimate: 40,
+        nextPageToken: "PAGE2",
+      },
+    });
+    const get = vi.fn().mockResolvedValue({
+      data: { id: "d9", message: { id: "m9", snippet: "", payload: { headers: [] } } },
+    });
+    const result = await registry.dispatch(
+      "list_drafts",
+      { maxResults: 1, pageToken: "PAGE1" },
+      context({ list, get }),
+    );
+    expect(list).toHaveBeenCalledWith({ userId: "me", maxResults: 1, pageToken: "PAGE1" });
+    const parsed = ListDraftsOutputSchema.parse(result.structuredContent);
+    expect(parsed.nextPageToken).toBe("PAGE2");
+    expect(parsed.truncated).toBe(true);
+    expect(parsed.total_available).toBe(40);
   });
 });

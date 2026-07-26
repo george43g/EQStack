@@ -8,6 +8,7 @@ import { getCurrentAccountId, withoutSessionChangeEvents } from "../../core/sess
 import type {
   GetThreadOutputSchema,
   ListAccountsOutputSchema,
+  ListDraftsOutputSchema,
   ListEmailLabelsOutputSchema,
   ListInboxThreadsOutputSchema,
   ReadEmailOutputSchema,
@@ -23,6 +24,7 @@ export type EmailView = z.infer<typeof ReadEmailOutputSchema>;
 export type SearchResults = z.infer<typeof SearchEmailsOutputSchema>;
 export type AccountList = z.infer<typeof ListAccountsOutputSchema>;
 export type SwitchAccountResult = z.infer<typeof SwitchAccountOutputSchema>;
+export type DraftList = z.infer<typeof ListDraftsOutputSchema>;
 export type ScopedThreadList = Omit<ThreadList, "threads"> & {
   threads: Array<
     ThreadList["threads"][number] & { accountId?: string; emailAddress?: string | null }
@@ -215,6 +217,37 @@ export function sendEmail(args: SendEmailArgs, signal?: AbortSignal): Promise<un
 
 export function draftEmail(args: SendEmailArgs, signal?: AbortSignal): Promise<unknown> {
   return callOp("draft_email", args, signal);
+}
+
+export function listDrafts(
+  opts: { maxResults?: number; pageToken?: string } = {},
+  signal?: AbortSignal,
+): Promise<DraftList> {
+  return callOp<DraftList>(
+    "list_drafts",
+    {
+      ...(opts.maxResults ? { maxResults: opts.maxResults } : {}),
+      ...(opts.pageToken ? { pageToken: opts.pageToken } : {}),
+    },
+    signal,
+  );
+}
+
+/** Replace an existing draft's content in place (preserves the draft id). */
+export function updateDraft(
+  args: SendEmailArgs & { draftId: string },
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return callOp("update_draft", args, signal);
+}
+
+/** Send an existing draft atomically and remove it from Drafts. */
+export function sendDraft(draftId: string, signal?: AbortSignal): Promise<unknown> {
+  return callOp("send_draft", { draftId }, signal);
+}
+
+export function deleteDraft(draftId: string, signal?: AbortSignal): Promise<unknown> {
+  return callOp("delete_draft", { draftId }, signal);
 }
 
 export function replyAll(

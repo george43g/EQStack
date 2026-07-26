@@ -55,6 +55,56 @@ describe("buildComposeTemplate", () => {
     expect(tmpl).toContain("To: a@b.test, c@d.test");
     expect(tmpl).toContain("Subject: hi");
   });
+
+  it("omits the X-Gmail-MCP-* headers entirely when no recovery metadata is given", () => {
+    const tmpl = buildComposeTemplate({ to: ["a@b.test"], subject: "hi", body: "yo" });
+    expect(tmpl).not.toContain("X-Gmail-MCP");
+  });
+
+  it("emits X-Gmail-MCP-* breadcrumbs only for the values supplied", () => {
+    const tmpl = buildComposeTemplate({
+      to: ["a@b.test"],
+      subject: "Re: hi",
+      body: "quoted",
+      kind: "reply-all",
+      sourceMessageId: "msg-123",
+      sourceThreadId: "thr-456",
+    });
+    expect(tmpl).toContain("X-Gmail-MCP-Kind: reply-all");
+    expect(tmpl).toContain("X-Gmail-MCP-Source-Message-Id: msg-123");
+    expect(tmpl).toContain("X-Gmail-MCP-Source-Thread-Id: thr-456");
+    // Breadcrumbs sit in the header block, above the body separator.
+    expect(tmpl.indexOf("X-Gmail-MCP-Kind")).toBeLessThan(tmpl.indexOf("\n\n"));
+  });
+});
+
+describe("compose recovery round-trip (build → parse → strip)", () => {
+  it("recovers kind + source ids and keeps the X-* headers out of the body", () => {
+    const tmpl = buildComposeTemplate({
+      to: ["team@fixture.test"],
+      subject: "Re: migration",
+      body: "I can take the runbook section.",
+      kind: "reply-all",
+      sourceMessageId: "m-9",
+      sourceThreadId: "t-9",
+    });
+    const parsed = parseCompose(tmpl);
+    expect(parsed.to).toEqual(["team@fixture.test"]);
+    expect(parsed.subject).toBe("Re: migration");
+    expect(parsed.kind).toBe("reply-all");
+    expect(parsed.sourceMessageId).toBe("m-9");
+    expect(parsed.sourceThreadId).toBe("t-9");
+    // The body carries none of the header breadcrumbs — so nothing X-* is sent.
+    expect(parsed.body).toBe("I can take the runbook section.");
+    expect(parsed.body).not.toContain("X-Gmail-MCP");
+  });
+
+  it("leaves recovery fields undefined for a plain compose template", () => {
+    const parsed = parseCompose(buildComposeTemplate({ to: ["a@b.test"], subject: "hi" }));
+    expect(parsed.kind).toBeUndefined();
+    expect(parsed.sourceMessageId).toBeUndefined();
+    expect(parsed.sourceThreadId).toBeUndefined();
+  });
 });
 
 describe("quoteReplyBody", () => {

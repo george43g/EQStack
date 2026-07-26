@@ -9,6 +9,9 @@ import type {
   ListEmailLabelsOutputSchema,
   ListInboxThreadsOutputSchema,
 } from "../tools.js";
+// Type-only import — erased at compile time, so the reducer stays free of the
+// node:fs runtime pulled in by drafts-recovery.js.
+import type { LocalDraft } from "./drafts-recovery.js";
 
 export type Mode = "normal" | "insert" | "command";
 // Drill-down focus order (left → right): each step right (`l` / `pane.open`)
@@ -45,7 +48,9 @@ export type Overlay =
   | { kind: "confirm"; prompt: string; pendingCmd: string }
   | { kind: "theme"; cursor: number }
   | { kind: "account"; cursor: number; selectedIds?: string[] }
-  | { kind: "label"; mode: "add" | "remove"; text: string };
+  | { kind: "label"; mode: "add" | "remove"; text: string }
+  /** Local-draft recovery picker — cursor indexes into `state.localDrafts`. */
+  | { kind: "drafts"; cursor: number };
 
 export interface AppState {
   mode: Mode;
@@ -97,6 +102,9 @@ export interface AppState {
   quit: boolean;
   // Pending key sequence (for two-char bindings like `gg`)
   keyBuffer: string;
+  /** Locally-persisted `.eml` compose drafts available for recovery, most
+      recent first. Populated on demand when the recovery picker opens. */
+  localDrafts: LocalDraft[];
   // Editor suspension marker — App reads this and triggers useEditor
   pendingEditor: null | {
     kind: "compose" | "reply" | "reply-all" | "draft-edit";
@@ -105,6 +113,9 @@ export interface AppState {
     sourceMessageId?: string;
     /** For reply / reply-all: the source thread id (so send_email replies into the same thread). */
     sourceThreadId?: string;
+    /** For draft-edit resumed from a server-side draft: the draft id to
+        update in place (so we never create a duplicate draft). */
+    draftId?: string;
   };
 }
 
@@ -135,6 +146,7 @@ export const initialState: AppState = {
   error: null,
   quit: false,
   keyBuffer: "",
+  localDrafts: [],
   pendingEditor: null,
 };
 
@@ -179,6 +191,8 @@ export type Action =
   | { type: "OVERLAY_BACKSPACE" }
   | { type: "REQUEST_EDITOR"; payload: NonNullable<AppState["pendingEditor"]> }
   | { type: "CLEAR_EDITOR" }
+  /** Load the local-draft recovery list (most recent first) into state. */
+  | { type: "SET_LOCAL_DRAFTS"; payload: LocalDraft[] }
   /** Help modal — fuzzy filter input + filtered-list cursor. */
   | { type: "HELP_FILTER_INPUT"; payload: string }
   | { type: "HELP_FILTER_BACKSPACE" }
@@ -399,10 +413,12 @@ export function reducer(state: AppState, action: Action): AppState {
     case "CURSOR_DOWN":
       if (state.overlay.kind === "theme") return overlayThemeCursor(state, +1);
       if (state.overlay.kind === "account") return overlayAccountCursor(state, +1);
+      if (state.overlay.kind === "drafts") return overlayDraftsCursor(state, +1);
       return moveCursor(state, +1);
     case "CURSOR_UP":
       if (state.overlay.kind === "theme") return overlayThemeCursor(state, -1);
       if (state.overlay.kind === "account") return overlayAccountCursor(state, -1);
+      if (state.overlay.kind === "drafts") return overlayDraftsCursor(state, -1);
       return moveCursor(state, -1);
     case "CURSOR_MOVE":
       return moveCursor(state, action.payload);
@@ -412,6 +428,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, pendingEditor: action.payload };
     case "CLEAR_EDITOR":
       return { ...state, pendingEditor: null };
+    case "SET_LOCAL_DRAFTS":
+      return { ...state, localDrafts: action.payload };
     default:
       return state;
   }
@@ -473,6 +491,13 @@ function overlayThemeCursor(state: AppState, delta: number): AppState {
   // Bound here by the static count to keep the reducer pure.
   const count = 8;
   const next = clamp(state.overlay.cursor + delta, 0, count - 1);
+  return { ...state, overlay: { ...state.overlay, cursor: next } };
+}
+
+function overlayDraftsCursor(state: AppState, delta: number): AppState {
+  if (state.overlay.kind !== "drafts") return state;
+  const items = state.localDrafts.length;
+  const next = clamp(state.overlay.cursor + delta, 0, Math.max(0, items - 1));
   return { ...state, overlay: { ...state.overlay, cursor: next } };
 }
 

@@ -290,6 +290,15 @@ cmd delete-draft help="Delete an existing Gmail draft" {
 	flag --json help="Emit typed JSON"
 	arg <draftId> help="Gmail draft ID"
 }
+cmd list-drafts help="List saved drafts with subject, recipients, and snippet (read-only)" {
+	flag --max help="Maximum drafts to return" {
+		arg <MAX>
+	}
+	flag --page-token help="Continuation token from a prior response" {
+		arg <PAGE_TOKEN>
+	}
+	flag --json help="Emit typed JSON"
+}
 cmd modify help="Add/remove labels on a single message" {
 	flag --add help="Comma-separated label IDs to add" {
 		arg <ADD>

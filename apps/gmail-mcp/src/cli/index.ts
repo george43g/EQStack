@@ -34,6 +34,7 @@ import { buildFiltersCommand } from "./commands/filters.js";
 import { buildHealthCommand } from "./commands/health.js";
 import { buildIdentitiesCommand } from "./commands/identities.js";
 import { buildLabelsCommand } from "./commands/labels.js";
+import { buildListDraftsCommand } from "./commands/list-drafts.js";
 import { buildMcpCommand } from "./commands/mcp.js";
 import {
   buildDeleteCommand,
@@ -158,6 +159,7 @@ Scopes (space=toggle, a=all, i=invert in interactive mode):
   program.addCommand(buildSendDraftCommand());
   program.addCommand(buildUpdateDraftCommand());
   program.addCommand(buildDeleteDraftCommand());
+  program.addCommand(buildListDraftsCommand());
   program.addCommand(buildModifyCommand());
   program.addCommand(buildDeleteCommand());
   program.addCommand(buildBatchModifyCommand());

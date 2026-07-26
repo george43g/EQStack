@@ -2,9 +2,10 @@
 //
 // Exercises the richer corpus that the work/personal accounts don't carry:
 // a multipart/alternative HTML body, a multipart/mixed message with a real
-// attachment part (download_attachment), and a deep 5-message thread. Boots
-// the dispatcher in fixture mode with GMAIL_ACCOUNT=full so the full 35-tool
-// catalog is in scope.
+// attachment part (download_attachment), a deep 5-message thread, and the
+// drafts/ corpus (list_drafts + edit→send round-trip). Boots the dispatcher
+// in fixture mode with GMAIL_ACCOUNT=full so the full 36-tool catalog is in
+// scope.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -94,6 +95,54 @@ describe("e2e: gmail.full fixture account", () => {
     expect(result.structuredContent).toMatchObject({
       messageId: "f_msg_004",
       status: "deleted",
+    });
+  });
+
+  it("list_drafts enumerates the drafts corpus with per-draft metadata", async () => {
+    await bootstrapSession();
+    const result = await callMcpTool("list_drafts", {});
+    expect(result.isError).not.toBe(true);
+    const struct = result.structuredContent as {
+      resultCount: number;
+      truncated: boolean;
+      total_available: number;
+      drafts: Array<{ draftId: string; subject: string; threadId?: string; snippet: string }>;
+    };
+    expect(struct.resultCount).toBe(2);
+    expect(struct.truncated).toBe(false);
+    expect(struct.total_available).toBe(2);
+    const byId = Object.fromEntries(struct.drafts.map((d) => [d.draftId, d]));
+    expect(byId.f_draft_001).toMatchObject({
+      subject: "[fixture] Draft: sync agenda",
+      threadId: "f_thr_006",
+    });
+    expect(byId.f_draft_001?.snippet).toMatch(/attach the agenda/);
+    // The reply draft threads onto the deep migration thread.
+    expect(byId.f_draft_002).toMatchObject({ threadId: "f_thr_100" });
+  });
+
+  it("edits a draft in place then sends it (update_draft → send_draft)", async () => {
+    await bootstrapSession();
+
+    const updated = await callMcpTool("update_draft", {
+      draftId: "f_draft_001",
+      to: ["team@fixture.test"],
+      subject: "[fixture] Draft: sync agenda (final)",
+      body: "Agenda attached — see you there.",
+      threadId: "f_thr_006",
+    });
+    expect(updated.isError).not.toBe(true);
+    // Same draft id preserved — no duplicate draft created.
+    expect(updated.structuredContent).toMatchObject({
+      draftId: "f_draft_001",
+      status: "updated",
+    });
+
+    const sent = await callMcpTool("send_draft", { draftId: "f_draft_001" });
+    expect(sent.isError).not.toBe(true);
+    expect(sent.structuredContent).toMatchObject({
+      draftId: "f_draft_001",
+      status: "sent",
     });
   });
 });

@@ -187,14 +187,15 @@ describe("e2e: gmail CLI binary against fixtures", () => {
       // catalog excludes only the gmail.full tools (delete_email,
       // batch_delete_emails) and exposes the settings-scoped tools (the 5
       // filter ops + list_send_identities) plus the cross-account
-      // unread_summary meta-tool.
-      expect(catalog.tools.length).toBe(33);
+      // unread_summary meta-tool and the read-only list_drafts op.
+      expect(catalog.tools.length).toBe(34);
       expect(catalog.tools.every((tool) => tool.name.startsWith("fixture_"))).toBe(true);
       expect(catalog.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
           "fixture_send_draft",
           "fixture_update_draft",
           "fixture_delete_draft",
+          "fixture_list_drafts",
           "fixture_report_phishing",
           "fixture_batch_report_phishing",
           "fixture_list_send_identities",
@@ -212,13 +213,13 @@ describe("e2e: gmail CLI binary against fixtures", () => {
     }
   });
 
-  it("exposes the full 35-tool catalog for a gmail.full account", async () => {
+  it("exposes the full 36-tool catalog for a gmail.full account", async () => {
     const env = Object.fromEntries(
       Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
     // The `full` fixture account grants gmail.full + gmail.settings.basic, so
     // every tool is in scope — including the two gmail.full-only deletion tools
-    // hidden from the work account's 33-tool catalog.
+    // hidden from the work account's 34-tool catalog.
     env.GMAIL_ACCOUNT = "full";
     const transport = new StdioClientTransport({
       command: NODE,
@@ -230,10 +231,10 @@ describe("e2e: gmail CLI binary against fixtures", () => {
     try {
       await client.connect(transport);
       const catalog = await client.listTools();
-      expect(catalog.tools.length).toBe(35);
+      expect(catalog.tools.length).toBe(36);
       const names = catalog.tools.map((tool) => tool.name);
       expect(names).toEqual(
-        expect.arrayContaining(["delete_email", "batch_delete_emails"]),
+        expect.arrayContaining(["delete_email", "batch_delete_emails", "list_drafts"]),
       );
 
       // delete_email is dispatchable (fixture delete returns canned success).

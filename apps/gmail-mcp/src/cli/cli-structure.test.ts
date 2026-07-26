@@ -43,6 +43,7 @@ describe("buildProgram (10.1)", () => {
       "identities",
       "inbox",
       "labels",
+      "list-drafts",
       "mcp",
       "modify",
       "read",

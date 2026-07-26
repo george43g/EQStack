@@ -91,6 +91,22 @@ export const UpdateDraftSchema = EmailMessageSchema.extend({
   draftId: z.string().min(1).describe("ID of the draft to update"),
 }).superRefine(requireHtmlForInlineImages);
 
+export const ListDraftsSchema = z.object({
+  maxResults: z
+    .number()
+    .int()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe(
+      "Maximum drafts to return in this page (hard ceiling: 500 per Gmail API). Paginate via pageToken for more.",
+    ),
+  pageToken: z
+    .string()
+    .optional()
+    .describe("Continuation token from a prior response's nextPageToken."),
+});
+
 export const ReadEmailSchema = z.object({
   messageId: z.string().describe("ID of the email message to retrieve"),
 });
@@ -765,6 +781,31 @@ export const DeleteDraftOutputSchema = z.object({
   status: z.literal("deleted"),
 });
 
+const DraftSummarySchema = z.object({
+  draftId: z.string(),
+  messageId: z.string(),
+  threadId: z.string().optional(),
+  subject: z.string(),
+  from: z.string(),
+  /** Parsed To recipients (raw address strings, comma-split). */
+  to: z.array(z.string()),
+  date: z.string(),
+  snippet: z.string(),
+});
+
+export const ListDraftsOutputSchema = z.object({
+  resultCount: z.number(),
+  drafts: z.array(DraftSummarySchema),
+  /** Gmail's nextPageToken — pass back as pageToken to fetch the next page. */
+  nextPageToken: z.string().optional(),
+  /** Gmail's server-side estimate of the total draft count. */
+  resultSizeEstimate: z.number().optional(),
+  /** True if more drafts exist server-side than were returned here. */
+  truncated: z.boolean(),
+  /** Best-effort total matching draft count (Gmail's estimate). */
+  total_available: z.number(),
+});
+
 export const ReportPhishingOutputSchema = z.object({
   messageId: z.string(),
   labelApplied: z.literal("SPAM"),
@@ -1023,6 +1064,14 @@ export const toolDefinitions: ToolDefinition[] = [
     schema: DeleteDraftSchema,
     scopes: ["gmail.modify", "gmail.compose"],
     annotations: { title: "Delete Draft", destructiveHint: true },
+  },
+  {
+    name: "list_drafts",
+    description:
+      "Lists saved Gmail drafts with subject, recipients, thread id, and snippet. Read-only; use the returned draftId with update_draft / send_draft / delete_draft.",
+    schema: ListDraftsSchema,
+    scopes: ["gmail.readonly", "gmail.modify"],
+    annotations: { title: "List Drafts", readOnlyHint: true },
   },
   {
     name: "modify_email",

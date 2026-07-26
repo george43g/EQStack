@@ -289,12 +289,49 @@ describe("overlay state machine", () => {
     const s2 = reducer(s, { type: "TOGGLE_STATS" });
     expect(s2.showStats).toBe(false);
   });
+
+  it("SET_LOCAL_DRAFTS stores the list; the drafts picker clamps its cursor in normal mode", () => {
+    const drafts = [
+      {
+        path: "/a",
+        filename: "compose-2026-07-27-101500.eml",
+        kind: "compose",
+        timestamp: "2026-07-27-101500",
+        mtimeMs: 2,
+        subject: "A",
+        to: [],
+        snippet: "",
+      },
+      {
+        path: "/b",
+        filename: "reply-2026-07-26-090000.eml",
+        kind: "reply",
+        timestamp: "2026-07-26-090000",
+        mtimeMs: 1,
+        subject: "B",
+        to: [],
+        snippet: "",
+      },
+    ];
+    let s = reducer(initialState, { type: "SET_LOCAL_DRAFTS", payload: drafts });
+    expect(s.localDrafts).toHaveLength(2);
+    s = reducer(s, { type: "OPEN_OVERLAY", payload: { kind: "drafts", cursor: 0 } });
+    // The picker is a normal-mode overlay (like theme/account), not insert.
+    expect(s.mode).toBe("normal");
+    s = reducer(s, { type: "CURSOR_DOWN" });
+    expect(s.overlay).toEqual({ kind: "drafts", cursor: 1 });
+    // Clamps at the last row rather than running off the end.
+    s = reducer(s, { type: "CURSOR_DOWN" });
+    expect(s.overlay).toEqual({ kind: "drafts", cursor: 1 });
+    expect(s.threadCursor).toBe(0);
+  });
 });
 
 describe("resolveKey", () => {
   it("matches single-char bindings immediately", () => {
     expect(resolveKey("", "j")).toEqual({ cmd: "cursor.down", pending: false });
     expect(resolveKey("", "Q")).toEqual({ cmd: "app.quit", pending: false });
+    expect(resolveKey("", "p")).toEqual({ cmd: "drafts.recover", pending: false });
   });
 
   it("buffers two-char prefixes like `gg`", () => {

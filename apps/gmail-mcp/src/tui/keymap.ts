@@ -88,6 +88,7 @@ export const defaultBindings: KeyBinding[] = [
   // UI — overlays + escape hatch.
   { keys: "/", cmd: "ui.search", desc: "Open search bar", category: "UI" },
   { keys: ":", cmd: "ui.command", desc: "Open command palette", category: "UI" },
+  { keys: "p", cmd: "drafts.recover", desc: "Recover local drafts", category: "UI" },
   { keys: "?", cmd: "ui.help", desc: "Toggle help overlay", category: "UI" },
   { keys: "~", cmd: "ui.stats", desc: "Toggle dev stats modal", category: "UI" },
   { keys: "Escape", cmd: "ui.cancel", desc: "Cancel / clear key buffer", category: "UI" },

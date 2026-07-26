@@ -4,7 +4,7 @@
 
 ## What this repo is
 
-Gmail integration exposed through 35 tools (read, search, send, draft lifecycle, reply-all, phishing-to-spam, labels, filters, threads, downloads, batch ops, send-as identities, cross-account unread summary, plus a `health_check` canary and the M2-light `list_accounts` / `switch_account` meta-tools). Two of the 35 — `delete_email` and `batch_delete_emails` — require the `gmail.full` scope, so an account without it sees a 33-tool catalog. Authenticates via OAuth2 against a personal Google project. **One binary** ships in this package — `gmail` — with mode subcommands:
+Gmail integration exposed through 36 tools (read, search, send, draft lifecycle + `list_drafts`, reply-all, phishing-to-spam, labels, filters, threads, downloads, batch ops, send-as identities, cross-account unread summary, plus a `health_check` canary and the M2-light `list_accounts` / `switch_account` meta-tools). Two of the 36 — `delete_email` and `batch_delete_emails` — require the `gmail.full` scope, so an account without it sees a 34-tool catalog. Authenticates via OAuth2 against a personal Google project. **One binary** ships in this package — `gmail` — with mode subcommands:
 
 | Subcommand | Purpose | Transport |
 |---|---|---|
@@ -61,7 +61,7 @@ src/
 │       ├── threads.ts    # get_thread, list_inbox_threads, get_inbox_with_threads, modify_thread
 │       ├── labels.ts     # list_email_labels + create/update/delete/get_or_create_label
 │       ├── send.ts       # send_email, reply_all + shared handleEmailAction helper
-│       ├── drafts.ts     # draft_email + send/update/delete lifecycle
+│       ├── drafts.ts     # draft_email + send/update/delete lifecycle + list_drafts
 │       ├── batch-ops.ts  # batch modify/delete/report phishing
 │       ├── filters.ts    # list/get/create/delete/template filter ops
 │       └── downloads.ts  # download_email, download_attachment
@@ -337,6 +337,7 @@ Every Gmail tool has a corresponding `gmail` CLI subcommand. All commands accept
 | `send-draft <draftId>` | `send_draft` | Atomically sends and removes an existing draft |
 | `update-draft <draftId>` | `update_draft` | Same message flags as `send`; replaces draft content |
 | `delete-draft <draftId>` | `delete_draft` | Deletes a draft |
+| `list-drafts` | `list_drafts` | Lists saved drafts (subject, recipients, thread id, snippet). `--max`, `--page-token`, `--json` |
 | `reply-all <messageId>` | `reply_all` | Auto-builds To/CC and threading headers from the original; `-b` body required |
 | `modify <messageId>` | `modify_email` | `--add ids`, `--remove ids` |
 | `delete <messageId>` | `delete_email` | Permanent (irreversible) |
@@ -391,7 +392,7 @@ After every change to this repo:
 3. **Regenerate/check CLI usage artifacts when Commander commands or help text change**: `pnpm run gen-usage`, then `pnpm run gen-usage -- --check`. `usage.kdl` is the source for completions and manpages.
 4. **Run the full test suite**: `npm test`.
 5. **Run the stress harness on changes that touch the dispatcher / lifecycle**: `npm run stress`.
-6. **Run the e2e suite when touching bootstrap / account / dispatch surfaces**: `pnpm test:e2e`. Boots the dispatcher against `fixtures/gmail/{work,personal,full}/` and exercises `list_inbox_threads → switch_account → list_inbox_threads`, the full 35-tool `gmail.full` catalog (attachment download, HTML read, deep thread, permanent delete), + the CLI binary. `pnpm verify` runs it automatically.
+6. **Run the e2e suite when touching bootstrap / account / dispatch surfaces**: `pnpm test:e2e`. Boots the dispatcher against `fixtures/gmail/{work,personal,full}/` and exercises `list_inbox_threads → switch_account → list_inbox_threads`, the full 36-tool `gmail.full` catalog (attachment download, HTML read, deep thread, permanent delete, `list_drafts` + draft edit→send round-trip), + the CLI binary. `pnpm verify` runs it automatically.
 
 For release or publish-prep changes, also run `npm pack --dry-run` and inspect the tarball file list.
 
@@ -420,7 +421,7 @@ Add a case here when you ship anything that changes lifecycle, dispatch, error h
 
 `tests/e2e/` runs the full bootstrap → dispatcher pipeline against `fixtures/gmail/{work,personal,full}/` instead of real Gmail. Toggled by `GMAIL_FIXTURE_MODE=1` (set automatically by the e2e setup; also available via `node --env-file=.env.test`).
 
-The three committed accounts cover the scope tiers: `work` (`gmail.modify` + `gmail.settings.basic` → 33-tool catalog), `personal` (`gmail.readonly`), and `full` (`gmail.full` + `gmail.settings.basic` → the complete **35-tool** catalog, including `delete_email` / `batch_delete_emails`). The `full` account carries the richer corpus: an HTML `multipart/alternative` body, a `multipart/mixed` message with a real attachment part, a deep 5-message thread, DRAFT/SENT/SPAM-labelled messages, and a `drafts/` corpus.
+The three committed accounts cover the scope tiers: `work` (`gmail.modify` + `gmail.settings.basic` → 34-tool catalog), `personal` (`gmail.readonly`), and `full` (`gmail.full` + `gmail.settings.basic` → the complete **36-tool** catalog, including `delete_email` / `batch_delete_emails`). The `full` account carries the richer corpus: an HTML `multipart/alternative` body, a `multipart/mixed` message with a real attachment part, a deep 5-message thread, DRAFT/SENT/SPAM-labelled messages, and a `drafts/` corpus (`list_drafts` + the draft edit→update→send round-trip).
 
 Layout:
 - `fixtures/gmail/<accountId>/` — per-account JSON corpus: `profile.json`, `scopes.json`, `labels.json`, `filters.json`, `messages/<id>.json`, `threads/<id>.json`, plus optional `drafts/<id>.json`, `attachments/<msgId>-<attId>.json`, and `sendas.json` / `forwarding.json`.
@@ -436,7 +437,7 @@ Optional capture+anonymise scripts (`scripts/capture-fixtures.ts`, `scripts/anon
 
 - **`gmail console` polish.** The REPL exists, prints a legend, routes through the commander tree, and supports `accounts` plus `switch <id>` / `sw <id>`. Future polish: inline `@inquirer/prompts` widgets for destructive ops and richer account/status summaries.
 - **`usage.kdl` spec for shell completions.** Generated from the commander tree by `scripts/gen-usage.ts` (run via `pnpm run gen-usage`). `pnpm verify` runs `gen-usage --check` so drift fails CI. The committed `usage.kdl` is consumed by the [`usage`](https://usage.jdx.dev/) Rust binary; `gmail --usage-spec` also prints it on demand.
-- **TUI follow-ups.** `gmail tui` opens a 3-pane Ink/React UI against the in-process dispatcher: vim-modal keymap, `$EDITOR` suspend for compose / reply / reply-all / draft-edit, 8 themes (`:theme` overlay), account switcher (`:account` modal that subscribes to `sessionEvents.accountChanged`), dev stats overlay (`~` / `:stats`), per-thread LRU cache (`GMAIL_TUI_CACHE_MB`). Reads `~/.gmail-mcp/config.json` for `theme` / `editor` / `cacheMB`; `GMAIL_TUI_*` env wins over the file. Follow-ups: visual-mode batch ops, filter/label CRUD UI, attachment preview, sent/drafts folder UIs.
+- **TUI follow-ups.** `gmail tui` opens a 3-pane Ink/React UI against the in-process dispatcher: vim-modal keymap, `$EDITOR` suspend for compose / reply / reply-all / draft-edit, 8 themes (`:theme` overlay), account switcher (`:account` modal that subscribes to `sessionEvents.accountChanged`), dev stats overlay (`~` / `:stats`), per-thread LRU cache (`GMAIL_TUI_CACHE_MB`). **Draft recovery (D2):** every compose persists a `<kind>-<ts>[-n].eml` under `<configDir>/drafts/` carrying `X-Gmail-MCP-Kind`/`-Source-Message-Id`/`-Source-Thread-Id` breadcrumbs (built + parsed + stripped-before-send in `compose-parser.ts`); `p` / `:drafts` opens the recovery picker (`DraftsRecovery.tsx`, list/resume/discard), `:resume` reopens the most recent, and `e` (`msg.draft.edit`) now correlates the focused draft to a server-side draft via `list_drafts` and edits it in place with `update_draft` (no duplicate). Reads `~/.gmail-mcp/config.json` for `theme` / `editor` / `cacheMB`; `GMAIL_TUI_*` env wins over the file. Follow-ups: visual-mode batch ops, filter/label CRUD UI, attachment preview, sent/drafts folder UIs.
 - **VHS screenshot pipeline** ✅ shipped. `pnpm screenshots` regenerates `docs/screenshots/*.{png,gif}` from `scripts/screenshots/*.tape` against `GMAIL_FIXTURE_MODE=1`. The 6 stills + animated workflow GIF feed the top-level README and `docs/SCREENSHOTS.md` gallery. CI (`.github/workflows/screenshots.yml`) auto-regenerates on push (auto-commits with `[skip ci]`) and gates PRs (`git diff --exit-code`). Local pre-push hook at `.githooks/pre-push` refuses to push TUI changes that drift the captures.
 - **Phase G2 — multi-tenant HTTP mode.** Defer until a real use case appears. Would add per-request OAuth introspection, per-tenant credential lookup, scope-isolated rate limiting.
 - **`zod` 3 → 4** (with `zod-to-json-schema` co-bump). zod 4 changes the discriminated-union surface, default-value semantics, and error format. The schemas in `tools.ts` plus the test fixtures all need review. Defer until there's a concrete reason — currently no zod 3 bug is biting us.
