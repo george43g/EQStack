@@ -1,12 +1,30 @@
-# Monorepo Migration — DEFERRED (planning doc)
+# Monorepo Migration — ACTIVE (planning doc)
 
-**Status:** Deferred. Not scheduled for the current cycle. This doc parks the plan and the
-decisions so nothing is lost; revisit when we start building the separate analytics tool.
+**Status:** **ACTIVE / handed off (2026-07-27).** The feedback backlog (#212–218, v1.15.1→v1.19.0)
+is done, so the migration is unblocked and started. Execution is being handed to another agent
+(Codex) for a couple of days while the primary session is rate-limited. **The live, step-by-step
+handoff — checklist, progress log, open questions, ops rules — is [`../HANDOFF.md`](../HANDOFF.md).
+Read that first for *how to execute*; this doc is the *why* + design reference.**
 
-**Why deferred:** Finalising imsg-mcp's planned features comes first. The migration is potentially
-destructive and likely takes several iterations to get right, so it should not compete with the
-feature work. The analytics tool and the monorepo were surfaced mainly as **direction-setting
-context**, not immediate work.
+**Why it was deferred (history):** Finalising imsg-mcp's planned features came first. The migration
+is potentially destructive and likely takes several iterations, so it should not compete with the
+feature work. Those features are now shipped.
+
+**New decisions layered on (2026-07-26/27):**
+- **Suite rename** — the repo will be renamed to reflect the tool *suite* it releases, anchored to
+  the novel **humans files** convention. Name is George's pending decision (candidates: `humanstack`
+  [recommended], `humans`, `humans-tools`, `kith`). The **published npm package stays `imsg-mcp`** —
+  the rename touches only the GitHub repo/brand + the internal private-package scope, so it is cheap
+  and reversible. See `../HANDOFF.md` §4.
+- **Scaffold a blank second app** as part of the shell work (empty placeholder — proves the structure
+  end-to-end), before any analytics domain code.
+- **Package extraction stays deferred** until George pastes the analytics research + plan; only then
+  do we decide which packages to refactor out and write stage-by-stage implementation docs.
+
+**Deferred idea (park — flesh out later):** the analytics app should be able to interface with
+personal/home observability stacks — **Grafana + Prometheus** (and similar): expose
+relationship/messaging metrics as a Prometheus-scrapeable endpoint (or pushgateway) so users can
+build Grafana dashboards over their own corpus. Not yet designed.
 
 ---
 
@@ -98,11 +116,12 @@ For when we design the corpus boundary — the analytics engine relies on:
   `parseAttributedBody` + `resolveContacts` cross the bridge; `IMSG_DISABLE_NATIVE=1` forces the TS
   fallback.
 
-## Trigger to revisit
+## Trigger to revisit — TRIGGERED (2026-07-27)
 
-Start this when we begin the analytics app: `mcp-scaffold add-mcp-app <analytics>` scaffolds a second
-MCP app inside the (by-then converted) monorepo. Each of that tool's features gets its own
-spec → plan → implementation cycle.
+This is now active. Live execution state, phase checklist and progress log are in
+[`../HANDOFF.md`](../HANDOFF.md). Once the shell + blank app are in place,
+`mcp-scaffold add-mcp-app <analytics>` scaffolds the real analytics app; each of that tool's features
+then gets its own spec → plan → implementation cycle (starts after George pastes the research).
 
 ## References
 

@@ -2,6 +2,11 @@
 
 MCP server for iMessage on macOS. Lets AI agents send and receive iMessages (and SMS) so they can text the user for input or notifications.
 
+> **🚧 ACTIVE HANDOFF (2026-07-27): monorepo conversion in progress.** If you are picking up work,
+> **read [`HANDOFF.md`](HANDOFF.md) (repo root) first** — it is the operational source of truth
+> (mission, phase checklist, progress log, open questions for George, and ops rules). Status/backlog:
+> [`docs/STATUS.md`](docs/STATUS.md); design/why: [`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md).
+
 ## What This Repo Is
 
 - **Stack**: TypeScript (ESM), Node **24+**, MCP SDK, `better-sqlite3`, `imessage-parser`, Zod.

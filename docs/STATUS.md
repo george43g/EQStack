@@ -4,7 +4,12 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-07-23 · current release **v1.15.0** (npm)._
+_Last updated 2026-07-27 · current release **v1.19.0** (npm)._
+
+> **🚧 Monorepo conversion is ACTIVE and handed off.** For the live execution checklist, progress
+> log, open questions, and ops rules, read **[`../HANDOFF.md`](../HANDOFF.md)** (repo root) — that is
+> the operational source of truth during the handoff. Design/why lives in
+> [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md).
 
 ---
 
@@ -16,9 +21,14 @@ watchdog. The **finalise cycle (v1.6.0 → v1.8.0)** closed every remaining v1.4
 the **Media-Intel cycle (v1.9.0 → v1.15.0)** made the tool *understand* media — Apple-native
 transcripts/Genmoji text, a provider-agnostic AI interpretation layer with permanent caching
 exposed uniformly across MCP/CLI/TUI, an `imsg setup` wizard + TUI settings panel, edit-history,
-and a best-effort attachment sync nudge. The **monorepo/turborepo migration is deliberately
-deferred** — it is a corpus-consumer concern for the future relationship-analytics app, captured
-in full in [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md).
+and a best-effort attachment sync nudge. The **feedback cycle (v1.15.1 → v1.19.0)** then closed the
+#212–218 backlog: 3 TUI bugs (PR #41, v1.15.1), `search_contacts` relevance ranking (#42, v1.16.0),
+`get_messages` scope signal + identifier over-match fix (#43, v1.17.0), list completeness metadata
+`truncated`/`totalAvailable` (#44, v1.18.0), and a normalized identity block + E.164 on
+`get_contact`/`resolve_handle` (#45, v1.19.0). The **monorepo/turborepo migration is now ACTIVE**
+(feature work is done) — a corpus-consumer restructure for the future relationship-analytics app;
+execution is handed off in [`../HANDOFF.md`](../HANDOFF.md), design in
+[`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md).
 
 ### Shipped in the finalise cycle (v1.6.0 → v1.8.0)
 
@@ -175,8 +185,18 @@ Cycle shipped v1.9.0 → v1.15.0; these are the deliberately-out-of-scope tails.
   realistic queries). Revisit only on a concrete "describe-the-topic" request.
 
 ### Deferred (own doc)
-- **Monorepo / turborepo migration** → [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md).
-  Trigger: starting the analytics app via the sibling template's `mcp-scaffold add-mcp-app`.
+- **Monorepo / turborepo migration** → **ACTIVE / handed off**, see [`../HANDOFF.md`](../HANDOFF.md);
+  design in [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md).
+
+### Deferred ideas (future analytics app — flesh out later)
+- **Home-lab observability interface (Grafana / Prometheus).** The relationship-analytics app should be
+  able to expose relationship/messaging metrics to personal observability stacks — e.g. a
+  Prometheus-scrapeable endpoint (or pushgateway) so users build Grafana dashboards over their own
+  message corpus. Not yet designed; George to flesh out. Captured also in
+  [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md) and `../HANDOFF.md` §10.
+- **Suite rename** — repo → suite name (candidates `humanstack`/`humans`/`humans-tools`/`kith`),
+  anchored to the humans-files convention; published `imsg-mcp` package name unchanged. George's pick;
+  see `../HANDOFF.md` §4.
 
 ---
 
