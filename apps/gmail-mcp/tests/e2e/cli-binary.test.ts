@@ -212,6 +212,45 @@ describe("e2e: gmail CLI binary against fixtures", () => {
     }
   });
 
+  it("exposes the full 35-tool catalog for a gmail.full account", async () => {
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    );
+    // The `full` fixture account grants gmail.full + gmail.settings.basic, so
+    // every tool is in scope — including the two gmail.full-only deletion tools
+    // hidden from the work account's 33-tool catalog.
+    env.GMAIL_ACCOUNT = "full";
+    const transport = new StdioClientTransport({
+      command: NODE,
+      args: [CLI_BIN, "mcp"],
+      env,
+      stderr: "pipe",
+    });
+    const client = new Client({ name: "fixture-full-e2e", version: "1.0.0" });
+    try {
+      await client.connect(transport);
+      const catalog = await client.listTools();
+      expect(catalog.tools.length).toBe(35);
+      const names = catalog.tools.map((tool) => tool.name);
+      expect(names).toEqual(
+        expect.arrayContaining(["delete_email", "batch_delete_emails"]),
+      );
+
+      // delete_email is dispatchable (fixture delete returns canned success).
+      const deleted = await client.callTool({
+        name: "delete_email",
+        arguments: { messageId: "f_msg_001" },
+      });
+      expect(deleted.isError).not.toBe(true);
+      expect(deleted.structuredContent).toMatchObject({
+        messageId: "f_msg_001",
+        status: "deleted",
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
   it("`gmail console` processes piped account/scope browsing without mixing single-account inboxes", () => {
     const script = [
       "accounts",

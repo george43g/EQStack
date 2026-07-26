@@ -21,7 +21,12 @@ on:
 jobs:
   check:
     name: Screenshot Check
-    runs-on: ubuntu-latest
+    # Pin the runner image (not `ubuntu-latest`): on GitHub-hosted runners this
+    # is the mechanism that pins the apt package snapshot for ttyd / ffmpeg /
+    # fonts-jetbrains-mono. Exact `apt-get install pkg=version` strings rot out
+    # of the archive on the next security update and hard-fail CI, so we pin the
+    # image and log the resolved versions instead (see the install step).
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -48,6 +53,19 @@ jobs:
           sudo apt-get install -y --no-install-recommends ttyd ffmpeg fonts-jetbrains-mono
           fc-cache -f
 
+      - name: Record pinned tool versions
+        run: |
+          set -euo pipefail
+          # The runner image (ubuntu-24.04) fixes these package versions; logging
+          # them makes any drift after an image bump visible + diffable in CI.
+          echo "vhs:               $(vhs --version 2>&1 | head -1)"
+          echo "ttyd:              $(ttyd --version 2>&1 | head -1)"
+          echo "ffmpeg:            $(ffmpeg -version 2>&1 | head -1)"
+          echo "fonts-jetbrains:   $(dpkg-query -W -f='${Version}' fonts-jetbrains-mono)"
+          fc-list | grep -i 'jetbrains' >/dev/null || {
+            echo "::error::JetBrains Mono font not registered after install"; exit 1;
+          }
+
       - name: Regenerate screenshots
         run: |
           set -euo pipefail
@@ -58,6 +76,41 @@ jobs:
             echo "Rendering $tape"
             vhs "$tape"
           done
+
+      - name: Verify screenshot outputs (exist, non-empty, expected dimensions)
+        env:
+          EXPECTED_W: "1400"
+          EXPECTED_H: "800"
+        run: |
+          set -euo pipefail
+          expected=(
+            docs/screenshots/01-boot-inbox.png
+            docs/screenshots/02-open-thread.png
+            docs/screenshots/03-theme-picker.png
+            docs/screenshots/04-account-switcher.png
+            docs/screenshots/05-compose-flow.png
+            docs/screenshots/06-dev-stats.png
+            docs/screenshots/workflow-demo.gif
+          )
+          fail=0
+          for f in "${expected[@]}"; do
+            if [[ ! -s "$f" ]]; then
+              echo "::error::Missing or empty screenshot: $f"
+              fail=1
+              continue
+            fi
+            # ffprobe ships with the ffmpeg package we install above; it reads
+            # both PNG and GIF dimensions from the first video stream.
+            dims="$(ffprobe -v error -select_streams v:0 \
+              -show_entries stream=width,height -of csv=s=x:p=0 "$f")"
+            if [[ "$dims" != "${EXPECTED_W}x${EXPECTED_H}" ]]; then
+              echo "::error::$f is ${dims}, expected ${EXPECTED_W}x${EXPECTED_H}"
+              fail=1
+            else
+              echo "ok  $f (${dims})"
+            fi
+          done
+          [[ "$fail" -eq 0 ]] || { echo "Screenshot verification failed."; exit 1; }
 
       - name: Report screenshot drift
         run: |
@@ -70,6 +123,9 @@ jobs:
           fi
 
       - uses: actions/upload-artifact@v4
+        # Upload even when the verification gate fails so reviewers can inspect
+        # whatever did render.
+        if: always()
         with:
           name: gmail-mcp-screenshots
           path: docs/screenshots/
@@ -79,7 +135,7 @@ jobs:
     name: Commit Screenshots
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

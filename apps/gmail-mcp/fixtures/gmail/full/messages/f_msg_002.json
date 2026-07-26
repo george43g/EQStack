@@ -1,0 +1,37 @@
+{
+  "id": "f_msg_002",
+  "threadId": "f_thr_002",
+  "labelIds": ["INBOX", "UNREAD", "Label_11"],
+  "snippet": "Your weekly digest is ready. View the HTML version for the full layout.",
+  "historyId": "2000003",
+  "internalDate": "1730186400000",
+  "payload": {
+    "mimeType": "multipart/alternative",
+    "headers": [
+      { "name": "From", "value": "digest@fixture.test" },
+      { "name": "To", "value": "user-full@fixture.test" },
+      { "name": "Subject", "value": "[fixture] Weekly digest" },
+      { "name": "Date", "value": "Wed, 29 Oct 2025 09:00:00 +0000" },
+      { "name": "Message-Id", "value": "<digest-full@fixture.test>" }
+    ],
+    "parts": [
+      {
+        "partId": "0",
+        "mimeType": "text/plain",
+        "body": {
+          "size": 71,
+          "data": "WW91ciB3ZWVrbHkgZGlnZXN0IGlzIHJlYWR5LiBWaWV3IHRoZSBIVE1MIHZlcnNpb24gZm9yIHRoZSBmdWxsIGxheW91dC4K"
+        }
+      },
+      {
+        "partId": "1",
+        "mimeType": "text/html",
+        "body": {
+          "size": 168,
+          "data": "PGh0bWw+PGJvZHk+PGgxPldlZWtseSBEaWdlc3Q8L2gxPjxwPlRocmVlIDxzdHJvbmc+bmV3PC9zdHJvbmc+IGl0ZW1zIHRoaXMgd2Vlay48L3A+PHVsPjxsaT5EZXBsb3kgc2hpcHBlZDwvbGk+PGxpPkxhdGVuY3kgZmxhdDwvbGk+PGxpPk5vIHJlZ3Jlc3Npb25zPC9saT48L3VsPjwvYm9keT48L2h0bWw+"
+        }
+      }
+    ]
+  },
+  "sizeEstimate": 2048
+}

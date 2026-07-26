@@ -1,0 +1,107 @@
+{
+  "id": "f_thr_100",
+  "historyId": "2000020",
+  "snippet": "Kicking off the migration thread. Target cutover is next Tuesday.",
+  "messages": [
+    {
+      "id": "f_msg_101",
+      "threadId": "f_thr_100",
+      "labelIds": ["INBOX", "Label_10"],
+      "snippet": "Kicking off the migration thread. Target cutover is next Tuesday.",
+      "internalDate": "1730600000000",
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          { "name": "From", "value": "lead@fixture.test" },
+          { "name": "To", "value": "user-full@fixture.test" },
+          { "name": "Subject", "value": "[fixture] Migration cutover plan" },
+          { "name": "Date", "value": "Mon, 03 Nov 2025 08:00:00 +0000" }
+        ],
+        "body": {
+          "size": 66,
+          "data": "S2lja2luZyBvZmYgdGhlIG1pZ3JhdGlvbiB0aHJlYWQuIFRhcmdldCBjdXRvdmVyIGlzIG5leHQgVHVlc2RheS4K"
+        }
+      }
+    },
+    {
+      "id": "f_msg_102",
+      "threadId": "f_thr_100",
+      "labelIds": ["INBOX", "SENT", "Label_10"],
+      "snippet": "Sounds good. I will prep the rollback plan and the runbook.",
+      "internalDate": "1730603600000",
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          { "name": "From", "value": "user-full@fixture.test" },
+          { "name": "To", "value": "lead@fixture.test" },
+          { "name": "Subject", "value": "Re: [fixture] Migration cutover plan" },
+          { "name": "Date", "value": "Mon, 03 Nov 2025 09:00:00 +0000" }
+        ],
+        "body": {
+          "size": 59,
+          "data": "U291bmRzIGdvb2QuIEkgd2lsbCBwcmVwIHRoZSByb2xsYmFjayBwbGFuIGFuZCB0aGUgcnVuYm9vay4K"
+        }
+      }
+    },
+    {
+      "id": "f_msg_103",
+      "threadId": "f_thr_100",
+      "labelIds": ["INBOX", "Label_10"],
+      "snippet": "Runbook drafted. One open question: do we drain connections first?",
+      "internalDate": "1730690000000",
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          { "name": "From", "value": "lead@fixture.test" },
+          { "name": "To", "value": "user-full@fixture.test" },
+          { "name": "Subject", "value": "Re: [fixture] Migration cutover plan" },
+          { "name": "Date", "value": "Tue, 04 Nov 2025 09:00:00 +0000" }
+        ],
+        "body": {
+          "size": 66,
+          "data": "UnVuYm9vayBkcmFmdGVkLiBPbmUgb3BlbiBxdWVzdGlvbjogZG8gd2UgZHJhaW4gY29ubmVjdGlvbnMgZmlyc3Q/Cg=="
+        }
+      }
+    },
+    {
+      "id": "f_msg_104",
+      "threadId": "f_thr_100",
+      "labelIds": ["INBOX", "SENT", "Label_10"],
+      "snippet": "Yes, drain first, then flip the flag. I updated the checklist.",
+      "internalDate": "1730693600000",
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          { "name": "From", "value": "user-full@fixture.test" },
+          { "name": "To", "value": "lead@fixture.test" },
+          { "name": "Subject", "value": "Re: [fixture] Migration cutover plan" },
+          { "name": "Date", "value": "Tue, 04 Nov 2025 10:00:00 +0000" }
+        ],
+        "body": {
+          "size": 61,
+          "data": "WWVzLCBkcmFpbiBmaXJzdCwgdGhlbiBmbGlwIHRoZSBmbGFnLiBJIHVwZGF0ZWQgdGhlIGNoZWNrbGlzdC4K"
+        }
+      }
+    },
+    {
+      "id": "f_msg_105",
+      "threadId": "f_thr_100",
+      "labelIds": ["INBOX", "Label_10"],
+      "snippet": "Cutover complete. All green. Closing the thread.",
+      "internalDate": "1730780000000",
+      "payload": {
+        "mimeType": "text/plain",
+        "headers": [
+          { "name": "From", "value": "lead@fixture.test" },
+          { "name": "To", "value": "user-full@fixture.test" },
+          { "name": "Subject", "value": "Re: [fixture] Migration cutover plan" },
+          { "name": "Date", "value": "Wed, 05 Nov 2025 09:00:00 +0000" }
+        ],
+        "body": {
+          "size": 49,
+          "data": "Q3V0b3ZlciBjb21wbGV0ZS4gQWxsIGdyZWVuLiBDbG9zaW5nIHRoZSB0aHJlYWQuCg=="
+        }
+      }
+    }
+  ]
+}

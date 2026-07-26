@@ -1,0 +1,42 @@
+{
+  "id": "f_msg_003",
+  "threadId": "f_thr_003",
+  "labelIds": ["INBOX", "Label_11", "IMPORTANT"],
+  "snippet": "Please find the quarterly report attached as a PDF.",
+  "historyId": "2000004",
+  "internalDate": "1730272800000",
+  "payload": {
+    "mimeType": "multipart/mixed",
+    "headers": [
+      { "name": "From", "value": "reports@fixture.test" },
+      { "name": "To", "value": "user-full@fixture.test" },
+      { "name": "Subject", "value": "[fixture] Quarterly report (PDF attached)" },
+      { "name": "Date", "value": "Thu, 30 Oct 2025 09:00:00 +0000" },
+      { "name": "Message-Id", "value": "<report-full@fixture.test>" }
+    ],
+    "parts": [
+      {
+        "partId": "0",
+        "mimeType": "text/plain",
+        "body": {
+          "size": 52,
+          "data": "UGxlYXNlIGZpbmQgdGhlIHF1YXJ0ZXJseSByZXBvcnQgYXR0YWNoZWQgYXMgYSBQREYuCg=="
+        }
+      },
+      {
+        "partId": "1",
+        "mimeType": "application/pdf",
+        "filename": "quarterly-report.pdf",
+        "headers": [
+          { "name": "Content-Type", "value": "application/pdf; name=\"quarterly-report.pdf\"" },
+          { "name": "Content-Disposition", "value": "attachment; filename=\"quarterly-report.pdf\"" }
+        ],
+        "body": {
+          "attachmentId": "att_001",
+          "size": 94
+        }
+      }
+    ]
+  },
+  "sizeEstimate": 4096
+}

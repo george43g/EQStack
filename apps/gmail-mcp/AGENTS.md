@@ -4,7 +4,7 @@
 
 ## What this repo is
 
-Gmail integration exposed through 33 tools (read, search, send, draft lifecycle, reply-all, phishing-to-spam, labels, filters, threads, downloads, batch ops, plus a `health_check` canary and the M2-light `list_accounts` / `switch_account` meta-tools). Authenticates via OAuth2 against a personal Google project. **One binary** ships in this package — `gmail` — with mode subcommands:
+Gmail integration exposed through 35 tools (read, search, send, draft lifecycle, reply-all, phishing-to-spam, labels, filters, threads, downloads, batch ops, send-as identities, cross-account unread summary, plus a `health_check` canary and the M2-light `list_accounts` / `switch_account` meta-tools). Two of the 35 — `delete_email` and `batch_delete_emails` — require the `gmail.full` scope, so an account without it sees a 33-tool catalog. Authenticates via OAuth2 against a personal Google project. **One binary** ships in this package — `gmail` — with mode subcommands:
 
 | Subcommand | Purpose | Transport |
 |---|---|---|
@@ -391,7 +391,7 @@ After every change to this repo:
 3. **Regenerate/check CLI usage artifacts when Commander commands or help text change**: `pnpm run gen-usage`, then `pnpm run gen-usage -- --check`. `usage.kdl` is the source for completions and manpages.
 4. **Run the full test suite**: `npm test`.
 5. **Run the stress harness on changes that touch the dispatcher / lifecycle**: `npm run stress`.
-6. **Run the e2e suite when touching bootstrap / account / dispatch surfaces**: `pnpm test:e2e`. Boots the dispatcher against `fixtures/gmail/{work,personal}/` and exercises `list_inbox_threads → switch_account → list_inbox_threads` + the CLI binary. `pnpm verify` runs it automatically.
+6. **Run the e2e suite when touching bootstrap / account / dispatch surfaces**: `pnpm test:e2e`. Boots the dispatcher against `fixtures/gmail/{work,personal,full}/` and exercises `list_inbox_threads → switch_account → list_inbox_threads`, the full 35-tool `gmail.full` catalog (attachment download, HTML read, deep thread, permanent delete), + the CLI binary. `pnpm verify` runs it automatically.
 
 For release or publish-prep changes, also run `npm pack --dry-run` and inspect the tarball file list.
 
@@ -418,13 +418,15 @@ Add a case here when you ship anything that changes lifecycle, dispatch, error h
 
 ## Fixture-driven e2e tests
 
-`tests/e2e/` runs the full bootstrap → dispatcher pipeline against `fixtures/gmail/{work,personal}/` instead of real Gmail. Toggled by `GMAIL_FIXTURE_MODE=1` (set automatically by the e2e setup; also available via `node --env-file=.env.test`).
+`tests/e2e/` runs the full bootstrap → dispatcher pipeline against `fixtures/gmail/{work,personal,full}/` instead of real Gmail. Toggled by `GMAIL_FIXTURE_MODE=1` (set automatically by the e2e setup; also available via `node --env-file=.env.test`).
+
+The three committed accounts cover the scope tiers: `work` (`gmail.modify` + `gmail.settings.basic` → 33-tool catalog), `personal` (`gmail.readonly`), and `full` (`gmail.full` + `gmail.settings.basic` → the complete **35-tool** catalog, including `delete_email` / `batch_delete_emails`). The `full` account carries the richer corpus: an HTML `multipart/alternative` body, a `multipart/mixed` message with a real attachment part, a deep 5-message thread, DRAFT/SENT/SPAM-labelled messages, and a `drafts/` corpus.
 
 Layout:
-- `fixtures/gmail/<accountId>/` — per-account JSON corpus: `profile.json`, `scopes.json`, `labels.json`, `filters.json`, `messages/<id>.json`, `threads/<id>.json`.
+- `fixtures/gmail/<accountId>/` — per-account JSON corpus: `profile.json`, `scopes.json`, `labels.json`, `filters.json`, `messages/<id>.json`, `threads/<id>.json`, plus optional `drafts/<id>.json`, `attachments/<msgId>-<attId>.json`, and `sendas.json` / `forwarding.json`.
 - `src/fixtures/gmail-schemas.ts` — Zod mirrors of `gmail_v1.Schema$X` shapes. Every fixture is `.parse()`'d before being returned by the fake gmail client; a schema mismatch surfaces immediately.
-- `src/fixtures/gmail-fixture-client.ts` — implements ~15 `gmail.users.*` methods (read paths return validated fixture data, mutating paths return canned success).
-- `src/fixtures/schemas.test.ts` — runs in the unit suite. Validates every committed fixture under Zod **and** runs a no-real-data guard (denylist: `george.g93`, `@anthropic.com`). CI fails if a fixture leaks real data.
+- `src/fixtures/gmail-fixture-client.ts` — implements the `gmail.users.*` methods the ops call (getProfile, messages.*, messages.attachments.get, threads.*, drafts.{list,get,create,update,send,delete}, labels.*, settings.*). Read paths return validated fixture data; mutating paths return canned success.
+- `src/fixtures/schemas.test.ts` — runs in the unit suite. Validates every committed fixture (messages, threads, drafts, attachments) under Zod **and** runs a no-real-data guard (denylist: `george.g93`, `@anthropic.com`). CI fails if a fixture leaks real data.
 
 Adding new fixtures: hand-craft JSON under `fixtures/gmail/<account>/`, run `pnpm test` to confirm Zod validation, then `pnpm test:e2e` to confirm the dispatcher serves them. Synthetic email addresses use the `@fixture.test` TLD by convention.
 

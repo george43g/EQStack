@@ -144,9 +144,11 @@ describe("fixture-mode bootstrap end-to-end", () => {
         expect(a.emailAddress).toMatch(/@fixture\.test$/);
       }
     }
-    // And the manifest must contain both fixture accounts.
+    // And the manifest must contain every committed fixture account (the
+    // fresh-temp-dir path derives it from the fixture dirs under
+    // fixtures/gmail/, so this list grows as the corpus does).
     const ids = structured.accounts.map((a) => a.id).sort();
-    expect(ids).toEqual(["personal", "work"]);
+    expect(ids).toEqual(["full", "personal", "work"]);
   });
 
   it("ensureFixtureConfigDir preserves an explicit GMAIL_CONFIG_DIR (e2e suite uses .test-config)", async () => {

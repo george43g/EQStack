@@ -1,0 +1,23 @@
+{
+  "id": "f_draft_001",
+  "message": {
+    "id": "f_msg_006",
+    "threadId": "f_thr_006",
+    "labelIds": ["DRAFT"],
+    "snippet": "Draft in progress: remember to attach the agenda before sending.",
+    "internalDate": "1730532000000",
+    "payload": {
+      "mimeType": "text/plain",
+      "headers": [
+        { "name": "From", "value": "user-full@fixture.test" },
+        { "name": "To", "value": "team@fixture.test" },
+        { "name": "Subject", "value": "[fixture] Draft: sync agenda" },
+        { "name": "Date", "value": "Sun, 02 Nov 2025 09:00:00 +0000" }
+      ],
+      "body": {
+        "size": 55,
+        "data": "SGkgdGVhbSwgcXVpY2sgbm90ZSBhaGVhZCBvZiB0aGUgc3luYyDigJQgYWdlbmRhIHRvIGZvbGxvdy4K"
+      }
+    }
+  }
+}

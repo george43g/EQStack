@@ -5,7 +5,7 @@
 //   gmail.users.messages.{get, list, modify, batchModify, delete, send}
 //   gmail.users.messages.attachments.get
 //   gmail.users.threads.{get, list, modify}
-//   gmail.users.drafts.{create, update, send, delete}
+//   gmail.users.drafts.{list, get, create, update, send, delete}
 //   gmail.users.labels.{get, list, create, update, delete}
 //   gmail.users.settings.filters.{get, list, create, delete}
 //
@@ -22,9 +22,11 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   AttachmentBodySchema,
+  DraftSchema,
   FilterSchema,
   ForwardingAddressSchema,
   LabelSchema,
+  ListDraftsResponseSchema,
   ListFiltersResponseSchema,
   ListForwardingResponseSchema,
   ListLabelsResponseSchema,
@@ -175,6 +177,32 @@ export class GmailFixtureClient {
     },
 
     drafts: {
+      list: async (params: ListRequestParams): Promise<RestResponse<unknown>> => {
+        const drafts = this.listAllDrafts();
+        const limit = params.maxResults ?? drafts.length;
+        const trimmed = drafts.slice(0, limit);
+        return {
+          data: ListDraftsResponseSchema.parse({
+            // The real drafts.list returns lightweight stubs (draft id + a
+            // message stub of id/threadId), not the full message body.
+            drafts: trimmed.map((d) => ({
+              id: d.id,
+              message: d.message ? { id: d.message.id, threadId: d.message.threadId } : undefined,
+            })),
+            resultSizeEstimate: drafts.length,
+          }),
+        };
+      },
+
+      get: async (params: {
+        userId: string;
+        id: string;
+        format?: string;
+      }): Promise<RestResponse<unknown>> => {
+        const raw = this.readJson(path.join("drafts", `${params.id}.json`));
+        return { data: DraftSchema.parse(raw) };
+      },
+
       create: async (_params: {
         userId: string;
         requestBody?: { message?: { raw?: string; threadId?: string } };
@@ -358,6 +386,16 @@ export class GmailFixtureClient {
       .readdirSync(dir)
       .filter((f) => f.endsWith(".json"))
       .map((f) => ThreadSchema.parse(JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"))));
+  }
+
+  private listAllDrafts(): Array<ReturnType<typeof DraftSchema.parse>> {
+    const dir = path.join(this.accountDir, "drafts");
+    if (!fs.existsSync(dir)) return [];
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".json"))
+      .sort()
+      .map((f) => DraftSchema.parse(JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"))));
   }
 
   private readLabels(): Array<ReturnType<typeof LabelSchema.parse>> {

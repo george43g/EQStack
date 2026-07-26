@@ -8,6 +8,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  AttachmentBodySchema,
+  DraftSchema,
   FilterSchema,
   LabelSchema,
   MessageSchema,
@@ -103,6 +105,26 @@ describe("fixture schema validation", () => {
         it(`${accountName}/threads/${f} parses as Thread`, () => {
           const raw = JSON.parse(fs.readFileSync(path.join(threadsDir, f), "utf8"));
           expect(() => ThreadSchema.parse(raw)).not.toThrow();
+        });
+      }
+    }
+
+    const draftsDir = path.join(accountDir, "drafts");
+    if (fs.existsSync(draftsDir)) {
+      for (const f of fs.readdirSync(draftsDir).filter((n) => n.endsWith(".json"))) {
+        it(`${accountName}/drafts/${f} parses as Draft`, () => {
+          const raw = JSON.parse(fs.readFileSync(path.join(draftsDir, f), "utf8"));
+          expect(() => DraftSchema.parse(raw)).not.toThrow();
+        });
+      }
+    }
+
+    const attachmentsDir = path.join(accountDir, "attachments");
+    if (fs.existsSync(attachmentsDir)) {
+      for (const f of fs.readdirSync(attachmentsDir).filter((n) => n.endsWith(".json"))) {
+        it(`${accountName}/attachments/${f} parses as AttachmentBody`, () => {
+          const raw = JSON.parse(fs.readFileSync(path.join(attachmentsDir, f), "utf8"));
+          expect(() => AttachmentBodySchema.parse(raw)).not.toThrow();
         });
       }
     }

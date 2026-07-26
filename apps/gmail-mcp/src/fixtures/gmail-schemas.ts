@@ -228,6 +228,14 @@ export const DraftSchema = z
   })
   .passthrough();
 
+export const ListDraftsResponseSchema = z
+  .object({
+    drafts: z.array(DraftSchema).optional(),
+    nextPageToken: z.string().optional(),
+    resultSizeEstimate: z.number().optional(),
+  })
+  .passthrough();
+
 // ── Attachments ──────────────────────────────────────────────────────────────
 
 export const AttachmentBodySchema = z
@@ -246,6 +254,7 @@ export type Label = z.infer<typeof LabelSchema>;
 export type Filter = z.infer<typeof FilterSchema>;
 export type Profile = z.infer<typeof ProfileSchema>;
 export type Draft = z.infer<typeof DraftSchema>;
+export type ListDraftsResponse = z.infer<typeof ListDraftsResponseSchema>;
 export type ListMessagesResponse = z.infer<typeof ListMessagesResponseSchema>;
 export type ListThreadsResponse = z.infer<typeof ListThreadsResponseSchema>;
 export type ListLabelsResponse = z.infer<typeof ListLabelsResponseSchema>;
