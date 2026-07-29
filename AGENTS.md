@@ -217,3 +217,11 @@ Tool responses include performance metadata: engine (TS/Rust), query time, resul
 - **Build**: `pnpm build` (Vite library mode → `dist/index.js`). The `prepare` script auto-builds on `pnpm install`.
 - **Lint**: `pnpm lint` (Biome). **Typecheck**: `pnpm typecheck` (tsc --noEmit).
 - **Git LFS**: The update script runs `git lfs pull`. If LFS files are still pointer stubs, tests and the server will fail with SQLite errors.
+
+## MCP servers (project scope)
+
+Canonical set: `.mcp.json` (standard MCP schema, `${VAR}` placeholders only —
+never literal secrets). `.cursor/mcp.json` and `.warp/.mcp.json` are symlinks
+to it. `opencode.json`'s `mcp` key is GENERATED — after editing `.mcp.json`,
+run: `node ~/dotfiles/mcp/render.js --manifest .mcp.json --opencode opencode.json`.
+Global servers and scope decisions: `~/dotfiles/docs/mcp-registry.md`.
