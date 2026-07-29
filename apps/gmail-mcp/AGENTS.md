@@ -443,3 +443,11 @@ Optional capture+anonymise scripts (`scripts/capture-fixtures.ts`, `scripts/anon
 - **`zod` 3 → 4** (with `zod-to-json-schema` co-bump). zod 4 changes the discriminated-union surface, default-value semantics, and error format. The schemas in `tools.ts` plus the test fixtures all need review. Defer until there's a concrete reason — currently no zod 3 bug is biting us.
 - **Wrap remaining Gmail call sites with `withRetry` / `rateLimitAcquire`**. The library is in place and is wired into `read_email` and `search_emails` as the canonical pattern. The other read paths (`list_inbox_threads`, `get_thread`, `download_*`, etc.) and the idempotent writes (`modify_*`, `delete_*`, `batch_*`) are progressive-adoption candidates. Send/draft creation must remain unwrapped (non-idempotent).
 - **`mcp-evals` 1 → 2**, **`nodemailer` 7 → 8**, **`open` 10 → 11**, **TypeScript 5.x → 6.x** — defer until a concrete need.
+
+## MCP servers (project scope)
+
+Canonical set: `.mcp.json` (standard MCP schema, `${VAR}` placeholders only —
+never literal secrets). `.cursor/mcp.json` and `.warp/.mcp.json` are symlinks
+to it. `opencode.json`'s `mcp` key is GENERATED — after editing `.mcp.json`,
+run: `node ~/dotfiles/mcp/render.js --manifest .mcp.json --opencode opencode.json`.
+Global servers and scope decisions: `~/dotfiles/docs/mcp-registry.md`.

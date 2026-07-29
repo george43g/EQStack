@@ -1,0 +1,25 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "gmail-mcp-dev": {
+      "type": "local",
+      "command": [
+        "/Users/george/repos/Gmail-MCP-Server/node_modules/.bin/tsx",
+        "/Users/george/repos/Gmail-MCP-Server/scripts/mcp-dev-proxy.ts"
+      ],
+      "enabled": true,
+      "environment": {
+        "MCP_DEV_CMD": "/Users/george/repos/Gmail-MCP-Server/node_modules/.bin/tsx --env-file-if-exists=/Users/george/repos/Gmail-MCP-Server/.env --env-file-if-exists=/Users/george/repos/Gmail-MCP-Server/.env.local /Users/george/repos/Gmail-MCP-Server/src/cli/index.ts mcp"
+      }
+    },
+    "tmux-rust": {
+      "type": "local",
+      "command": [
+        "/opt/homebrew/bin/tmux-mcp-rs",
+        "--shell-type",
+        "zsh"
+      ],
+      "enabled": true
+    }
+  }
+}
