@@ -180,6 +180,32 @@ Cycle shipped v1.9.0 → v1.15.0; these are the deliberately-out-of-scope tails.
   [`docs/plans/media-intel/spike-sip-findings.md`](plans/media-intel/spike-sip-findings.md). Revisit
   only if Apple ships a public download API or prior art adds a battle-tested re-download hook.
 
+### 9. Real-time streaming, memory scroll & Messages API-surface (P1–P3)
+Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](plans/realtime-streaming-and-api-surface.md).
+- **Cache-hit metrics + viewport virtualization (P1)** — the TUI OOMs on long scroll. Bounded window
+  (`MESSAGES_HARD_CAP` 5000) + `messageCache` exist, but the *rendered Ink tree* isn't virtualized and
+  there's **no hit/miss instrumentation** (`cacheStats()` reports size only). Render visible+overscan
+  only; add `hits/misses/evictions` → dev-stats panel + a `cache_hit_rate` perf log.
+- **Core `ChangeWatcher` → EventBus (P1/P2)** — replace polling with a worker that watches
+  `chat.db-wal` and emits typed events (`message.new|edited|unsent|read`, `reaction`, `group.*`) by
+  reading rows past a high-water `ROWID`. **Reuse `IMessageDB.getMessagesAfter` — do not fork the
+  parser** (one parser, two callers: initial load + streamer). Frontends subscribe render-only: TUI
+  via `useSyncExternalStore`, console via async-iterator, MCP via a new long-poll `wait_for_changes`
+  tool (or resource-update notifications). "Detect-write-then-refresh" is a strictly *less* efficient
+  subset (same watch primitive, more render work) — build the event stream.
+- **Group joins / leaves / renames (P2) — real GAP.** `isHiddenSystemItem(item_type!=0)` filters all
+  group-action rows out everywhere. Decode into a typed `ConversationEvent` (member_added/removed,
+  renamed) via a dedicated path (keeps default `item_type=0` message queries + analytics unaffected).
+- **Rust parser hygiene (P2 privacy / P3 unify).** `native/src/attributed_body.rs` is the persisted
+  "simplified initial implementation" (comment: *"A full typedstream binary parser will be added in a
+  later phase"*) while TS has a structured `TypedStreamParser` — two strategies for one job. **Scrub
+  real-message-derived example fragments** ("Imagine…", "Heres the question") from its comments soon;
+  later, port Rust to the structured algorithm + differential test (`native == TS`), then delete the
+  heuristic path.
+- **P3 tails** — derived `serviceConfidence` heuristic so glitchy MMS-vs-iMessage data stays queryable
+  under a ruleset (don't drop it); first-class read-receipt indicator + reactive `message.read`;
+  explicit `focus_messages`/`activate` affordance (mirrors the reliable `tell Messages to activate`).
+
 ### Declined
 - **Semantic / vector search** — explicitly declined for v1 (fuzzy `WRatio` + literal `LIKE` cover
   realistic queries). Revisit only on a concrete "describe-the-topic" request.
