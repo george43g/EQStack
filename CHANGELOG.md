@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## [1.19.1](https://github.com/george43g/imsg-mcp/compare/v1.19.0...v1.19.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **mcpb:** run in Claude Desktop via node:sqlite fallback + observable startup ([6471492](https://github.com/george43g/imsg-mcp/commit/6471492557b37c7936dacfcece0b50b03c212ae1))
+
 # [1.19.0](https://github.com/george43g/imsg-mcp/compare/v1.18.0...v1.19.0) (2026-07-25)
 
 
