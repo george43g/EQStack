@@ -9,9 +9,17 @@
  * Files in $TMPDIR are cleaned up by the OS automatically.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeSync,
+} from "node:fs";
 import { freemem, tmpdir } from "node:os";
 import { join } from "node:path";
+import { APP_VERSION } from "./meta.js";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -128,6 +136,34 @@ function formatMemoryLine(entry: LogEntry): string {
   return line;
 }
 
+// When enabled (MCP stdio mode), info/warn/error are mirrored to stderr so the
+// host (Claude Desktop, Cursor, …) surfaces them in its own connection log.
+// OFF by default: the TUI renders a full-screen Ink UI to the same terminal and
+// stray stderr writes would corrupt it. Enable explicitly in the MCP entrypoint.
+let stderrMirrorEnabled = false;
+
+/**
+ * Mirror structured info/warn/error logs to stderr. Call once from the MCP
+ * stdio entrypoint. Never call this from the TUI — it would garble the render.
+ */
+export function enableStderrLogging(): void {
+  stderrMirrorEnabled = true;
+}
+
+/**
+ * Write a line to stderr (fd 2) SYNCHRONOUSLY. Unlike `console.error`, a
+ * synchronous fd write is flushed before the process can exit, so the line
+ * survives even when we die microseconds later (the exact failure mode that
+ * made startup crashes invisible in the host log). Never throws.
+ */
+export function writeStderrLine(line: string): void {
+  try {
+    writeSync(2, `${line}\n`);
+  } catch {
+    // stderr may be closed mid-shutdown; never re-throw from the logger.
+  }
+}
+
 function emit(entry: LogEntry): void {
   // In-memory buffer for MCP get_logs tool
   const line = formatMemoryLine(entry);
@@ -138,6 +174,11 @@ function emit(entry: LogEntry): void {
 
   // NDJSON file output
   writeToFile(JSON.stringify(entry));
+
+  // Mirror to stderr for the MCP host log (perf spans excluded — too chatty).
+  if (stderrMirrorEnabled && entry.level !== "perf") {
+    writeStderrLine(`[imsg-mcp] ${line}`);
+  }
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
@@ -235,7 +276,15 @@ export function getLogDirectory(): string {
 
 /** Log a startup marker — call at process start. */
 export function logStartup(entrypoint: string): void {
-  info("startup", { pid: process.pid, ppid: process.ppid, entrypoint, node: process.version });
+  info("startup", {
+    version: APP_VERSION,
+    pid: process.pid,
+    ppid: process.ppid,
+    entrypoint,
+    node: process.version,
+    arch: process.arch,
+    abi: process.versions.modules,
+  });
 }
 
 /** Log a shutdown marker — call before process exits. */

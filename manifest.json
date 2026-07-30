@@ -1,9 +1,11 @@
 {
   "manifest_version": "0.3",
   "name": "imsg-mcp",
+  "display_name": "iMessage",
   "version": "1.19.0",
   "description": "iMessage / SMS MCP for macOS — read, search, send, attach.",
-  "long_description": "Read chat.db, send iMessage/SMS via AppleScript with auto-fallback, search messages with fuzzy + literal modes, fetch attachments (HEIC→PNG auto-conversion), browse via MCP Resources, run analytics, and search/list/resolve contacts — all from your Mac. End-user data never leaves the device.",
+  "long_description": "Read chat.db, send iMessage/SMS via AppleScript with auto-fallback, search messages with fuzzy + literal modes, fetch attachments (HEIC→PNG auto-conversion), browse via MCP Resources, run analytics, and search/list/resolve contacts — all from your Mac. End-user data never leaves the device unless you configure a cloud media-interpretation provider below.",
+  "icon": "icon.png",
   "author": {
     "name": "George G",
     "url": "https://github.com/george43g/imsg-mcp"
@@ -11,15 +13,25 @@
   "homepage": "https://github.com/george43g/imsg-mcp",
   "documentation": "https://github.com/george43g/imsg-mcp/blob/main/README.md",
   "support": "https://github.com/george43g/imsg-mcp/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/george43g/imsg-mcp"
+  },
   "license": "MIT",
-  "keywords": ["imessage", "sms", "messages", "macos", "mcp", "applescript"],
+  "keywords": ["imessage", "sms", "messages", "macos", "mcp", "applescript", "contacts", "chat.db"],
   "server": {
     "type": "node",
     "entry_point": "dist/cli.js",
     "mcp_config": {
       "command": "node",
       "args": ["${__dirname}/dist/cli.js", "mcp"],
-      "env": {}
+      "env": {
+        "VITE_IMSG_DB_PATH": "${user_config.imsg_db_path}",
+        "VITE_CONTACTS_DB_PATH": "${user_config.contacts_db_path}",
+        "IMSG_TRANSCRIBE_PROVIDER": "${user_config.transcribe_provider}",
+        "IMSG_TRANSCRIBE_API_KEY": "${user_config.transcribe_api_key}",
+        "IMSG_TRANSCRIBE_MODEL": "${user_config.transcribe_model}"
+      }
     }
   },
   "compatibility": {
@@ -32,13 +44,32 @@
     "imsg_db_path": {
       "type": "string",
       "title": "iMessage chat.db path",
-      "description": "Override the default ~/Library/Messages/chat.db. Leave empty for default.",
+      "description": "Override the default ~/Library/Messages/chat.db. Leave empty for the default.",
       "required": false
     },
     "contacts_db_path": {
       "type": "string",
       "title": "AddressBook DB path",
-      "description": "Override the default AddressBook-v22.abcddb path. Leave empty for default.",
+      "description": "Override the default AddressBook-v22.abcddb path. Leave empty for the default (both the local and all iCloud source Address Books are loaded automatically).",
+      "required": false
+    },
+    "transcribe_provider": {
+      "type": "string",
+      "title": "Media-interpretation provider (optional)",
+      "description": "For AI voice-note transcription & image descriptions when Apple/local tools aren't available. One of: openai, groq, openrouter. Leave empty to stay fully on-device.",
+      "required": false
+    },
+    "transcribe_api_key": {
+      "type": "string",
+      "title": "Provider API key (optional)",
+      "description": "API key for the provider above. Stored securely by Claude Desktop; only used if a provider is set. Leave empty to keep all media on-device.",
+      "sensitive": true,
+      "required": false
+    },
+    "transcribe_model": {
+      "type": "string",
+      "title": "Transcription model (optional)",
+      "description": "Override the default model (e.g. whisper-1, whisper-large-v3). Leave empty for the provider default.",
       "required": false
     }
   }

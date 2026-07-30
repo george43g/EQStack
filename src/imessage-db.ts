@@ -10,7 +10,7 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import Database from "better-sqlite3";
+import Database, { type SqliteDatabase } from "./sqlite.js";
 
 /** Minimal chat row from the chat table. */
 export interface ChatRow {
@@ -173,7 +173,7 @@ function dateToMacTimestamp(date: Date): number {
 }
 
 export class IMessageDB {
-  private raw: Database.Database;
+  private raw: SqliteDatabase;
   private dbPath: string;
   /** Address-book reader. Public so MCP `*_contacts` tools can wrap it. */
   readonly contacts: ContactsDB;

@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
-import Database from "better-sqlite3";
 import { checkMessagesAvailable } from "./applescript.js";
 import { getContactsDbPaths, getImsgDbPath } from "./config.js";
+import Database from "./sqlite.js";
 
 export type AccessStatus = "ok" | "warn" | "error";
 

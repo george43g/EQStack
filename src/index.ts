@@ -49,6 +49,7 @@ import { buildIdentity, buildIdentityFromHandle } from "./identity.js";
 import { IMessageDB } from "./imessage-db.js";
 import {
   appendLog,
+  enableStderrLogging,
   getFileLogLines,
   getLastSendError,
   getLogDirectory,
@@ -61,6 +62,7 @@ import {
   setLastSendError,
   startHeapMonitor,
   stopHeapMonitor,
+  writeStderrLine,
 } from "./logger.js";
 import {
   analyticTextSummary,
@@ -1974,14 +1976,38 @@ export class IMessageMCPServer {
 }
 
 export async function runMcpServer(): Promise<void> {
+  // Mirror structured logs to stderr so the MCP host (Claude Desktop, Cursor, …)
+  // surfaces them in its own connection log — the TUI never enables this.
+  enableStderrLogging();
+
+  // FIRST line, written synchronously to stderr: it appears in the host log even
+  // if we die microseconds later. This is the "which build is actually running?"
+  // marker — confirm the version here matches the bundle you installed.
+  writeStderrLine(
+    `[imsg-mcp] boot v${APP_VERSION} · node ${process.version} ${process.arch} · abi ${process.versions.modules} · pid ${process.pid}`,
+  );
+
   try {
     const server = new IMessageMCPServer();
     await server.run();
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    const report = await checkLocalAccess();
-    console.error("");
-    console.error(formatAccessReport(report));
+    // A startup crash (commonly: missing better-sqlite3 native binding, or no
+    // Full Disk Access) happens before run()'s handlers are installed. Surface
+    // the full stack synchronously so it is never a silent exit again.
+    writeStderrLine(
+      `[imsg-mcp] fatal during startup: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+    );
+    try {
+      const report = await checkLocalAccess();
+      writeStderrLine("");
+      writeStderrLine(formatAccessReport(report));
+    } catch (secondary) {
+      // checkLocalAccess also opens a DB — if the native binding is the problem
+      // it throws too. Don't let that mask the primary error above.
+      writeStderrLine(
+        `[imsg-mcp] (access check unavailable: ${secondary instanceof Error ? secondary.message : String(secondary)})`,
+      );
+    }
     await shutdown(1);
   }
 }

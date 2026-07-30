@@ -13,7 +13,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import Database from "better-sqlite3";
+import Database, { type SqliteDatabase } from "./sqlite.js";
 
 export type MediaKind = "audio" | "image" | "video";
 
@@ -37,9 +37,9 @@ export interface MediaIntelRecord {
 }
 
 let dbPath = join(homedir(), ".imsg-mcp", "media-intel.db");
-let db: Database.Database | null = null;
+let db: SqliteDatabase | null = null;
 
-function open(): Database.Database {
+function open(): SqliteDatabase {
   if (db) return db;
   const dir = dirname(dbPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
