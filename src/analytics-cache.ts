@@ -11,14 +11,14 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import Database from "better-sqlite3";
+import Database, { type SqliteDatabase } from "./sqlite.js";
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 
 let dbPath = join(homedir(), ".imsg-mcp", "analytics-cache.db");
-let db: Database.Database | null = null;
+let db: SqliteDatabase | null = null;
 
-function open(): Database.Database {
+function open(): SqliteDatabase {
   if (db) return db;
   const dir = dirname(dbPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });

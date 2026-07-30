@@ -32,11 +32,13 @@ export function getImsgDbPath(): string {
 }
 
 export function getContactsDbPaths(): string[] | undefined {
-  const main =
-    process.env.VITE_CONTACTS_DB_PATH ??
-    join(homedir(), "Library", "Application Support", "AddressBook", "AddressBook-v22.abcddb");
-
-  const mainResolved = resolveEnvPath(main, "");
+  // Empty string (e.g. an unset config-page field passed through as "") must
+  // fall back to the default, not be treated as a literal path — so route
+  // through resolveEnvPath rather than `??`.
+  const mainResolved = resolveEnvPath(
+    process.env.VITE_CONTACTS_DB_PATH,
+    join(homedir(), "Library", "Application Support", "AddressBook", "AddressBook-v22.abcddb"),
+  );
   const paths = new Set<string>([mainResolved]);
 
   const sourcesSegment = `${sep}Sources${sep}`;

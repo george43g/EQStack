@@ -11,8 +11,8 @@
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import Database from "better-sqlite3";
 import { type ContactMatch, rankContacts } from "./contact-rank.js";
+import Database, { type SqliteDatabase } from "./sqlite.js";
 
 export interface Contact {
   id: number;
@@ -164,7 +164,7 @@ function discoverContactDbPaths(customPaths?: string | string[]): string[] {
 
 export class ContactsDB {
   private dbPaths: string[] = [];
-  private databases: Database.Database[] = [];
+  private databases: SqliteDatabase[] = [];
   private phoneMap: Map<string, ContactLookup> = new Map();
   private emailMap: Map<string, ContactLookup> = new Map();
   private contactCache: Map<number, Contact> = new Map();
@@ -198,7 +198,7 @@ export class ContactsDB {
   /**
    * Load contacts from a single Address Book SQLite DB into the shared maps.
    */
-  private loadContactsFromDb(db: Database.Database): void {
+  private loadContactsFromDb(db: SqliteDatabase): void {
     const contacts = db
       .prepare(`
       SELECT 

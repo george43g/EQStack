@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
-import Database from "better-sqlite3";
 import { MAC_EPOCH_OFFSET, NANOS_PER_SECOND } from "./db-schema.js";
+import Database, { type SqliteDatabase } from "./sqlite.js";
 
 function dateToMacTimestamp(date: Date): number {
   return Math.floor((date.getTime() / 1000 - MAC_EPOCH_OFFSET) * NANOS_PER_SECOND);
 }
 
 function resolveChat(
-  db: Database.Database,
+  db: SqliteDatabase,
   opts: { chatIdentifier?: string; chatGuid?: string },
 ): { chatRowId: number; handleId: number } | null {
   let chatRow: any;

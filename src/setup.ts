@@ -17,8 +17,8 @@
  */
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import Database from "better-sqlite3";
 import { getContactsDbPaths, getImsgDbPath, getSlugsDbPath } from "./config.js";
+import Database from "./sqlite.js";
 
 // ── Probing ───────────────────────────────────────────────────────────────
 

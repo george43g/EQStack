@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import Database from "better-sqlite3";
+import Database, { type SqliteDatabase } from "./sqlite.js";
 
 export interface SlugRecord {
   slug: string;
@@ -24,7 +24,7 @@ const DEFAULT_DIR = join(homedir(), ".imsg-mcp");
 const DEFAULT_DB = join(DEFAULT_DIR, "slugs.db");
 
 export class SlugStore {
-  private db: Database.Database;
+  private db: SqliteDatabase;
 
   constructor(dbPath?: string) {
     const path = dbPath ?? DEFAULT_DB;
