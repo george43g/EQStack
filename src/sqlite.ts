@@ -209,10 +209,16 @@ function isElectronRuntime(): boolean {
 
 /** Synchronously record the runtime fingerprint to ~/.imsg-mcp BEFORE any native
  *  module is touched — so it survives even a hard segfault and tells us exactly
- *  which host we ran under. Best-effort; never throws. */
+ *  which host we ran under. Called again with an `outcome` once the engine
+ *  resolves (or fails), so the file also answers "which engine, or why not" even
+ *  when the host swallows stderr AND its TMPDIR NDJSON is unreachable (Claude
+ *  Desktop's plugin helper). Best-effort; never throws. */
 let _fingerprintWritten = false;
-function dumpRuntimeFingerprint(): void {
-  if (_fingerprintWritten) return;
+function dumpRuntimeFingerprint(outcome?: Record<string, unknown>): void {
+  // Vitest workers resolve engines too — don't let test runs clobber the real
+  // diagnostic left behind by the last host launch.
+  if (process.env.VITEST) return;
+  if (_fingerprintWritten && !outcome) return;
   _fingerprintWritten = true;
   try {
     const dir = join(homedir(), ".imsg-mcp");
@@ -230,6 +236,7 @@ function dumpRuntimeFingerprint(): void {
           electronRunAsNode: process.env.ELECTRON_RUN_AS_NODE ?? null,
           detectedElectron: isElectronRuntime(),
           pid: process.pid,
+          ...(outcome ?? {}),
         },
         null,
         2,
@@ -290,12 +297,14 @@ function resolveEngine(): SqliteConstructor {
     try {
       require("node:sqlite");
     } catch (e) {
+      const reason = e instanceof Error ? e.message.split("\n")[0] : String(e);
       error("sqlite_engine_unavailable", {
-        reason: e instanceof Error ? e.message.split("\n")[0] : String(e),
+        reason,
         node: process.version,
         electron: process.versions.electron ?? null,
         abi: process.versions.modules,
       });
+      dumpRuntimeFingerprint({ engine: null, engineError: reason });
       throw new Error(
         `No usable SQLite engine: better-sqlite3 unavailable for this runtime and node:sqlite is not present (${e instanceof Error ? e.message : String(e)}).`,
       );
@@ -304,6 +313,7 @@ function resolveEngine(): SqliteConstructor {
     _resolvedEngine = "node:sqlite";
   }
   info("sqlite_engine", { engine: _resolvedEngine });
+  dumpRuntimeFingerprint({ engine: _resolvedEngine });
   return _engine;
 }
 
