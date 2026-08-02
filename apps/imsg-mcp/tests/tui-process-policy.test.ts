@@ -80,8 +80,8 @@ describe("watchdog.installWatchdog opts", () => {
     let intervalCalls = 0;
     const realSetInterval = globalThis.setInterval;
     (globalThis as { setInterval: typeof setInterval }).setInterval = ((
-      fn: () => void,
-      ms: number,
+      _fn: () => void,
+      _ms: number,
     ) => {
       intervalCalls += 1;
       // Return a non-running timer so callbacks never fire during the test.
@@ -109,8 +109,8 @@ describe("watchdog.installWatchdog opts", () => {
     let intervalCalls = 0;
     const realSetInterval = globalThis.setInterval;
     (globalThis as { setInterval: typeof setInterval }).setInterval = ((
-      fn: () => void,
-      ms: number,
+      _fn: () => void,
+      _ms: number,
     ) => {
       intervalCalls += 1;
       const t = realSetInterval(() => {}, 1_000_000);

@@ -50,7 +50,7 @@ const APPS: ChatAppDef[] = [
     buildUri: (handle) => {
       // Signal only accepts phone numbers.
       const phone = handle.replace(/[^\d+]/g, "");
-      if (!phone || !phone.startsWith("+")) return null;
+      if (!phone?.startsWith("+")) return null;
       return `sgnl://send?phone=${encodeURIComponent(phone)}`;
     },
     supportsBody: false,

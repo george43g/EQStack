@@ -90,7 +90,7 @@ function stageBinding(pkgName, bindingFile) {
   copyFileSync(src, dest);
   const size = statSync(dest).size;
   console.log(
-    `✓ ${pkgName}: staged ${bindingFile} (${(size / 1024 / 1024).toFixed(1)} MB) from ${src.replace(repoRoot + "/", "")}`,
+    `✓ ${pkgName}: staged ${bindingFile} (${(size / 1024 / 1024).toFixed(1)} MB) from ${src.replace(`${repoRoot}/`, "")}`,
   );
 }
 

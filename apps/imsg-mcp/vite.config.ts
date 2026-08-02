@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
+import { sharedTest } from "@eqstack/vitest-config";
 import { defineConfig } from "vitest/config";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
@@ -52,8 +53,7 @@ export default defineConfig({
     minify: false,
   },
   test: {
-    globals: true,
-    environment: "node",
+    ...sharedTest,
     include: ["src/**/*.test.ts", "tests/**/*.test.ts", "tests/**/*.test.tsx", "src/**/*.test.tsx"],
     coverage: {
       reporter: ["text", "json", "html"],

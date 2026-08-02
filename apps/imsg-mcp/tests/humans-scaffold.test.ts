@@ -78,7 +78,7 @@ describe("HumansScaffold", () => {
     const dir = makeDir();
     const s = new HumansScaffold(dir);
     const first = s.scaffold(INIT);
-    writeFileSync(first.path, readFileSync(first.path, "utf8") + "\n- precious agent edit\n");
+    writeFileSync(first.path, `${readFileSync(first.path, "utf8")}\n- precious agent edit\n`);
     // Different name, overlapping handle (the email) → same person.
     const again = s.scaffold({ ...INIT, name: "Samuel", handles: ["SAM@EXAMPLE.COM"] });
     expect(again.created).toBe(false);

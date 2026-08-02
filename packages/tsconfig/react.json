@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "@eqstack/tsconfig/react",
+  "extends": "./node.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["node", "react"],
+    "lib": ["ES2022", "DOM"]
+  }
+}

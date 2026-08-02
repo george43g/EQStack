@@ -81,7 +81,7 @@ export function fuzzyScore(query: string, candidate: string): number {
   // English text, bad if the query *is* an emoji) — without this branch
   // a search for "🪦" against "i need a money 🪦" returned 0 because
   // cleanText("🪦") === "" → score 0 → filtered.
-  if (query && candidate && candidate.toLowerCase().includes(query.toLowerCase())) {
+  if (query && candidate?.toLowerCase().includes(query.toLowerCase())) {
     return 0.95;
   }
 

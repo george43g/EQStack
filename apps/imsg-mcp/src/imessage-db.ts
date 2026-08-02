@@ -1140,7 +1140,7 @@ export class IMessageDB {
     for (const row of blobRows) {
       if (!row.chat_identifier || seenIds.has(row.ROWID)) continue;
       const text = this.parseMessageText(row);
-      if (!text || !text.toLowerCase().includes(queryLower)) continue;
+      if (!text?.toLowerCase().includes(queryLower)) continue;
       const ext = this.fetchExtendedMessageData(row.ROWID);
       if (isHiddenSystemItem(ext.item_type)) continue;
       const converted = this.convertMessage(row, text, row.chat_identifier, ext);

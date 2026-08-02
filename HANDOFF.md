@@ -160,11 +160,11 @@ Each phase: foreground `pnpm lint && pnpm typecheck && pnpm test` + `pnpm test:n
       `native/` a sibling of `dist/`. Verify tests still resolve `../src/...`.
 
 ### PR-B — config packages + version skew
-- [ ] **B1.** Adopt `packages/{tsconfig,biome-config,vitest-config}` from the template (placeholder scope
-      `@repo/*`). Point `apps/imsg-mcp/{tsconfig.json,biome.json,vitest/vite config}` at them.
-- [ ] **B2.** Reconcile version skew: **Vitest 2 → 3** (the one real one). Align Biome (2.4.4 →
+- [x] **B1.** Adopt `packages/{tsconfig,biome-config,vitest-config}` from the template (scope
+      `@eqstack/*` — Q1 answered). Point `apps/imsg-mcp/{tsconfig.json,biome.json,vitest/vite config}` at them.
+- [x] **B2.** Reconcile version skew: **Vitest 2 → 3** (the one real one). Align Biome (2.4.4 →
       template's 2.5.3) if adopting shared config; `@types/node` 20 → 24. Re-run full suites both engines.
-- [ ] **B3.** Fix cwd/path assumptions the move surfaces (see §8).
+- [x] **B3.** Fix cwd/path assumptions the move surfaces (see §8).
 
 ### PR-C — CI/release + blank app
 - [ ] **C1.** Update `.github/workflows` to drive builds/tests via turbo; the macOS `build-test` job
@@ -310,6 +310,15 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   Claude Desktop entry still pending). Verified: turbo build (TS+Rust), lint, typecheck,
   **936/936** native + full suite no-native + Rust 21/21, `npm pack --dry-run` (47 files incl.
   README), MCP stdio serves initialize @1.19.2.
+- 2026-08-03 · Claude · **PR-B DONE (B1–B3)**: `packages/{tsconfig,biome-config,vitest-config}`
+  adopted under **`@eqstack/*`** (template files, `workspace:*` deps). App tsconfig extends
+  `@eqstack/tsconfig/react.json` with overrides: `exactOptionalPropertyTypes`/`noUncheckedIndexedAccess`
+  **off** (+155 errors measured — stays in the STATUS "tsconfig strict flags" backlog) and
+  `lib: [ES2022]` (Ink ≠ browser; react preset's DOM lib collides with @types/node 24 Buffer/BlobPart).
+  Skew: **Vitest 2.1.9 → 3.2.7** (zero test changes needed), Biome 2.4.4 → **2.5.6** (12 new
+  findings — code fixed, not rule-disabled; SVG got a `<title>`, one justified biome-ignore),
+  @types/node 20 → 24. B3: no cwd fixes needed — vitest/tape/fixture paths all resolve at the app
+  cwd (verified by green suites post-move). **936/936 both engines** on the new toolchain.
 
 ---
 

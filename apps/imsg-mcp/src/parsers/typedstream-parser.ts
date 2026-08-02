@@ -169,7 +169,7 @@ export class TypedStreamParser {
   private parseHeader(): void {
     if (this.headerParsed) return;
     const magic = this.reader.peekBytes(11);
-    if (!magic || magic.toString("ascii") !== "streamtyped") return;
+    if (magic?.toString("ascii") !== "streamtyped") return;
 
     this.reader.skip(11);
     // Skip until we find an uppercase letter (class name start), with iteration guard
