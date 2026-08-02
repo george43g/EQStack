@@ -1,6 +1,6 @@
 # imsg-mcp — Agent Skills
 
-**Canonical source:** [`skills/imsg-mcp/SKILL.md`](skills/imsg-mcp/SKILL.md)
+**Canonical source:** [`apps/imsg-mcp/skills/imsg-mcp/SKILL.md`](apps/imsg-mcp/skills/imsg-mcp/SKILL.md)
 
 All agent skill documentation has been unified into the skills directory. See that file for:
 - Quick start, requirements, thread slugs

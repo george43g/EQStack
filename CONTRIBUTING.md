@@ -51,6 +51,10 @@ regression test.
 
 ## Architecture
 
+This is the EQStack monorepo (pnpm workspaces + Turborepo); the imsg app lives in
+**`apps/imsg-mcp/`** and the paths below are relative to it. Root `pnpm build/test/lint/typecheck`
+fan out via turbo.
+
 - `src/index.ts` — MCP stdio server + tool definitions
 - `src/imessage-db.ts` — SQLite reader for chat.db
 - `src/tui/` — Ink/React terminal UI

@@ -15,6 +15,30 @@ importers:
         specifier: ^2.10.7
         version: 2.10.8
 
+  apps/analysis:
+    devDependencies:
+      '@biomejs/biome':
+        specifier: ^2.5.6
+        version: 2.5.6
+      '@eqstack/biome-config':
+        specifier: workspace:*
+        version: link:../../packages/biome-config
+      '@eqstack/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@eqstack/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages/vitest-config
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.21.0)
+
   apps/imsg-mcp:
     dependencies:
       '@inkjs/ui':
@@ -4380,7 +4404,7 @@ snapshots:
 
   '@types/better-sqlite3@7.6.13':
     dependencies:
-      '@types/node': 22.19.20
+      '@types/node': 24.13.3
 
   '@types/chai@5.2.3':
     dependencies:
@@ -4393,7 +4417,7 @@ snapshots:
 
   '@types/mute-stream@0.0.4':
     dependencies:
-      '@types/node': 22.19.20
+      '@types/node': 24.13.3
 
   '@types/node@22.19.20':
     dependencies:

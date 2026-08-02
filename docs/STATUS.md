@@ -4,18 +4,20 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-08-02 · current release **v1.19.1** (npm)._
+_Last updated 2026-08-03 · current release **v1.19.2** (npm)._
 
 > **🖥️ Claude Desktop / distribution / online-MCP:** the `.mcpb type:node` extension crashes in
 > Desktop (Electron has no in-process SQLite); iMessage works there today via a **manual `mcpServers`
-> entry on system node**. Root cause, the working setup, uncommitted changes, the `bun type:binary`
+> entry on system node**. Root cause, the working setup, the `bun type:binary`
 > distribution decision, and George's **online/remote-MCP (StreamableHTTP + tunnel + OAuth)** idea are
-> all captured in **[`CLAUDE_DESKTOP_AND_ONLINE_MCP.md`](CLAUDE_DESKTOP_AND_ONLINE_MCP.md)**.
+> all captured in **[`CLAUDE_DESKTOP_AND_ONLINE_MCP.md`](../apps/imsg-mcp/docs/CLAUDE_DESKTOP_AND_ONLINE_MCP.md)**.
 
-> **🚧 Monorepo conversion is ACTIVE and handed off.** For the live execution checklist, progress
-> log, open questions, and ops rules, read **[`../HANDOFF.md`](../HANDOFF.md)** (repo root) — that is
-> the operational source of truth during the handoff. Design/why lives in
-> [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md).
+> **✅ Monorepo conversion COMPLETE (2026-08-03).** The repo is now the **EQStack** pnpm-workspaces +
+> Turborepo monorepo: the imsg app lives in `apps/imsg-mcp/`, the blank relationship-analysis shell
+> in `apps/analysis/`, shared `@eqstack/*` config packages in `packages/`. Conversion record +
+> progress log: **[`../HANDOFF.md`](../HANDOFF.md)**; design/why:
+> [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md). The published npm package stays `imsg-mcp`;
+> the GitHub repo rename to EQStack remains George-triggered.
 
 ---
 
@@ -31,9 +33,10 @@ and a best-effort attachment sync nudge. The **feedback cycle (v1.15.1 → v1.19
 #212–218 backlog: 3 TUI bugs (PR #41, v1.15.1), `search_contacts` relevance ranking (#42, v1.16.0),
 `get_messages` scope signal + identifier over-match fix (#43, v1.17.0), list completeness metadata
 `truncated`/`totalAvailable` (#44, v1.18.0), and a normalized identity block + E.164 on
-`get_contact`/`resolve_handle` (#45, v1.19.0). The **monorepo/turborepo migration is now ACTIVE**
-(feature work is done) — a corpus-consumer restructure for the future relationship-analytics app;
-execution is handed off in [`../HANDOFF.md`](../HANDOFF.md), design in
+`get_contact`/`resolve_handle` (#45, v1.19.0). A Desktop-hardening detour shipped v1.19.1/v1.19.2
+(node:sqlite fallback, Electron detection, XDG fix — see the Desktop banner above). The
+**monorepo/turborepo migration is DONE (2026-08-03)** — a corpus-consumer restructure for the future
+relationship-analytics app; record in [`../HANDOFF.md`](../HANDOFF.md), design in
 [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md).
 
 ### Shipped in the finalise cycle (v1.6.0 → v1.8.0)
@@ -104,7 +107,7 @@ Durable facts that repeatedly bite — keep these in mind before touching the re
 - **Real dev DB shape** (`~/Library/Messages/chat.db`, ~403k messages): scheduled-message columns
   exist but have **0 rows** (that path is unprovable here — deferred); `date_retracted` is 0 across
   the whole DB; `person_centric_id` is NULL on the dev chat.db, so cross-source merge leans on the
-  Address Book `contactId` signal (see [`CONTACT_MERGE_AND_SLUGS.md`](CONTACT_MERGE_AND_SLUGS.md)).
+  Address Book `contactId` signal (see [`CONTACT_MERGE_AND_SLUGS.md`](../apps/imsg-mcp/docs/CONTACT_MERGE_AND_SLUGS.md)).
 
 ---
 
@@ -154,13 +157,13 @@ and a README-drift check.
 `listAccounts()` → surface `connection_status` / `service_type` / `enabled` per account in
 `health_check` (so the agent can say "iMessage is disconnected; sends will fall back to SMS").
 Optional `listFileTransfers()` as a TUI progress widget. Patterns are compile-checked in
-[`applescript-examples.md`](applescript-examples.md); wiring is straight `runAppleScript()` wrappers.
+[`applescript-examples.md`](../apps/imsg-mcp/docs/applescript-examples.md); wiring is straight `runAppleScript()` wrappers.
 
 ### 6. Wrap `structuredContent` message bodies in `wrapUntrusted` (P2)
 `wrapUntrusted` is applied only to the human-readable `content[0].text`, not to
 `structuredContent.messages[i].text`. Hosts that pipe `structuredContent` straight into a prompt are
 still exposed. Thread it through `messageToStructured` behind an opt-in flag. See
-[`GUARDRAILS_MCP_RESPONSES.md`](GUARDRAILS_MCP_RESPONSES.md).
+[`GUARDRAILS_MCP_RESPONSES.md`](../apps/imsg-mcp/docs/GUARDRAILS_MCP_RESPONSES.md).
 
 ### 7. Lower-priority (P3)
 - **Streamable-HTTP transport** — stdio-only today; add the template's HTTP transport (constant-time
@@ -183,11 +186,11 @@ Cycle shipped v1.9.0 → v1.15.0; these are the deliberately-out-of-scope tails.
   BlueBubbles' IMCore hooks expose no attachment-download method, and the injection route needs full
   `csrutil disable` + system-wide Library Validation off (heavier than yabai's partial SIP). Full
   rationale + revisit triggers in
-  [`docs/plans/media-intel/spike-sip-findings.md`](plans/media-intel/spike-sip-findings.md). Revisit
+  [`docs/plans/media-intel/spike-sip-findings.md`](../apps/imsg-mcp/docs/plans/media-intel/spike-sip-findings.md). Revisit
   only if Apple ships a public download API or prior art adds a battle-tested re-download hook.
 
 ### 9. Real-time streaming, memory scroll & Messages API-surface (P1–P3)
-Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](plans/realtime-streaming-and-api-surface.md).
+Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](../apps/imsg-mcp/docs/plans/realtime-streaming-and-api-surface.md).
 - **Cache-hit metrics + viewport virtualization (P1)** — the TUI OOMs on long scroll. Bounded window
   (`MESSAGES_HARD_CAP` 5000) + `messageCache` exist, but the *rendered Ink tree* isn't virtualized and
   there's **no hit/miss instrumentation** (`cacheStats()` reports size only). Render visible+overscan
@@ -234,7 +237,7 @@ Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](plans/realt
   hygiene. Working prototypes live in `~/dotfiles/mcp/` (`render.js`/`status.js`/`sync.sh` +
   `mcpsync.mjs`) and will be replaced by a properly built tool — the feature-absorption inventory
   (absorb before deleting the old code) is
-  [`plans/mcp-config-sync-tool.md`](plans/mcp-config-sync-tool.md).
+  [`plans/mcp-config-sync-tool.md`](../apps/imsg-mcp/docs/plans/mcp-config-sync-tool.md).
 
 ---
 
