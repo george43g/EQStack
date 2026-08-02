@@ -232,11 +232,12 @@ Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](../apps/ims
 - **Suite rename — DECIDED: `EQStack`** (2026-07-30). Internal scope `@eqstack/*`; the GitHub repo
   rename happens with the monorepo conversion; published `imsg-mcp` package name unchanged; Desktop
   extension `display_name` already "EQStack — Messages MCP". See `../HANDOFF.md` §4 (Q1 answered).
-- **MCP config-sync tool (EQStack app candidate).** One canonical config → every MCP host on the
-  machine (Claude Code/Desktop, Codex, Cursor, Warp, opencode), with drift grid, doctor, and secret
-  hygiene. Working prototypes live in `~/dotfiles/mcp/` (`render.js`/`status.js`/`sync.sh` +
-  `mcpsync.mjs`) and will be replaced by a properly built tool — the feature-absorption inventory
-  (absorb before deleting the old code) is
+- **MCP config-sync tool — DONE (2026-08-03), lives elsewhere.** Built as `mcpsync`
+  (`mcp-cli-starter-template/apps/mcpsync`, installed globally): one canonical config → every MCP
+  host (Claude Code/Desktop, Codex, Cursor, Warp, opencode), drift grid, doctor + secret hygiene,
+  secrets vault, project scope, and extension hot-deploy (`mcpsync deploy` replaced this repo's
+  `scripts/hot-deploy-ext.mjs`, now deleted). The `~/dotfiles/mcp/` prototypes are retired too.
+  The original feature-absorption inventory remains at
   [`plans/mcp-config-sync-tool.md`](../apps/imsg-mcp/docs/plans/mcp-config-sync-tool.md).
 
 ---

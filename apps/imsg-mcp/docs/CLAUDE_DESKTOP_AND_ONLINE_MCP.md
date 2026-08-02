@@ -56,9 +56,10 @@ has no engine at all). Landed after it (→ **1.19.2**):
   validation, and the `~/.imsg-mcp/runtime-fingerprint.json` dump — which now also records the
   resolved **`engine` / `engineError`** (home-anchored, survives segfaults and swallowed stderr) and
   is **skipped under Vitest** so test runs can't clobber the last host diagnostic.
-- `scripts/hot-deploy-ext.mjs` — dev tool: deploy a built extension into Claude Desktop's
-  installed-extension dir without a GUI reinstall (`--from <mcpb>`, `--list`; syncs
-  dist/native/manifest/package.json/icon/assets; `--full` adds node_modules).
+- Hot-deploying a built extension into Claude Desktop's installed-extension dir without a
+  GUI reinstall is now `mcpsync deploy <dir|.mcpb>` (`--list`, `--full`, `--dry-run`) — the
+  generalized `@george43g/mcpsync` CLI absorbed and retired the old
+  `scripts/hot-deploy-ext.mjs` (2026-08-03).
 - `manifest.json` — `display_name: "EQStack — Messages MCP"` (suite name decided; em dash rather
   than a colon because Desktop derives the per-server log filename from `display_name`).
 - The fork-built `mcpsync.mjs` cross-host sync prototype was **relocated to `~/dotfiles/mcp/`** and

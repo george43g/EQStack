@@ -51,10 +51,11 @@ Full rationale + the corpus-boundary design notes live in
 - **On `main`** @ `60ff99a` = **v1.19.2** (npm). Working tree clean except untracked scratch
   (`.codex/`, `docs/research/*`) — **never** commit those.
 - **New root files since the Desktop detour (v1.19.1/1.19.2), all move WITH the package:** tracked
-  `manifest.json`, `icon.png`, `assets/` (mcpb extension identity) + `scripts/hot-deploy-ext.mjs`,
+  `manifest.json`, `icon.png`, `assets/` (mcpb extension identity) +
   `scripts/stage-native-deps.mjs`, `scripts/mcp-dev-proxy.ts`; the `pack:mcpb` npm script stages
   `manifest.json package.json icon.png` cwd-relative. `release/` is a gitignored build artifact
   (pattern matches at any depth — still covered after the move).
+  (`scripts/hot-deploy-ext.mjs` was deleted 2026-08-03 — `mcpsync deploy` replaced it.)
 - The **feedback backlog #212–218 is DONE** across 5 releases (this is why we're free to restructure):
   | Item | PR | Release |
   |---|---|---|
