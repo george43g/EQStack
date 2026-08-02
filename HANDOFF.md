@@ -48,8 +48,13 @@ Full rationale + the corpus-boundary design notes live in
 
 ## 2. Current state
 
-- **On `main`** @ `30d0ea4` = **v1.19.0** (npm). Working tree clean except untracked scratch
+- **On `main`** @ `60ff99a` = **v1.19.2** (npm). Working tree clean except untracked scratch
   (`.codex/`, `docs/research/*`) — **never** commit those.
+- **New root files since the Desktop detour (v1.19.1/1.19.2), all move WITH the package:** tracked
+  `manifest.json`, `icon.png`, `assets/` (mcpb extension identity) + `scripts/hot-deploy-ext.mjs`,
+  `scripts/stage-native-deps.mjs`, `scripts/mcp-dev-proxy.ts`; the `pack:mcpb` npm script stages
+  `manifest.json package.json icon.png` cwd-relative. `release/` is a gitignored build artifact
+  (pattern matches at any depth — still covered after the move).
 - The **feedback backlog #212–218 is DONE** across 5 releases (this is why we're free to restructure):
   | Item | PR | Release |
   |---|---|---|
@@ -87,7 +92,9 @@ From `docs/MONOREPO_MIGRATION.md` + the 2026-07-26/27 planning session:
    brand + internal private-package scope only — NOT the installed package name. This is what makes the
    rename cheap and reversible.
 6. **Move the imsg package wholesale as ONE unit** (`git mv` in one shot): `src/`, `native/`, `tests/`,
-   `scripts/`, `vite.config.ts`, `tsconfig.json`, `biome.json`, `package.json`, `.env.*`, fixtures.
+   `scripts/`, `vite.config.ts`, `tsconfig.json`, `biome.json`, `package.json`, `.env.*`, fixtures,
+   **and the mcpb extension files: `manifest.json`, `icon.png`, `assets/`** (the `pack:mcpb` script
+   references them cwd-relative — they stay valid only if they move together).
    Tests keep their `../src/...` relative imports (they move together). `native/` must stay a sibling of
    built `dist/` — `src/native-bridge.ts` hardcodes `join(__dirname, "..", "native")`.
 
@@ -137,9 +144,14 @@ Each phase: foreground `pnpm lint && pnpm typecheck && pnpm test` + `pnpm test:n
 
 ### PR-A — shell + move
 - [ ] **A0.** Dry-run the scaffolder (read-only): from the template repo,
-      `mcp-scaffold apply --target /Users/george/repos/imsg-mcp` (dry-run is default — **no `--execute`**).
-      Save the emitted `RETROFIT.md` / 12-phase / 21-migration list as the hand-apply checklist.
-      Attach/summarize it in the Progress Log.
+      `node apps/scaffolder/dist/cli.js apply --target /Users/george/repos/imsg-mcp --existing-strategy full --name imsg --yes`
+      (dry-run is default — **no `--execute`**; add `--report-json <path>` for the machine-readable list).
+      **Pre-verified 2026-08-03:** the default `safe` strategy yields **0 retrofit intents / 25 skipped**
+      (useless here) — `full` is the one that emits the real checklist: **18 would-apply · 8 skipped ·
+      10 divergent-preserved · 0 failed**, repo untouched. ⚠️ The `full` list **overshoots the locked
+      scope** (it includes the deferred robustness/env-loader/secrets/cli-kit/tui-kit/mcp-kit/shared-types
+      packages — §3.2 says config packages only): use it as a *reference map*, hand-apply **only the §6
+      subset**. Record the recap in the Progress Log.
 - [ ] **A1.** Monorepo shell: extend `pnpm-workspace.yaml` with `packages: ["apps/*", "packages/*"]`.
       Add root `turbo.json` (build / typecheck / lint / test / test:no-native pipeline; mirror the
       template). Root becomes a private workspace root. Reconcile the existing
@@ -163,8 +175,15 @@ Each phase: foreground `pnpm lint && pnpm typecheck && pnpm test` + `pnpm test:n
 - [ ] **C3.** Re-link the global binary: `pnpm add -g apps/imsg-mcp`; smoke `imsg --version` / `--help`,
       the MCP dev server (`node dist/cli.js mcp` / `pnpm mcp`), and the TUI (against `fixtures/chat.db`
       — never the real DB).
-- [ ] **C4.** Docs pass: refresh `docs/STATUS.md` to v1.19.0, flip `docs/MONOREPO_MIGRATION.md` from
-      DEFERRED→DONE, write the Grafana/Prometheus deferred idea (§10) into both, update `AGENTS.md`.
+- [ ] **C3b.** Re-point every consumer of the old absolute paths (see §8 second block):
+      `.mcp.json` (then re-render `opencode.json` via
+      `node ~/dotfiles/mcp/render.js --manifest .mcp.json --opencode opencode.json`) and the
+      **Claude Desktop manual `mcpServers.imsg-mcp` entry** (`claude_desktop_config.json` — back it up
+      first; Desktop needs a full Quit + reopen; note Desktop has silently emptied `mcpServers` before,
+      re-check after writing).
+- [ ] **C4.** Docs pass: refresh `docs/STATUS.md` to the current release, flip
+      `docs/MONOREPO_MIGRATION.md` from ACTIVE→DONE, write the Grafana/Prometheus deferred idea (§10)
+      into both, update `AGENTS.md`.
 
 ---
 
@@ -206,6 +225,16 @@ Files that assume top-level `src/`/`dist/`/`native/` or cwd-relative fixtures, p
 - `src/native-bridge.ts` hardcodes `join(__dirname, "..", "native")` — `native/` must stay sibling to `dist/`.
 - `vite.config.ts` entry paths; `tsconfig.json` `rootDir: ./src` + `include`; `biome.json` globs;
   `.npmignore`, package.json `files`, and the `pack:mcpb` globs.
+
+**Consumers of ABSOLUTE `/Users/george/repos/imsg-mcp/...` paths that break on move (Phase C3b):**
+- `.mcp.json` (repo-canonical; `.cursor/mcp.json` + `.warp/.mcp.json` are symlinks to it): the
+  `imessage-mcp-dev` server runs `node_modules/.bin/tsx scripts/mcp-dev-proxy.ts` with
+  `MCP_DEV_CMD=… src/cli.ts mcp` — all three paths gain the `apps/imsg-mcp/` prefix (verify where
+  pnpm puts `.bin/tsx` post-workspace: root vs app `node_modules`).
+- `opencode.json` `mcp` key is GENERATED from `.mcp.json` — re-render, never hand-edit.
+- **Claude Desktop** `~/Library/Application Support/Claude/claude_desktop_config.json`
+  `mcpServers.imsg-mcp` runs mise node against `…/imsg-mcp/dist/cli.js` (the working Desktop setup,
+  deployed 2026-08-02 — see `docs/CLAUDE_DESKTOP_AND_ONLINE_MCP.md`).
 
 **Safe-move facts (recon):** a clean core seam already exists — `src/imessage-db.ts` + its transitive
 closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under `native/`
@@ -257,6 +286,15 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   `mcpsync.mjs`); to be replaced by a proper tool — absorption inventory:
   `docs/plans/mcp-config-sync-tool.md`. Also recorded: remote-MCP idea (StreamableHTTP + tunnel +
   OAuth), realtime-streaming plan (`docs/plans/realtime-streaming-and-api-surface.md`).
+- 2026-08-03 · Claude · **Pre-flight readiness pass — migration cleared for execution** (no phase
+  boxes ticked; A0 stays the executor's first action). Verified the A0 dry-run end-to-end: scaffolder
+  is built; `--existing-strategy safe` = 0 retrofit intents (useless), **`full` = 18 would-apply ·
+  0 failed**, target repo untouched — A0 instructions updated with the working invocation + scope
+  warning. Amended this doc for the v1.19.1/1.19.2 detour fallout: §2 refreshed to v1.19.2, §3.6
+  move unit now includes `manifest.json`/`icon.png`/`assets/`, new §8 block lists absolute-path
+  consumers (`.mcp.json` → opencode re-render, Claude Desktop manual entry), new **C3b** re-pointing
+  step. Q2 note: George's analytics research sits in untracked `docs/research/*` — still not formally
+  handed over; irrelevant to Phases A–C (extraction stays deferred). No open blockers for A0–C4.
 
 ---
 
