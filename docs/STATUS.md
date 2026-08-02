@@ -4,7 +4,13 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-07-27 · current release **v1.19.0** (npm)._
+_Last updated 2026-08-02 · current release **v1.19.1** (npm)._
+
+> **🖥️ Claude Desktop / distribution / online-MCP:** the `.mcpb type:node` extension crashes in
+> Desktop (Electron has no in-process SQLite); iMessage works there today via a **manual `mcpServers`
+> entry on system node**. Root cause, the working setup, uncommitted changes, the `bun type:binary`
+> distribution decision, and George's **online/remote-MCP (StreamableHTTP + tunnel + OAuth)** idea are
+> all captured in **[`CLAUDE_DESKTOP_AND_ONLINE_MCP.md`](CLAUDE_DESKTOP_AND_ONLINE_MCP.md)**.
 
 > **🚧 Monorepo conversion is ACTIVE and handed off.** For the live execution checklist, progress
 > log, open questions, and ops rules, read **[`../HANDOFF.md`](../HANDOFF.md)** (repo root) — that is
