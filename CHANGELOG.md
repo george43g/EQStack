@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## [1.19.2](https://github.com/george43g/imsg-mcp/compare/v1.19.1...v1.19.2) (2026-08-02)
+
+
+### Bug Fixes
+
+* **config:** XDG_CONFIG_HOME fully replaces ~/.config in config resolution ([2cbe2f9](https://github.com/george43g/imsg-mcp/commit/2cbe2f9192a72e5acdb8d395d561aa366c178798))
+* **sqlite:** detect Electron runtime + validate node:sqlite + runtime fingerprint ([c93f9a5](https://github.com/george43g/imsg-mcp/commit/c93f9a55d3d0cfe411e43a318a8f804f16bd24b8))
+* **sqlite:** fingerprint records engine outcome; skip under Vitest ([cc17d02](https://github.com/george43g/imsg-mcp/commit/cc17d0247c8b1f0cf1b8802a95dbfe39bd3152b6))
+
 ## [1.19.1](https://github.com/george43g/imsg-mcp/compare/v1.19.0...v1.19.1) (2026-07-30)
 
 
