@@ -1,0 +1,12 @@
+{
+  "name": "@eqstack/vitest-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "./vitest.shared.ts",
+  "files": ["vitest.shared.ts"],
+  "peerDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

@@ -230,7 +230,7 @@ export function applySettingsKey(
   row: SettingsRow | undefined,
   action: SettingsKeyAction,
 ): InterpretConfigInput | null {
-  if (!row || !row.selectable) return null;
+  if (!row?.selectable) return null;
 
   switch (row.kind) {
     case "auto": {

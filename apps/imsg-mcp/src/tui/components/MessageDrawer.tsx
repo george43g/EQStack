@@ -243,6 +243,7 @@ export function MessageDrawer({ message: m, width, height, selectedAttachmentIdx
                 Edit history{versions.length ? ` (${versions.length} versions)` : ""}:
               </Text>
               {versions.map((v, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: edit-history versions have no stable id; the list is render-once and position-stable
                 <Box key={`ev-${i}-${v.date?.getTime() ?? i}`} flexDirection="column">
                   <Text color={theme.help.desc}>
                     {`${i + 1}. `}
