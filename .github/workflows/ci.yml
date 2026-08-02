@@ -53,6 +53,7 @@ jobs:
         run: pnpm test:no-native
 
       - name: Verify npm tarball is publishable
+        working-directory: apps/imsg-mcp
         run: npm pack --dry-run
 
       # ── e2e stress: 250k messages, 1200 chats, watchdog under load ──
@@ -73,5 +74,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: stress-tui-report
-          path: stress-tui-report.json
+          path: apps/imsg-mcp/stress-tui-report.json
           if-no-files-found: warn

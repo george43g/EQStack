@@ -23,7 +23,7 @@ fi
 CHANGED_FILES=$(git diff --name-only "@{push}..HEAD" 2>/dev/null || git diff --name-only "HEAD~10..HEAD" 2>/dev/null || echo "")
 
 # Match the path globs we care about.
-RELEVANT=$(echo "$CHANGED_FILES" | grep -E '^(src/tui/|scripts/screenshots/.*\.tape$)' || true)
+RELEVANT=$(echo "$CHANGED_FILES" | grep -E '^apps/imsg-mcp/(src/tui/|scripts/screenshots/.*\.tape$)' || true)
 
 if [[ -z "$RELEVANT" ]]; then
   exit 0
@@ -40,16 +40,16 @@ fi
 echo "→ pre-push: TUI source changed; regenerating screenshots…"
 pnpm screenshots
 
-# Anything new under docs/screenshots/?
-DIRTY=$(git status --porcelain -- docs/screenshots/ | head -1)
+# Anything new under apps/imsg-mcp/docs/screenshots/?
+DIRTY=$(git status --porcelain -- apps/imsg-mcp/docs/screenshots/ | head -1)
 if [[ -n "$DIRTY" ]]; then
   echo ""
   echo "✗ Screenshots are stale. The regen produced new content:"
   echo ""
-  git status --short -- docs/screenshots/
+  git status --short -- apps/imsg-mcp/docs/screenshots/
   echo ""
   echo "  Commit the regenerated PNGs and re-push:"
-  echo "    git add docs/screenshots/"
+  echo "    git add apps/imsg-mcp/docs/screenshots/"
   echo "    git commit -m 'docs: regenerate screenshots'"
   echo "    git push"
   exit 1

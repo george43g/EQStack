@@ -1,0 +1,47 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "envMode": "loose",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "native/*.node", "native/index.js", "native/index.d.ts"],
+      "inputs": [
+        "src/**",
+        "native/src/**",
+        "native/Cargo.toml",
+        "native/build.rs",
+        "vite.config.ts",
+        "tsconfig.json",
+        "package.json"
+      ]
+    },
+    "typecheck": {
+      "outputs": [],
+      "inputs": ["src/**", "tests/**", "scripts/**", "tsconfig.json", "package.json"]
+    },
+    "lint": {
+      "outputs": [],
+      "inputs": ["src/**", "tests/**", "scripts/**", "biome.json", "package.json"]
+    },
+    "test": {
+      "cache": false
+    },
+    "test:no-native": {
+      "cache": false
+    },
+    "test:rust": {
+      "cache": false
+    },
+    "fixtures": {
+      "cache": false
+    },
+    "fixtures:stress": {
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

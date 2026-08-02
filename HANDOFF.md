@@ -143,7 +143,7 @@ Each phase: foreground `pnpm lint && pnpm typecheck && pnpm test` + `pnpm test:n
 `build-test` green, signed commit, branch → PR → **merge (not squash)**.
 
 ### PR-A — shell + move
-- [ ] **A0.** Dry-run the scaffolder (read-only): from the template repo,
+- [x] **A0.** Dry-run the scaffolder (read-only): from the template repo,
       `node apps/scaffolder/dist/cli.js apply --target /Users/george/repos/imsg-mcp --existing-strategy full --name imsg --yes`
       (dry-run is default — **no `--execute`**; add `--report-json <path>` for the machine-readable list).
       **Pre-verified 2026-08-03:** the default `safe` strategy yields **0 retrofit intents / 25 skipped**
@@ -152,11 +152,11 @@ Each phase: foreground `pnpm lint && pnpm typecheck && pnpm test` + `pnpm test:n
       scope** (it includes the deferred robustness/env-loader/secrets/cli-kit/tui-kit/mcp-kit/shared-types
       packages — §3.2 says config packages only): use it as a *reference map*, hand-apply **only the §6
       subset**. Record the recap in the Progress Log.
-- [ ] **A1.** Monorepo shell: extend `pnpm-workspace.yaml` with `packages: ["apps/*", "packages/*"]`.
+- [x] **A1.** Monorepo shell: extend `pnpm-workspace.yaml` with `packages: ["apps/*", "packages/*"]`.
       Add root `turbo.json` (build / typecheck / lint / test / test:no-native pipeline; mirror the
       template). Root becomes a private workspace root. Reconcile the existing
       `overrides: imsg-mcp: 'link:'` self-link with the new layout.
-- [ ] **A2.** Move the package wholesale into `apps/imsg-mcp/` (one `git mv` unit — see §3.6). Keep
+- [x] **A2.** Move the package wholesale into `apps/imsg-mcp/` (one `git mv` unit — see §3.6). Keep
       `native/` a sibling of `dist/`. Verify tests still resolve `../src/...`.
 
 ### PR-B — config packages + version skew
@@ -295,6 +295,21 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   consumers (`.mcp.json` → opencode re-render, Claude Desktop manual entry), new **C3b** re-pointing
   step. Q2 note: George's analytics research sits in untracked `docs/research/*` — still not formally
   handed over; irrelevant to Phases A–C (extraction stays deferred). No open blockers for A0–C4.
+- 2026-08-03 · Claude · **PR-A DONE (A0–A2)**: A0 official dry-run re-run (full: 18 would-apply ·
+  0 failed). Workspace shell landed: `packages: [apps/*, packages/*]`, root `turbo.json`
+  (ui stream, envMode loose; test tasks cache:false), private root `package.json` (name `eqstack`,
+  turbo ^2.10.7; root scripts fan out via turbo, app entry points delegate `pnpm -C`). Package moved
+  wholesale into `apps/imsg-mcp/` (322 renames) INCLUDING README/CHANGELOG/llms-install/skills +
+  app docs (screenshots web) — repo-level docs (`STATUS.md`, `MONOREPO_MIGRATION.md`, `research/`)
+  stay at root; new root README. Extras the move forced: app-local `.gitignore` (biome
+  `useIgnoreFile` discovers it next to biome.json — `vcs.root` did NOT work), override re-pointed
+  `link:apps/imsg-mcp`, `repository.directory` added, `hook:install` hoisted to root, minimal CI
+  edits (npm-pack workdir, stress artifact path, screenshots-check paths, pre-push hook prefixes),
+  release.yml semantic-release now runs `working-directory: apps/imsg-mcp` (releaserc paths stay
+  package-relative). `.mcp.json` re-pointed + `opencode.json` re-rendered (C3b partially done —
+  Claude Desktop entry still pending). Verified: turbo build (TS+Rust), lint, typecheck,
+  **936/936** native + full suite no-native + Rust 21/21, `npm pack --dry-run` (47 files incl.
+  README), MCP stdio serves initialize @1.19.2.
 
 ---
 
