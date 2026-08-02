@@ -11,9 +11,8 @@ is potentially destructive and likely takes several iterations, so it should not
 feature work. Those features are now shipped.
 
 **New decisions layered on (2026-07-26/27):**
-- **Suite rename** — the repo will be renamed to reflect the tool *suite* it releases, anchored to
-  the novel **humans files** convention. Name is George's pending decision (candidates: `humanstack`
-  [recommended], `humans`, `humans-tools`, `kith`). The **published npm package stays `imsg-mcp`** —
+- **Suite rename** — ✅ **DECIDED (2026-07-30): `EQStack`**, internal scope **`@eqstack/*`** (the
+  GitHub repo rename itself stays George-triggered). The **published npm package stays `imsg-mcp`** —
   the rename touches only the GitHub repo/brand + the internal private-package scope, so it is cheap
   and reversible. See `../HANDOFF.md` §4.
 - **Scaffold a blank second app** as part of the shell work (empty placeholder — proves the structure
