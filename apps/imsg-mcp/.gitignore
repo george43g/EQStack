@@ -1,0 +1,29 @@
+# App-scoped ignores (root .gitignore carries the repo-wide set; biome's
+# vcs.useIgnoreFile discovers this file next to biome.json).
+
+# Build output
+dist/
+node_modules/
+
+# Environment files (machine-specific paths and secrets)
+.env
+.env.local
+.env*.local
+.env.ai
+
+# Generated synthetic test fixtures (regenerated via `pnpm fixtures`)
+fixtures/
+fixtures-stress/
+
+# Live (real, PII-bearing) snapshots — never commit, never ship
+env-data/
+
+# npm pack output / semantic-release tarball staging
+*.tgz
+release/
+
+# Stress harness output (uploaded as a CI artefact, not committed)
+stress-tui-report.json
+
+# Test coverage
+coverage/

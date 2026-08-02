@@ -63,6 +63,10 @@ jobs:
       # and manifest.json carry the released version. A standalone pack step
       # here would run pre-bump and ship stale versions inside the bundle.
       - name: Run semantic-release
+        # Runs inside the app so .releaserc.json's package-relative paths
+        # (CHANGELOG.md, manifest.json, scripts/, release/) resolve; git
+        # operations (tag + bump commit) still act on the repo root.
+        working-directory: apps/imsg-mcp
         env:
           # OIDC: npmjs.com Trusted Publisher is configured for this repo + workflow.
           # No NPM_TOKEN — npm CLI v11.5+ (bundled with Node 24) exchanges the

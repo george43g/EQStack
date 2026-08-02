@@ -3,9 +3,9 @@ name: screenshots-check
 on:
   pull_request:
     paths:
-      - 'src/tui/**'
-      - 'scripts/screenshots/*.tape'
-      - 'docs/screenshots/**'
+      - 'apps/imsg-mcp/src/tui/**'
+      - 'apps/imsg-mcp/scripts/screenshots/*.tape'
+      - 'apps/imsg-mcp/docs/screenshots/**'
       - '.github/workflows/screenshots-check.yml'
 
 permissions:
@@ -70,11 +70,11 @@ jobs:
 
       - name: Report drift (informational)
         run: |
-          if ! git diff --quiet -- docs/screenshots/; then
+          if ! git diff --quiet -- apps/imsg-mcp/docs/screenshots/; then
             echo "::warning::Screenshots drifted from source (byte-level; often vhs render noise). If the TUI surface changed intentionally, run 'pnpm screenshots' locally and commit the result."
             echo ""
             echo "Drifted files:"
-            git diff --name-only -- docs/screenshots/
+            git diff --name-only -- apps/imsg-mcp/docs/screenshots/
           else
             echo "✓ screenshots match source"
           fi
