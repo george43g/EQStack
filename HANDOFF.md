@@ -95,10 +95,11 @@ From `docs/MONOREPO_MIGRATION.md` + the 2026-07-26/27 planning session:
 
 ## 4. OPEN QUESTIONS — need George (do NOT decide these unilaterally)
 
-**Q1 — Suite name (blocks: GitHub repo rename + internal `@scope/*`).**
-George wants the repo renamed to reflect the tool *suite* it will release, anchored to the novel
-**humans files** convention (`~/.agents/humans/`, `skills/humans/SKILL.md`, humans/v1→v2). Options with
-Claude's recommendation:
+**Q1 — Suite name. ✅ ANSWERED (2026-07-30): George chose `EQStack`.**
+Repo/brand → **EQStack** (the GitHub repo rename itself is still George-triggered on resume); internal
+private-package scope → **`@eqstack/*`** (use directly, or find-replace the `@repo/*` placeholder if
+already used); the Desktop-extension `display_name` is already **"EQStack — Messages MCP"**. The
+published npm package stays **`imsg-mcp`**. Original options considered (kept for history):
 
 | Name | Repo / brand | Internal scope | Read |
 |---|---|---|---|
@@ -111,11 +112,10 @@ Claude's recommendation:
 separate agent swarm) into the repo. That unblocks the package-extraction decisions and the analytics
 app implementation docs. Until then, do not design the corpus boundary or analytics domain.
 
-> **Codex: you can complete ALL of §6 phases 1–7 without the name.** Do the structural conversion with a
-> neutral placeholder scope **`@repo/*`** for the private config packages (a common convention; trivially
-> find-replaced later) and scaffold the blank app under a neutral dir (e.g. `apps/analysis`). **Do NOT**
-> rename the GitHub repo or claim a final `@scope` — leave that as a fast find-replace for George on
-> resume. Record the placeholder you chose in the Progress Log.
+> **Codex: Q1 is answered — use `@eqstack/*` for the private config packages directly** (or
+> find-replace it in if you already started with `@repo/*`), and scaffold the blank app under a
+> neutral dir (e.g. `apps/analysis`). **Do NOT** rename the GitHub repo — George does that on resume.
+> Record what you used in the Progress Log.
 
 ---
 
@@ -246,6 +246,17 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
 - 2026-07-27 · Claude · Created this handoff. Repo finalized on clean `main` @ v1.19.0 (swept 29 merged
   branches). No monorepo work started yet — Phase A0 is the next action. Awaiting George on Q1 (suite
   name) and Q2 (analytics research), but Codex can run Phases A–C with `@repo/*` placeholder scope.
+- 2026-08-02 · Claude · **Detour, not monorepo work** (phases still unstarted; A0 remains next):
+  Claude Desktop `.mcpb` crash root-caused — Desktop runs `type:node` extensions on Electron's node
+  (abi 146) with **no in-process SQLite** (no better-sqlite3 prebuild, no `node:sqlite`) →
+  **v1.19.1** shipped (node:sqlite fallback + stderr observability + packaging + branding);
+  **v1.19.2** adds Electron detection + fingerprint diagnostics. Desktop works via a **manual
+  `mcpServers` entry on system node**; end-user distribution decision = **bun `type:binary`**
+  (deferred). Full story: `docs/CLAUDE_DESKTOP_AND_ONLINE_MCP.md`. **Q1 ANSWERED: suite = EQStack
+  (`@eqstack/*`)** — §4 updated. Cross-host MCP config tooling prototyped (dotfiles `mcp/` +
+  `mcpsync.mjs`); to be replaced by a proper tool — absorption inventory:
+  `docs/plans/mcp-config-sync-tool.md`. Also recorded: remote-MCP idea (StreamableHTTP + tunnel +
+  OAuth), realtime-streaming plan (`docs/plans/realtime-streaming-and-api-surface.md`).
 
 ---
 

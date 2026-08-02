@@ -226,9 +226,15 @@ Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](plans/realt
   Prometheus-scrapeable endpoint (or pushgateway) so users build Grafana dashboards over their own
   message corpus. Not yet designed; George to flesh out. Captured also in
   [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md) and `../HANDOFF.md` §10.
-- **Suite rename** — repo → suite name (candidates `humanstack`/`humans`/`humans-tools`/`kith`),
-  anchored to the humans-files convention; published `imsg-mcp` package name unchanged. George's pick;
-  see `../HANDOFF.md` §4.
+- **Suite rename — DECIDED: `EQStack`** (2026-07-30). Internal scope `@eqstack/*`; the GitHub repo
+  rename happens with the monorepo conversion; published `imsg-mcp` package name unchanged; Desktop
+  extension `display_name` already "EQStack — Messages MCP". See `../HANDOFF.md` §4 (Q1 answered).
+- **MCP config-sync tool (EQStack app candidate).** One canonical config → every MCP host on the
+  machine (Claude Code/Desktop, Codex, Cursor, Warp, opencode), with drift grid, doctor, and secret
+  hygiene. Working prototypes live in `~/dotfiles/mcp/` (`render.js`/`status.js`/`sync.sh` +
+  `mcpsync.mjs`) and will be replaced by a properly built tool — the feature-absorption inventory
+  (absorb before deleting the old code) is
+  [`plans/mcp-config-sync-tool.md`](plans/mcp-config-sync-tool.md).
 
 ---
 

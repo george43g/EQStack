@@ -45,15 +45,25 @@ Manual entry in `~/Library/Application Support/Claude/claude_desktop_config.json
 - **Secrets note:** imsg needs no secret (local `chat.db`), so the entry is a plain command. Desktop's manual `mcpServers` does NOT expand `${VAR}` and has no secure storage — that's unique to this host. Clean auth in Desktop only exists for **Extensions/Connectors** (settings-page `sensitive` fields → Keychain), which the `.mcpb` config page uses. Other hosts (Claude Code/Codex/opencode/Cursor/Warp) each reference env vars natively.
 - Undo: remove the `mcpServers.imsg-mcp` block; backups exist at `claude_desktop_config.json.bak.*`.
 
-## 3. Uncommitted changes in this repo (decide before committing)
+## 3. Where the session's changes landed
 
-| Path | What | Recommendation |
-|---|---|---|
-| `src/sqlite.ts` (M) | Electron detection (`ELECTRON_RUN_AS_NODE`+execPath) + `node:sqlite` validation + `~/.imsg-mcp/runtime-fingerprint.json` dump | **Commit** — makes the engine resolver correct + diagnosable on every runtime (small `fix`). |
-| `scripts/hot-deploy-ext.mjs` (new) | Copies a built extension into Claude Desktop's install dir (no GUI reinstall); `--from <mcpb>`, `--list` | **Commit** — genuinely useful dev tool. |
-| `scripts/mcpsync.mjs` (new) | A fork-built standalone cross-host MCP sync CLI | **Relocate or drop** — belongs in `~/dotfiles/mcp/`, not this repo (see §6). |
+Released as **1.19.1** (`bcbfcf4`): node:sqlite fallback + stderr observability + packaging +
+branding. Helps CLI/TUI and non-Electron hosts; it does **not** rescue the Desktop `.mcpb` (Electron
+has no engine at all). Landed after it (→ **1.19.2**):
 
-Already released: **1.19.1** (`bcbfcf4`) = the node:sqlite fallback + observability + packaging + branding. That fix helps CLI/TUI and non-Electron hosts; it does **not** rescue the Desktop `.mcpb` (Electron has no engine at all).
+- `src/sqlite.ts` — Electron-runtime detection (`ELECTRON_RUN_AS_NODE` + execPath; note
+  `process.versions.electron` is EMPTY under `ELECTRON_RUN_AS_NODE`), `node:sqlite` presence
+  validation, and the `~/.imsg-mcp/runtime-fingerprint.json` dump — which now also records the
+  resolved **`engine` / `engineError`** (home-anchored, survives segfaults and swallowed stderr) and
+  is **skipped under Vitest** so test runs can't clobber the last host diagnostic.
+- `scripts/hot-deploy-ext.mjs` — dev tool: deploy a built extension into Claude Desktop's
+  installed-extension dir without a GUI reinstall (`--from <mcpb>`, `--list`; syncs
+  dist/native/manifest/package.json/icon/assets; `--full` adds node_modules).
+- `manifest.json` — `display_name: "EQStack — Messages MCP"` (suite name decided; em dash rather
+  than a colon because Desktop derives the per-server log filename from `display_name`).
+- The fork-built `mcpsync.mjs` cross-host sync prototype was **relocated to `~/dotfiles/mcp/`** and
+  is slated for replacement by a properly built tool — feature-absorption inventory:
+  [`plans/mcp-config-sync-tool.md`](plans/mcp-config-sync-tool.md).
 
 ## 4. Distribution options for end-users (the real decision)
 
