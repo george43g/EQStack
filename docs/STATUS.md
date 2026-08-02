@@ -4,7 +4,13 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-07-27 · current release **v1.19.0** (npm)._
+_Last updated 2026-08-02 · current release **v1.19.1** (npm)._
+
+> **🖥️ Claude Desktop / distribution / online-MCP:** the `.mcpb type:node` extension crashes in
+> Desktop (Electron has no in-process SQLite); iMessage works there today via a **manual `mcpServers`
+> entry on system node**. Root cause, the working setup, uncommitted changes, the `bun type:binary`
+> distribution decision, and George's **online/remote-MCP (StreamableHTTP + tunnel + OAuth)** idea are
+> all captured in **[`CLAUDE_DESKTOP_AND_ONLINE_MCP.md`](CLAUDE_DESKTOP_AND_ONLINE_MCP.md)**.
 
 > **🚧 Monorepo conversion is ACTIVE and handed off.** For the live execution checklist, progress
 > log, open questions, and ops rules, read **[`../HANDOFF.md`](../HANDOFF.md)** (repo root) — that is
@@ -220,9 +226,15 @@ Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](plans/realt
   Prometheus-scrapeable endpoint (or pushgateway) so users build Grafana dashboards over their own
   message corpus. Not yet designed; George to flesh out. Captured also in
   [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md) and `../HANDOFF.md` §10.
-- **Suite rename** — repo → suite name (candidates `humanstack`/`humans`/`humans-tools`/`kith`),
-  anchored to the humans-files convention; published `imsg-mcp` package name unchanged. George's pick;
-  see `../HANDOFF.md` §4.
+- **Suite rename — DECIDED: `EQStack`** (2026-07-30). Internal scope `@eqstack/*`; the GitHub repo
+  rename happens with the monorepo conversion; published `imsg-mcp` package name unchanged; Desktop
+  extension `display_name` already "EQStack — Messages MCP". See `../HANDOFF.md` §4 (Q1 answered).
+- **MCP config-sync tool (EQStack app candidate).** One canonical config → every MCP host on the
+  machine (Claude Code/Desktop, Codex, Cursor, Warp, opencode), with drift grid, doctor, and secret
+  hygiene. Working prototypes live in `~/dotfiles/mcp/` (`render.js`/`status.js`/`sync.sh` +
+  `mcpsync.mjs`) and will be replaced by a properly built tool — the feature-absorption inventory
+  (absorb before deleting the old code) is
+  [`plans/mcp-config-sync-tool.md`](plans/mcp-config-sync-tool.md).
 
 ---
 

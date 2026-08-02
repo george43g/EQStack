@@ -114,16 +114,15 @@ export const DEFAULT_INTERPRET_CONFIG: InterpretConfigInput = InterpretConfigSch
 
 // ── Path resolution ───────────────────────────────────────────────────────
 
-/** Candidate paths we try to read from, in order. */
+/** Candidate paths we try to read from, in order. Per the XDG spec, `~/.config`
+ *  is the DEFAULT VALUE of `$XDG_CONFIG_HOME` — not an additional search path —
+ *  so when the env var is set we must not fall through to the real `~/.config`
+ *  (that fall-through also let a dev machine's real config leak into tests that
+ *  point XDG at a temp dir). */
 function candidatePaths(): string[] {
   const home = homedir();
-  const out: string[] = [];
-  if (process.env.XDG_CONFIG_HOME) {
-    out.push(join(process.env.XDG_CONFIG_HOME, "imsg-mcp", "config.json"));
-  }
-  out.push(join(home, ".config", "imsg-mcp", "config.json"));
-  out.push(join(home, ".imsg-mcp", "config.json"));
-  return out;
+  const xdgBase = process.env.XDG_CONFIG_HOME || join(home, ".config");
+  return [join(xdgBase, "imsg-mcp", "config.json"), join(home, ".imsg-mcp", "config.json")];
 }
 
 /** Where the file actually lives (first existing candidate), or null. */

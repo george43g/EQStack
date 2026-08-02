@@ -25,10 +25,12 @@
  * Force the fallback for testing with `IMSG_FORCE_NODE_SQLITE=1`.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type BetterSqlite3 from "better-sqlite3";
-import { info, warn } from "./logger.js";
+import { error, info, warn } from "./logger.js";
 
 const require = createRequire(import.meta.url);
 
@@ -191,8 +193,74 @@ class NodeSqliteDatabase {
   }
 }
 
+/** True when running under an Electron host (e.g. Claude Desktop), which has no
+ *  matching better-sqlite3 prebuild. Desktop launches MCP servers via built-in
+ *  node with ELECTRON_RUN_AS_NODE set — where process.versions.electron is
+ *  EMPTY — so check that env var plus the execPath (…/*.app/Contents/…), not
+ *  just process.versions.electron. */
+function isElectronRuntime(): boolean {
+  return (
+    !!process.env.ELECTRON_RUN_AS_NODE ||
+    !!process.versions.electron ||
+    /\.app\/Contents\//.test(process.execPath) ||
+    /(?:Claude|Electron)/i.test(process.execPath)
+  );
+}
+
+/** Synchronously record the runtime fingerprint to ~/.imsg-mcp BEFORE any native
+ *  module is touched — so it survives even a hard segfault and tells us exactly
+ *  which host we ran under. Called again with an `outcome` once the engine
+ *  resolves (or fails), so the file also answers "which engine, or why not" even
+ *  when the host swallows stderr AND its TMPDIR NDJSON is unreachable (Claude
+ *  Desktop's plugin helper). Best-effort; never throws. */
+let _fingerprintWritten = false;
+function dumpRuntimeFingerprint(outcome?: Record<string, unknown>): void {
+  // Vitest workers resolve engines too — don't let test runs clobber the real
+  // diagnostic left behind by the last host launch.
+  if (process.env.VITEST) return;
+  if (_fingerprintWritten && !outcome) return;
+  _fingerprintWritten = true;
+  try {
+    const dir = join(homedir(), ".imsg-mcp");
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "runtime-fingerprint.json"),
+      JSON.stringify(
+        {
+          ts: new Date().toISOString(),
+          execPath: process.execPath,
+          node: process.version,
+          abi: process.versions.modules,
+          electron: process.versions.electron ?? null,
+          bun: (process.versions as Record<string, string>).bun ?? null,
+          electronRunAsNode: process.env.ELECTRON_RUN_AS_NODE ?? null,
+          detectedElectron: isElectronRuntime(),
+          pid: process.pid,
+          ...(outcome ?? {}),
+        },
+        null,
+        2,
+      ),
+    );
+  } catch {
+    // diagnostics only — never block startup
+  }
+}
+
 function loadBetterSqlite3(): SqliteConstructor | null {
   if (process.env.IMSG_FORCE_NODE_SQLITE === "1") return null;
+  // Electron hosts (e.g. Claude Desktop) ship no matching better-sqlite3
+  // prebuild, and loading an ABI-mismatched .node there can HARD-crash the
+  // process (a segfault, not a catchable throw) — the exact silent
+  // exit-after-`initialize` we hit, before any log line is written. Never
+  // attempt better-sqlite3 under Electron; go straight to node:sqlite.
+  if (isElectronRuntime()) {
+    warn("sqlite_engine_fallback", {
+      to: "node:sqlite",
+      reason: `electron runtime (ERAN=${process.env.ELECTRON_RUN_AS_NODE ? "1" : "0"}, electron=${process.versions.electron ?? "-"}, execPath=${process.execPath})`,
+    });
+    return null;
+  }
   try {
     const Ctor = require("better-sqlite3") as SqliteConstructor;
     // better-sqlite3's JS entry require()s successfully even when its native
@@ -216,15 +284,36 @@ function loadBetterSqlite3(): SqliteConstructor | null {
 let _engine: SqliteConstructor | null = null;
 function resolveEngine(): SqliteConstructor {
   if (_engine) return _engine;
+  dumpRuntimeFingerprint();
   const better = loadBetterSqlite3();
   if (better) {
     _engine = better;
     _resolvedEngine = "better-sqlite3";
   } else {
+    // Validate the fallback is actually present — some Electron builds compile
+    // node WITHOUT the experimental node:sqlite module. If so, log it loudly to
+    // the on-disk NDJSON (survives even when the host swallows stderr) so the
+    // failure is diagnosable instead of a silent exit.
+    try {
+      require("node:sqlite");
+    } catch (e) {
+      const reason = e instanceof Error ? e.message.split("\n")[0] : String(e);
+      error("sqlite_engine_unavailable", {
+        reason,
+        node: process.version,
+        electron: process.versions.electron ?? null,
+        abi: process.versions.modules,
+      });
+      dumpRuntimeFingerprint({ engine: null, engineError: reason });
+      throw new Error(
+        `No usable SQLite engine: better-sqlite3 unavailable for this runtime and node:sqlite is not present (${e instanceof Error ? e.message : String(e)}).`,
+      );
+    }
     _engine = NodeSqliteDatabase as unknown as SqliteConstructor;
     _resolvedEngine = "node:sqlite";
   }
   info("sqlite_engine", { engine: _resolvedEngine });
+  dumpRuntimeFingerprint({ engine: _resolvedEngine });
   return _engine;
 }
 
