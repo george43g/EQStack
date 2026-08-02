@@ -1,10 +1,10 @@
-# Monorepo Migration — ACTIVE (planning doc)
+# Monorepo Migration — DONE
 
-**Status:** **ACTIVE / handed off (2026-07-27).** The feedback backlog (#212–218, v1.15.1→v1.19.0)
-is done, so the migration is unblocked and started. Execution is being handed to another agent
-(Codex) for a couple of days while the primary session is rate-limited. **The live, step-by-step
-handoff — checklist, progress log, open questions, ops rules — is [`../HANDOFF.md`](../HANDOFF.md).
-Read that first for *how to execute*; this doc is the *why* + design reference.**
+**Status:** **✅ COMPLETE (2026-08-03).** Executed by Claude across PRs #50 (shell + wholesale move
+into `apps/imsg-mcp/`), #51 (`@eqstack/*` config packages + Vitest 3 / Biome 2.5.6 / @types/node 24),
+and the CI/blank-app/docs PR. The step-by-step record — checklist, progress log, decisions, ops
+rules — is [`../HANDOFF.md`](../HANDOFF.md). This doc remains the *why* + design reference (corpus
+boundary, shared-surface notes for the analytics app).
 
 **Why it was deferred (history):** Finalising imsg-mcp's planned features came first. The migration
 is potentially destructive and likely takes several iterations, so it should not compete with the
@@ -66,10 +66,10 @@ For when we design the corpus boundary — the analytics engine relies on:
 - **Decoded content** — body lives in `attributedBody` (plain `text` is usually NULL);
   `src/attributed-body-text.ts` is load-bearing for any content metric.
 - **Merged contact identity** — one human spans many chat rows; per-person metrics run on the merged
-  identity (Address Book `contactId` + thread slugs). See `docs/CONTACT_MERGE_AND_SLUGS.md`.
+  identity (Address Book `contactId` + thread slugs). See `apps/imsg-mcp/docs/CONTACT_MERGE_AND_SLUGS.md`.
 - **The `Message` record** (`src/types.ts`) and the **pure analytics functions** in
   `src/analytics.ts` (7 implemented + ~20 stubbed `FUTURE_TYPES`) as the metric substrate.
-- **humans layer** — `skills/humans/SKILL.md` + `src/humans-scaffold.ts`; the narrative output target
+- **humans layer** — `apps/imsg-mcp/skills/humans/SKILL.md` + `src/humans-scaffold.ts`; the narrative output target
   the engine extends to `humans/v2`.
 
 ## Migration steps (sketch, for when we do it)
@@ -131,4 +131,4 @@ then gets its own spec → plan → implementation cycle (starts after George pa
   - Shared config packages to adopt: `packages/{tsconfig,biome-config,vitest-config}`
   - Reference: `turbo.json`, `pnpm-workspace.yaml`, `.github/workflows/ci.yml`
 - Research: `docs/research/RELATIONSHIP_ANALYSIS_RESEARCH_BRIEF.md`, `docs/research/deep-research-report.md`
-- Identity/merge: `docs/CONTACT_MERGE_AND_SLUGS.md`
+- Identity/merge: `apps/imsg-mcp/docs/CONTACT_MERGE_AND_SLUGS.md`

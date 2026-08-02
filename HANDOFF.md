@@ -1,4 +1,4 @@
-# HANDOFF — Monorepo conversion (ACTIVE)
+# HANDOFF — Monorepo conversion (✅ COMPLETE 2026-08-03)
 
 > **Read this first.** This is the live handoff for converting `imsg-mcp` into a monorepo. It is
 > self-contained on purpose — do **not** rely on any agent's private memory; everything you need is
@@ -167,21 +167,21 @@ Each phase: foreground `pnpm lint && pnpm typecheck && pnpm test` + `pnpm test:n
 - [x] **B3.** Fix cwd/path assumptions the move surfaces (see §8).
 
 ### PR-C — CI/release + blank app
-- [ ] **C1.** Update `.github/workflows` to drive builds/tests via turbo; the macOS `build-test` job
+- [x] **C1.** Update `.github/workflows` to drive builds/tests via turbo; the macOS `build-test` job
       stays THE gate. Confirm `.releaserc.json` still targets the imsg app (single-package,
       root-orchestrated). Verify a release still cuts correctly (or is a no-op for docs).
-- [ ] **C2.** Scaffold the blank second app: `mcp-scaffold add-mcp-app <name>` into `apps/analysis`
+- [x] **C2.** Scaffold the blank second app: `mcp-scaffold add-mcp-app <name>` into `apps/analysis`
       (placeholder name). Empty shell only — no domain code. Confirm it builds/tests under turbo.
-- [ ] **C3.** Re-link the global binary: `pnpm add -g apps/imsg-mcp`; smoke `imsg --version` / `--help`,
+- [x] **C3.** Re-link the global binary: `pnpm add -g apps/imsg-mcp`; smoke `imsg --version` / `--help`,
       the MCP dev server (`node dist/cli.js mcp` / `pnpm mcp`), and the TUI (against `fixtures/chat.db`
       — never the real DB).
-- [ ] **C3b.** Re-point every consumer of the old absolute paths (see §8 second block):
+- [x] **C3b.** Re-point every consumer of the old absolute paths (see §8 second block):
       `.mcp.json` (then re-render `opencode.json` via
       `node ~/dotfiles/mcp/render.js --manifest .mcp.json --opencode opencode.json`) and the
       **Claude Desktop manual `mcpServers.imsg-mcp` entry** (`claude_desktop_config.json` — back it up
       first; Desktop needs a full Quit + reopen; note Desktop has silently emptied `mcpServers` before,
       re-check after writing).
-- [ ] **C4.** Docs pass: refresh `docs/STATUS.md` to the current release, flip
+- [x] **C4.** Docs pass: refresh `docs/STATUS.md` to the current release, flip
       `docs/MONOREPO_MIGRATION.md` from ACTIVE→DONE, write the Grafana/Prometheus deferred idea (§10)
       into both, update `AGENTS.md`.
 
@@ -234,7 +234,7 @@ Files that assume top-level `src/`/`dist/`/`native/` or cwd-relative fixtures, p
 - `opencode.json` `mcp` key is GENERATED from `.mcp.json` — re-render, never hand-edit.
 - **Claude Desktop** `~/Library/Application Support/Claude/claude_desktop_config.json`
   `mcpServers.imsg-mcp` runs mise node against `…/imsg-mcp/dist/cli.js` (the working Desktop setup,
-  deployed 2026-08-02 — see `docs/CLAUDE_DESKTOP_AND_ONLINE_MCP.md`).
+  deployed 2026-08-02 — see `apps/imsg-mcp/docs/CLAUDE_DESKTOP_AND_ONLINE_MCP.md`).
 
 **Safe-move facts (recon):** a clean core seam already exists — `src/imessage-db.ts` + its transitive
 closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under `native/`
@@ -281,11 +281,11 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   **v1.19.1** shipped (node:sqlite fallback + stderr observability + packaging + branding);
   **v1.19.2** adds Electron detection + fingerprint diagnostics. Desktop works via a **manual
   `mcpServers` entry on system node**; end-user distribution decision = **bun `type:binary`**
-  (deferred). Full story: `docs/CLAUDE_DESKTOP_AND_ONLINE_MCP.md`. **Q1 ANSWERED: suite = EQStack
+  (deferred). Full story: `apps/imsg-mcp/docs/CLAUDE_DESKTOP_AND_ONLINE_MCP.md`. **Q1 ANSWERED: suite = EQStack
   (`@eqstack/*`)** — §4 updated. Cross-host MCP config tooling prototyped (dotfiles `mcp/` +
   `mcpsync.mjs`); to be replaced by a proper tool — absorption inventory:
-  `docs/plans/mcp-config-sync-tool.md`. Also recorded: remote-MCP idea (StreamableHTTP + tunnel +
-  OAuth), realtime-streaming plan (`docs/plans/realtime-streaming-and-api-surface.md`).
+  `apps/imsg-mcp/docs/plans/mcp-config-sync-tool.md`. Also recorded: remote-MCP idea (StreamableHTTP + tunnel +
+  OAuth), realtime-streaming plan (`apps/imsg-mcp/docs/plans/realtime-streaming-and-api-surface.md`).
 - 2026-08-03 · Claude · **Pre-flight readiness pass — migration cleared for execution** (no phase
   boxes ticked; A0 stays the executor's first action). Verified the A0 dry-run end-to-end: scaffolder
   is built; `--existing-strategy safe` = 0 retrofit intents (useless), **`full` = 18 would-apply ·
@@ -319,6 +319,18 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   findings — code fixed, not rule-disabled; SVG got a `<title>`, one justified biome-ignore),
   @types/node 20 → 24. B3: no cwd fixes needed — vitest/tape/fixture paths all resolve at the app
   cwd (verified by green suites post-move). **936/936 both engines** on the new toolchain.
+- 2026-08-03 · Claude · **PR-C DONE (C1–C4) — MIGRATION COMPLETE.** C1: workflows already drive
+  everything through root turbo scripts since PR-A (build-test stays THE gate; semantic-release runs
+  in `apps/imsg-mcp` — its "no release" no-op to be confirmed on the next main push). C2: blank app
+  `apps/analysis` (`@eqstack/analysis`, private) hand-scaffolded — the scaffolder's `add-mcp-app` was
+  NOT used (it generates deps on template runtime packages `mcp-kit`/`robustness` that §3.2
+  deliberately excludes); shell has full template strictness ON, builds/typechecks/lints/tests under
+  turbo (2 packages orchestrated). C3: global `imsg` re-linked (`pnpm add -g ./apps/imsg-mcp` →
+  1.19.2), CLI + MCP initialize + headless TUI stress (5s, PASS) all smoked. C3b: Claude Desktop
+  `mcpServers.imsg-mcp` re-pointed to `apps/imsg-mcp/dist/cli.js` (backup taken; boot-tested with
+  Desktop's exact command; Desktop was running → needs full Quit+reopen). C4: STATUS/-MIGRATION
+  flipped to DONE, AGENTS.md monorepo banner + layout, all root-doc links to moved app docs
+  rewritten, root skills.md pointer updated. PRs: #50 (A), #51 (B), #52 (C).
 
 ---
 

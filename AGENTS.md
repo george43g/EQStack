@@ -1,14 +1,20 @@
-# imsg-mcp – Agent Guide
+# EQStack / imsg-mcp – Agent Guide
 
 MCP server for iMessage on macOS. Lets AI agents send and receive iMessages (and SMS) so they can text the user for input or notifications.
 
-> **🚧 ACTIVE HANDOFF (2026-07-27): monorepo conversion in progress.** If you are picking up work,
-> **read [`HANDOFF.md`](HANDOFF.md) (repo root) first** — it is the operational source of truth
-> (mission, phase checklist, progress log, open questions for George, and ops rules). Status/backlog:
-> [`docs/STATUS.md`](docs/STATUS.md); design/why: [`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md).
+> **✅ Monorepo conversion COMPLETE (2026-08-03).** This repo is now the **EQStack** pnpm-workspaces +
+> Turborepo monorepo. The imsg app lives in **`apps/imsg-mcp/`** — every `src/…`, `tests/…`,
+> `scripts/…`, `docs/…` (app docs), `skills/…`, `manifest.json`, `native/` path in this guide is
+> relative to that directory. Shared config packages live in `packages/` (`@eqstack/*`, private).
+> Repo-level docs stay at root: [`docs/STATUS.md`](docs/STATUS.md),
+> [`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md), and the conversion record
+> [`HANDOFF.md`](HANDOFF.md). Root `pnpm build/test/lint/typecheck` fan out via turbo; app entry
+> points (`pnpm mcp`, `pnpm tui`, …) delegate into `apps/imsg-mcp`.
 
 ## What This Repo Is
 
+- **Layout**: pnpm workspaces + Turborepo. `apps/imsg-mcp` (the shipping npm package `imsg-mcp`),
+  `apps/analysis` (blank shell for the future relationship-analysis app), `packages/{tsconfig,biome-config,vitest-config}` (`@eqstack/*`).
 - **Stack**: TypeScript (ESM), Node **24+**, MCP SDK, `better-sqlite3`, `imessage-parser`, Zod.
 - **Sending**: AppleScript via `osascript` to Messages.app.
 - **Reading**: SQLite at `~/Library/Messages/chat.db` (macOS only; needs Full Disk Access).
@@ -56,7 +62,7 @@ For any `--mode`, Vite loads (each step overrides the previous): **`.env`** → 
 
 ## Contact identity & cross-source merge
 
-One human conversation is often split across multiple `chat` rows (phone vs email, SMS vs iMessage, two of your accounts). They merge into one thread via the **Address Book `contactId`** (`getConversationMergeKey` → `contact:<id>`). **Contacts live in multiple Address Books** — the local `AddressBook-v22.abcddb` **and** iCloud `Sources/<uuid>/AddressBook-v22.abcddb` (many contacts exist *only* in a source). **Always build the contacts layer via `getContactsDbPaths()`** (loads main + all Sources) — passing a single path makes iCloud-only contacts unresolvable and **silently undercounts exports**. `ContactsDB` dedups/unions a person across sources. Full reference + invariants: **`docs/CONTACT_MERGE_AND_SLUGS.md`**. (`person_centric_id` is NULL on the dev chat.db, so the completeness diagnostic leans on the contactId signal.)
+One human conversation is often split across multiple `chat` rows (phone vs email, SMS vs iMessage, two of your accounts). They merge into one thread via the **Address Book `contactId`** (`getConversationMergeKey` → `contact:<id>`). **Contacts live in multiple Address Books** — the local `AddressBook-v22.abcddb` **and** iCloud `Sources/<uuid>/AddressBook-v22.abcddb` (many contacts exist *only* in a source). **Always build the contacts layer via `getContactsDbPaths()`** (loads main + all Sources) — passing a single path makes iCloud-only contacts unresolvable and **silently undercounts exports**. `ContactsDB` dedups/unions a person across sources. Full reference + invariants: **`apps/imsg-mcp/docs/CONTACT_MERGE_AND_SLUGS.md`**. (`person_centric_id` is NULL on the dev chat.db, so the completeness diagnostic leans on the contactId signal.)
 
 ## Scripts and fixtures
 
@@ -71,8 +77,8 @@ One human conversation is often split across multiple `chat` rows (phone vs emai
 
 - **README.md** – User-facing: install, permissions, configuration, tool examples.
 - **skills.md** – Agent handoff: LFS, env summary, thread slugs, scripts, code map.
-- **docs/IMESSAGE_DB_SCHEMA.md** – iMessage DB reference: tables, timestamps (Mac epoch), message types, reactions, attachments, example SQL.
-- **docs/CONTACT_MERGE_AND_SLUGS.md** – How chats merge into one identity (cross-source Address Books, contactId), the completeness diagnostic, and per-identity thread slugs. Read before touching contacts/merge/slug code.
+- **apps/imsg-mcp/docs/IMESSAGE_DB_SCHEMA.md** – iMessage DB reference: tables, timestamps (Mac epoch), message types, reactions, attachments, example SQL.
+- **apps/imsg-mcp/docs/CONTACT_MERGE_AND_SLUGS.md** – How chats merge into one identity (cross-source Address Books, contactId), the completeness diagnostic, and per-identity thread slugs. Read before touching contacts/merge/slug code.
 
 ## MCP Tools (Summary)
 
@@ -94,20 +100,20 @@ One human conversation is often split across multiple `chat` rows (phone vs emai
 
 ## Conventions for Development
 
-- **Types**: Shared types in `src/types.ts` (Message, Reaction, ReplyContext, etc.); align with DB schema in `docs/IMESSAGE_DB_SCHEMA.md`.
+- **Types**: Shared types in `src/types.ts` (Message, Reaction, ReplyContext, etc.); align with DB schema in `apps/imsg-mcp/docs/IMESSAGE_DB_SCHEMA.md`.
 - **DB layer**: `src/imessage-db.ts` – all SQLite access and message parsing; use Mac epoch for dates (see docs).
 - **Sending**: `src/applescript.ts` – AppleScript interface to Messages.app. Sends route on the thread's REAL service (slug store / existing conversation) — AppleScript cannot detect a wrong-service send (lazy participant resolution), so iMessage-first to an SMS-only number silently never delivers.
 - **Media (low-level)**: `src/media.ts` – zero-dep macOS helpers (sips/qlmanage/mdls) turning attachments into MCP image blocks, video poster frames, and audio transcripts. On-device transcribers (hear/yap/whisper-cli) are auto-detected. This is the primitive layer under the media-intel service.
 - **Media-intel (service)**: `src/media-intel.ts` – the interpretation service; walks the configured **chain** per media type (`apple` → `local` → `provider:<name>`) with a concurrency limiter + in-flight dedupe. `src/media-intel-cache.ts` = permanent SQLite cache (`~/.imsg-mcp/media-intel.db`; never interpret the same attachment twice). `src/media-providers.ts` = OpenAI-compatible client + presets (openai/groq/openrouter/cloudflare/huggingface/ollama + custom baseUrl), two shapes (`/audio/transcriptions` multipart, `/chat/completions` multimodal). `src/media-intel-runtime.ts` wires it for CLI/MCP. **Architecture rule: all interpretation lives in core; frontends (MCP/CLI/TUI) only render** — no fetch/spawn in TUI components. `interpret.auto` defaults to `free` → cloud legs run only when explicitly configured; audio/images leave the device only then.
 - **App-config**: `src/app-config.ts` – wider config schema (absorbs `tui-config.ts`; flat theme keys stay top-level for back-compat, media-intel config under `interpret`). Provider keys live in `~/.imsg-mcp/credentials.json` (chmod 600), never the shared config. Legacy `IMSG_TRANSCRIBE_*` env vars map to an implicit provider profile. `src/setup-wizard.ts` (`@inquirer/prompts`) is the `imsg setup --interactive` flow.
 - **Edit history**: `src/edit-history.ts` – parses `message.message_summary_info` bplist (`"ec"` prior versions, `"rp"` retracted) → `Message.editHistory`; lazy `getEditHistory(rowid)` on the drawer path.
-- **Attachment sync nudge**: `src/attachment-sync.ts` – pure, injectable-deps orchestrator (`ensureAttachmentDownloaded`). T1 opens the conversation (`imessage://`) + polls; T2 (opt-in, needs Accessibility) UI-scripts "Sync Now". AppleScript primitives in `applescript.ts` (`buildImessageOpenUrl`/`openConversationInMessages`/`syncNowViaSystemEvents`), mocked under Vitest. T3 documented only. SIP/private-API route researched → **NO-GO** (`docs/plans/media-intel/spike-sip-findings.md`).
+- **Attachment sync nudge**: `src/attachment-sync.ts` – pure, injectable-deps orchestrator (`ensureAttachmentDownloaded`). T1 opens the conversation (`imessage://`) + polls; T2 (opt-in, needs Accessibility) UI-scripts "Sync Now". AppleScript primitives in `applescript.ts` (`buildImessageOpenUrl`/`openConversationInMessages`/`syncNowViaSystemEvents`), mocked under Vitest. T3 documented only. SIP/private-API route researched → **NO-GO** (`apps/imsg-mcp/docs/plans/media-intel/spike-sip-findings.md`).
 - **Echo suppression**: `src/sent-echo-registry.ts` – lets `wait_for_reply` return the user's own interjections without the agent's just-sent message echoing back (send confirm-poll pins the ROWID; registry is the backstop).
-- **Humans files**: `src/humans-scaffold.ts` + `src/humans-hints.ts` + `skills/humans/SKILL.md` – humans/v1 per-person relationship files (`~/.agents/humans/`); imsg-mcp scaffolds + feeds stats, the calling agent writes all summaries. `humans-hints.ts` surfaces matching file paths + guidance in tool output. Never overwrite; Log is append-only; privacy: never-share.
+- **Humans files**: `src/humans-scaffold.ts` + `src/humans-hints.ts` + `apps/imsg-mcp/skills/humans/SKILL.md` – humans/v1 per-person relationship files (`~/.agents/humans/`); imsg-mcp scaffolds + feeds stats, the calling agent writes all summaries. `humans-hints.ts` surfaces matching file paths + guidance in tool output. Never overwrite; Log is append-only; privacy: never-share.
 - **Analytics**: `src/analytics.ts` (7 implemented types + `ANALYTIC_INFO` metadata), `src/analytics-render.ts` (shared human text incl. ASCII heatmap + zero-dep phone-safe YAML), `src/analytics-cache.ts` (per-`type,window,DB-state` cache). Exposed via `chat_analytics` MCP tool, `imsg analytics <type> [--json|--yaml]` CLI, console `analytics` verb, and the TUI palette — all share the same renderer. `getMessagesInWindow` is capped at 80k most-recent messages to avoid OOM.
 - **Tools**: Tool schemas and metadata in `src/mcp-tools.ts`; handlers in `src/index.ts`; validate inputs with Zod, keep tool list and schemas in sync.
 - **Tests**: Vitest; keep coverage for DB and tool behavior where it matters.
-- **Skills**: Canonical skill file is **`skills/imsg-mcp/SKILL.md`** — keep other skill files pointing to it.
+- **Skills**: Canonical skill file is **`apps/imsg-mcp/skills/imsg-mcp/SKILL.md`** — keep other skill files pointing to it.
 
 ## TUI (`imsg`)
 
@@ -199,7 +205,7 @@ Tool responses include performance metadata: engine (TS/Rust), query time, resul
 ## Guardrails (interpretation / MCP)
 
 - Do **not** interpret bare digits (e.g. `1`) as another MCP’s onboarding options unless the user was just shown that menu and is clearly answering it. Prefer the current conversation (e.g. “1” = step 1 in an imsg-mcp list).
-- Full incident trace and rationale: **docs/INCIDENT_TRACE_2026-02-15_SINGLE_DIGIT_INTERPRETATION.md**.
+- Full incident trace and rationale: **apps/imsg-mcp/docs/INCIDENT_TRACE_2026-02-15_SINGLE_DIGIT_INTERPRETATION.md**.
 
 ## Troubleshooting (Quick)
 
