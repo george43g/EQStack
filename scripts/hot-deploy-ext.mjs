@@ -51,7 +51,9 @@ function installedExtensions() {
 
 if (has("--list")) {
   for (const e of installedExtensions()) {
-    console.log(`${e.id}\n    name=${e.manifest.name}  display=${e.manifest.display_name ?? "-"}  v${e.manifest.version}`);
+    console.log(
+      `${e.id}\n    name=${e.manifest.name}  display=${e.manifest.display_name ?? "-"}  v${e.manifest.version}`,
+    );
   }
   process.exit(0);
 }
@@ -76,7 +78,9 @@ if (from) {
 
 const srcManifestPath = join(sourceDir, "manifest.json");
 if (!existsSync(srcManifestPath)) {
-  console.error(`✗ No manifest.json in source (${sourceDir}). Build first (pnpm build) or pass --from <archive>.`);
+  console.error(
+    `✗ No manifest.json in source (${sourceDir}). Build first (pnpm build) or pass --from <archive>.`,
+  );
   cleanup?.();
   process.exit(1);
 }
@@ -107,7 +111,7 @@ console.log(`→ source : ${sourceDir}  (name=${srcManifest.name} v${srcManifest
 console.log(`→ target : ${target.dir}`);
 
 // ── Sync the pieces that change between builds ──
-const items = ["dist", "native", "manifest.json", "icon.png", "assets"];
+const items = ["dist", "native", "manifest.json", "package.json", "icon.png", "assets"];
 if (has("--full")) items.push("node_modules");
 for (const item of items) {
   const s = join(sourceDir, item);
