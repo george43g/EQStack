@@ -332,6 +332,17 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   Desktop's exact command; Desktop was running → needs full Quit+reopen). C4: STATUS/-MIGRATION
   flipped to DONE, AGENTS.md monorepo banner + layout, all root-doc links to moved app docs
   rewritten, root skills.md pointer updated. PRs: #50 (A), #51 (B), #52 (C).
+- 2026-08-03 · Claude · **EQStack RENAME (George-triggered).** Local dir
+  `~/repos/imsg-mcp` → `~/repos/EQStack` with a back-compat symlink `imsg-mcp → EQStack` so every
+  hardcoded MCP/dev path keeps resolving while configs migrate gradually; GitHub repo renamed
+  `imsg-mcp` → `EQStack` via `gh repo rename` (GitHub auto-redirects the old slug). **npm package
+  stays `imsg-mcp`.** Also gitignored `.codex/` + `.turbo/` (local dev config + turbo cache;
+  `docs/research/*` deliberately left untracked per George). **⚠️ npm OIDC follow-up owed by George:**
+  the release uses an OIDC Trusted Publisher bound to `george43g/imsg-mcp` + workflow file — the GitHub
+  rename changes the OIDC `repository` claim to `george43g/EQStack`, so the **next** `semantic-release`
+  publish fails auth until the Trusted Publisher config on npmjs.com is updated to the new repo name
+  (manual UI step; not API-scriptable). package.json/manifest `repository`/`homepage` URLs still say
+  imsg-mcp (GitHub redirects them) — cosmetic, optional to update.
 
 ---
 
@@ -339,11 +350,12 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
 
 1. Read this file top-to-bottom, especially the **Progress Log (§11)** — that's where Codex records what
    it actually did.
-2. Answer **Q1 (suite name)** and (when ready) paste **Q2 (analytics research)**.
-3. If Codex used the `@repo/*` placeholder scope, do the fast find-replace to the chosen `@scope/*` and
-   rename the GitHub repo.
-4. Continue from the first unchecked box in §6, then move to designing the analytics app (its own
-   spec → plan → implementation cycle, per `docs/MONOREPO_MIGRATION.md` trigger).
+2. **Q1 answered (EQStack) · migration DONE · repo renamed to EQStack (2026-08-03).** Only open item:
+   paste/track **Q2 (analytics research)** when ready — it's still untracked scratch in `docs/research/`.
+3. **npm OIDC:** before the next `feat`/`fix` release, update the npmjs.com Trusted Publisher for
+   `imsg-mcp` to point at `george43g/EQStack` (the GitHub rename changed the OIDC `repository` claim).
+4. Next major arc = designing the analytics app (`apps/analysis` shell exists; its own
+   spec → plan → implementation cycle, per `docs/MONOREPO_MIGRATION.md` trigger, once Q2 lands).
 
 ---
 
