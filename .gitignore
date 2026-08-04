@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+.turbo/
 
 # IDE
 .vscode/
@@ -33,6 +34,7 @@ coverage/
 # Local dev configurations — user-specific paths
 .mcp.json
 .cursor/
+.codex/
 opencode.json
 .agents/
 
