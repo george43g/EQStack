@@ -332,17 +332,55 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   Desktop's exact command; Desktop was running → needs full Quit+reopen). C4: STATUS/-MIGRATION
   flipped to DONE, AGENTS.md monorepo banner + layout, all root-doc links to moved app docs
   rewritten, root skills.md pointer updated. PRs: #50 (A), #51 (B), #52 (C).
-- 2026-08-03 · Claude · **EQStack RENAME (George-triggered).** Local dir
-  `~/repos/imsg-mcp` → `~/repos/EQStack` with a back-compat symlink `imsg-mcp → EQStack` so every
-  hardcoded MCP/dev path keeps resolving while configs migrate gradually; GitHub repo renamed
-  `imsg-mcp` → `EQStack` via `gh repo rename` (GitHub auto-redirects the old slug). **npm package
-  stays `imsg-mcp`.** Also gitignored `.codex/` + `.turbo/` (local dev config + turbo cache;
-  `docs/research/*` deliberately left untracked per George). **⚠️ npm OIDC follow-up owed by George:**
-  the release uses an OIDC Trusted Publisher bound to `george43g/imsg-mcp` + workflow file — the GitHub
-  rename changes the OIDC `repository` claim to `george43g/EQStack`, so the **next** `semantic-release`
-  publish fails auth until the Trusted Publisher config on npmjs.com is updated to the new repo name
-  (manual UI step; not API-scriptable). package.json/manifest `repository`/`homepage` URLs still say
-  imsg-mcp (GitHub redirects them) — cosmetic, optional to update.
+- 2026-08-03 · Claude · **EQStack RENAME — prep commit (PR #53, merged `922e71e`).** gitignored
+  `.codex/` + `.turbo/` (`docs/research/*` deliberately left untracked per George); HANDOFF record +
+  resume protocol for the rename. Prep landed on the still-named `imsg-mcp` repo before the
+  filesystem/GitHub rename.
+- 2026-08-05 · Claude · **EQStack RENAME — EXECUTED & VERIFIED (George-triggered).**
+  **Canonical path is now `/Users/george/repos/EQStack`** with a back-compat symlink
+  `~/repos/imsg-mcp → EQStack` (kept as the safety net for any path not yet repointed — e.g.
+  `~/.claude.json` session state, deliberately not hand-edited). GitHub repo renamed
+  `george43g/imsg-mcp` → **`george43g/EQStack`** via `gh repo rename` (old slug redirects, verified);
+  `git remote origin` → `git@github.com:george43g/EQStack.git`. **npm package stays `imsg-mcp`.**
+  Configs repointed to the new path: `.mcp.json` (+ `opencode.json`), `.codex/config.toml`, Claude
+  Desktop `mcpServers.imsg-mcp`; global `imsg` re-linked (`pnpm add -g ./apps/imsg-mcp`). `.turbo`
+  cache cleared. **Verified from the new path:** cold `pnpm build`/`typecheck`/`lint` green + **936/936
+  imsg-mcp + 1/1 analysis** tests. Gotchas found & fixed: (1) Claude Desktop had **self-regressed** its
+  entry to the pre-monorepo path `…/imsg-mcp/dist/cli.js` on reopen — corrected to
+  `…/EQStack/apps/imsg-mcp/dist/cli.js` (Desktop not running → loads next launch); (2) `.codex/config.toml`
+  was stale from the monorepo move (root `scripts/`/`src/`) — fixed to `apps/imsg-mcp/…`;
+  (3) **`~/dotfiles/mcp/render.js` no longer exists** (retired with mcpsync, `bcb8451`) so
+  `opencode.json` was rewritten directly — **AGENTS.md/CLAUDE.md still tell agents to run that deleted
+  script** (§"MCP servers (project scope)") = stale, needs a fix. **⚠️ npm OIDC follow-up owed by
+  George:** the release uses an OIDC Trusted Publisher bound to `george43g/imsg-mcp` + workflow file —
+  the GitHub rename changed the OIDC `repository` claim to `george43g/EQStack`, so the **next**
+  `semantic-release` publish fails auth until the Trusted Publisher config on npmjs.com is updated to
+  the new repo name (manual UI step; not API-scriptable). package.json/manifest `repository`/`homepage`
+  URLs still say imsg-mcp (GitHub redirects) — cosmetic.
+- 2026-08-05 · **Parallel work in the tree (NOT this agent's — do not clobber/commit):** George is
+  porting a **third app `apps/voice-mcp/`** into the monorepo (`voice-mcp` — local-first MCP +
+  telephony gateway: agent-initiated Twilio ConversationRelay calls + ElevenLabs voice + OpenRouter
+  LLM; private, not published). It has its OWN `apps/voice-mcp/HANDOFF.md`. Working tree currently
+  carries its untracked dir + `README.md` (adds the voice-mcp row) + `pnpm-lock.yaml` edits, all
+  George's — left untouched here.
+- 2026-08-09 · Claude · **voice-mcp landed + per-package publishing (PRs #54, #55) — closes the
+  rename follow-ups above.** (1) **`apps/voice-mcp` committed** (PR #54, `chore(voice-mcp)`) — green
+  in-workspace (build/typecheck/lint + 98 tests) and stdio-MCP boot-smoked (13 `voice_*` tools);
+  George's parallel work, landed on his behalf. (2) **Per-package releasing** (PR #55,
+  `ci(release)`): adopted **`@anolilab/multi-semantic-release`** (`pnpm release` from repo root) so
+  each published app releases only from commits touching its own path — private apps (voice-mcp,
+  analysis, `@eqstack/*`) auto-skip. Chose anolilab (peer `semantic-release >=24.2.9`) over
+  `@qiwi/multi-semantic-release`, which pins sr `^21` and would break our v25 plugins + OIDC.
+  imsg-mcp tags are now `imsg-mcp-v${version}`; migration baseline tag `imsg-mcp-v1.19.2` pushed.
+  (3) **Root cause of the red release runs found & fixed:** every Release run since the rename failed
+  at `@semantic-release/github` verifyConditions with `EMISMATCHGITHUBURL` because
+  `apps/imsg-mcp/package.json` `repository.url` still said `imsg-mcp` — **not cosmetic; it broke
+  publishing.** Fixed package.json + manifest.json URLs → EQStack (folded into PR #55). (4)
+  **render.js doc drift fixed** (this housekeeping PR): AGENTS.md/CLAUDE.md now regen opencode via
+  `mcpsync -c ./.mcp.json apply --scope project --to opencode`. **npm OIDC: DONE** — George rebound
+  the Trusted Publisher to `george43g/EQStack`. The post-merge Release run is now **green** and
+  correctly no-ops ("Released 0 of 1"). A future 2nd published app (`gmail-MCP-server`) will be
+  imported via **git filter-repo** (clean, re-pathed history) + its own `.releaserc.json`.
 
 ---
 
@@ -350,12 +388,13 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
 
 1. Read this file top-to-bottom, especially the **Progress Log (§11)** — that's where Codex records what
    it actually did.
-2. **Q1 answered (EQStack) · migration DONE · repo renamed to EQStack (2026-08-03).** Only open item:
-   paste/track **Q2 (analytics research)** when ready — it's still untracked scratch in `docs/research/`.
-3. **npm OIDC:** before the next `feat`/`fix` release, update the npmjs.com Trusted Publisher for
-   `imsg-mcp` to point at `george43g/EQStack` (the GitHub rename changed the OIDC `repository` claim).
-4. Next major arc = designing the analytics app (`apps/analysis` shell exists; its own
-   spec → plan → implementation cycle, per `docs/MONOREPO_MIGRATION.md` trigger, once Q2 lands).
+2. **Migration DONE · repo renamed to EQStack · `apps/voice-mcp` landed · per-package publishing live
+   (`@anolilab/multi-semantic-release`) · npm OIDC rebind DONE.** Only open scratch item: paste/track
+   **Q2 (analytics research)** when ready — still untracked in `docs/research/`.
+3. Next major arc = designing the analytics app (`apps/analysis` shell exists; its own
+   spec → plan → implementation cycle, per `docs/MONOREPO_MIGRATION.md` trigger, once Q2 lands). A
+   future 2nd published app (`gmail-MCP-server`) imports via **git filter-repo** + its own
+   `.releaserc.json` (private → auto-skips).
 
 ---
 
