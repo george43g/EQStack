@@ -252,5 +252,5 @@ with per-package tags. Key facts:
 Canonical set: `.mcp.json` (standard MCP schema, `${VAR}` placeholders only —
 never literal secrets). `.cursor/mcp.json` and `.warp/.mcp.json` are symlinks
 to it. `opencode.json`'s `mcp` key is GENERATED — after editing `.mcp.json`,
-run: `node ~/dotfiles/mcp/render.js --manifest .mcp.json --opencode opencode.json`.
+run: `mcpsync -c ./.mcp.json apply --scope project --to opencode`.
 Global servers and scope decisions: `~/dotfiles/docs/mcp-registry.md`.
