@@ -8,14 +8,14 @@
   "icon": "icon.png",
   "author": {
     "name": "George G",
-    "url": "https://github.com/george43g/imsg-mcp"
+    "url": "https://github.com/george43g/EQStack"
   },
-  "homepage": "https://github.com/george43g/imsg-mcp",
-  "documentation": "https://github.com/george43g/imsg-mcp/blob/main/README.md",
-  "support": "https://github.com/george43g/imsg-mcp/issues",
+  "homepage": "https://github.com/george43g/EQStack",
+  "documentation": "https://github.com/george43g/EQStack/blob/main/apps/imsg-mcp/README.md",
+  "support": "https://github.com/george43g/EQStack/issues",
   "repository": {
     "type": "git",
-    "url": "https://github.com/george43g/imsg-mcp"
+    "url": "https://github.com/george43g/EQStack"
   },
   "license": "MIT",
   "keywords": ["imessage", "sms", "messages", "macos", "mcp", "applescript", "contacts", "chat.db"],

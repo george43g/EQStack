@@ -91,8 +91,9 @@ Durable facts that repeatedly bite — keep these in mind before touching the re
   nor local signing: read CI via the **public** REST API (`commits/{sha}/check-runs`, unauthenticated
   works for public repos); merge server-side via `PUT /repos/{owner}/{repo}/pulls/{n}/merge` with
   `$GH_TOKEN` + curl. It usually recovers — a patient background retry beats foreground spinning.
-- **Release serialization.** semantic-release triggers on push to `main`; `concurrency` serializes
-  runs but checkout uses the triggering SHA — so **back-to-back merges risk a non-ff push failure**.
+- **Release serialization.** `@anolilab/multi-semantic-release` (per-package; `pnpm release`)
+  triggers on push to `main`; `concurrency` serializes runs but checkout uses the triggering SHA — so
+  **back-to-back merges risk a non-ff push failure**.
   Merge one PR, wait for its release run to complete, then merge the next. Merge (**not** squash) so
   commit types drive versioning (`fix`=patch, `feat`=minor, `chore`/`refactor`=no bump).
 - **CI gates.** `build-test` (macOS) is the real merge gate. `verify` / `screenshots-check` are

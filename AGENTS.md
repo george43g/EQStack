@@ -224,6 +224,29 @@ Tool responses include performance metadata: engine (TS/Rust), query time, resul
 - **Lint**: `pnpm lint` (Biome). **Typecheck**: `pnpm typecheck` (tsc --noEmit).
 - **Git LFS**: The update script runs `git lfs pull`. If LFS files are still pointer stubs, tests and the server will fail with SQLite errors.
 
+## Releasing (per-package)
+
+Releases are automated with **`@anolilab/multi-semantic-release`** (root `pnpm release`, run by
+`.github/workflows/release.yml` on push to `main`). It wraps `semantic-release` per workspace
+package, so each published app is versioned/published **only from commits that touch its own path**,
+with per-package tags. Key facts:
+
+- **Per-package scope.** A `feat:`/`fix:` touching `apps/imsg-mcp/**` releases `imsg-mcp`; a commit
+  touching only another app never does. Commit *type* still gates whether there's a release; *path*
+  now gates *which* package releases.
+- **Private = skipped.** `ignorePrivate` is on by default, so `apps/voice-mcp`, `apps/analysis`, and
+  the `packages/@eqstack/*` configs (all `private: true`) never publish.
+- **Tags are namespaced per package.** `imsg-mcp` uses `imsg-mcp-v${version}` (its `.releaserc.json`
+  `tagFormat`). Legacy `v1.19.x` tags remain as history; `imsg-mcp-v1.19.2` is the migration baseline
+  so numbering continues from there.
+- **npm OIDC** (Trusted Publisher on npmjs.com, no `NPM_TOKEN`) and the `.mcpb` bundle
+  (`@semantic-release/exec`) are unchanged — msr runs each package's `semantic-release` with the
+  package dir as cwd, so package-relative `.releaserc.json` paths still resolve.
+- **Publish a new app:** give it a non-private `package.json` + its own `.releaserc.json` (with a
+  namespaced `tagFormat`) and it joins the release automatically. Keep `private: true` to stay
+  unpublished.
+- **Merge PRs (not squash)** so `semantic-release` sees conventional-commit types.
+
 ## MCP servers (project scope)
 
 Canonical set: `.mcp.json` (standard MCP schema, `${VAR}` placeholders only —

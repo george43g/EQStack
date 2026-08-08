@@ -4,6 +4,10 @@
   "private": true,
   "description": "EQStack monorepo — home of imsg-mcp (iMessage / SMS MCP server, CLI, and TUI for macOS) and future EQStack apps.",
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
@@ -17,6 +21,7 @@
     "screenshots": "pnpm -C apps/imsg-mcp screenshots",
     "screenshots:check": "pnpm -C apps/imsg-mcp screenshots:check",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "release": "multi-semantic-release",
     "mcp": "pnpm -C apps/imsg-mcp mcp",
     "cli": "pnpm -C apps/imsg-mcp cli",
     "tui": "pnpm -C apps/imsg-mcp tui",
@@ -24,6 +29,8 @@
     "hook:install": "git config core.hooksPath .githooks && echo '✓ pre-push hook installed (regenerates screenshots before push on macOS)'"
   },
   "devDependencies": {
+    "@anolilab/multi-semantic-release": "^4.4.6",
+    "semantic-release": "^25.0.3",
     "turbo": "^2.10.7"
   },
   "engines": {

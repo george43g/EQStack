@@ -62,14 +62,18 @@ jobs:
       # .releaserc.json) — after the version bump, so the bundle's package.json
       # and manifest.json carry the released version. A standalone pack step
       # here would run pre-bump and ship stale versions inside the bundle.
-      - name: Run semantic-release
-        # Runs inside the app so .releaserc.json's package-relative paths
-        # (CHANGELOG.md, manifest.json, scripts/, release/) resolve; git
-        # operations (tag + bump commit) still act on the repo root.
-        working-directory: apps/imsg-mcp
+      - name: Run multi-semantic-release
+        # Runs from the repo ROOT. @anolilab/multi-semantic-release discovers each
+        # workspace package, filters commits to that package's own path, and runs
+        # semantic-release per package with the package dir as cwd — so each app's
+        # .releaserc.json package-relative paths (CHANGELOG.md, manifest.json,
+        # scripts/, release/) and per-package tagFormat resolve. Private packages
+        # (voice-mcp, analysis, @eqstack/*) are skipped (ignorePrivate default);
+        # only apps/imsg-mcp publishes today. Add a published app = give it its own
+        # non-private package.json + .releaserc.json and it joins automatically.
         env:
           # OIDC: npmjs.com Trusted Publisher is configured for this repo + workflow.
           # No NPM_TOKEN — npm CLI v11.5+ (bundled with Node 24) exchanges the
           # job's id-token for a short-lived publish token automatically.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm exec semantic-release
+        run: pnpm release

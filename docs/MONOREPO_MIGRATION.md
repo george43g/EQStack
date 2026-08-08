@@ -54,7 +54,10 @@ napi-rs, semantic-release), so this is **restructuring, not a tooling swap**.
   `cli-kit`, `tui-kit` until the analytics app actually needs them (YAGNI). imsg keeps its inlined
   watchdog/logger/shutdown/sanitize/prompt-injection for now.
 - **Keep the `IMSG_*` env prefix** (do not rename to the template's `MCP_*`).
-- **Keep single-package semantic-release** targeting the imsg app.
+- **Releasing:** started single-package (imsg only); now **per-package** via
+  `@anolilab/multi-semantic-release` (root `pnpm release`) so a second published app can be added by
+  dropping in its own non-private `package.json` + `.releaserc.json`. Private packages auto-skip;
+  tags are namespaced (`imsg-mcp-v${version}`). See AGENTS.md § "Releasing (per-package)".
 
 ## What the analytics tool will consume from imsg (the shared surface, for later)
 
