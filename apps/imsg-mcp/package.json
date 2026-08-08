@@ -86,12 +86,12 @@
   "author": "George G",
   "repository": {
     "type": "git",
-    "url": "https://github.com/george43g/imsg-mcp.git",
+    "url": "https://github.com/george43g/EQStack.git",
     "directory": "apps/imsg-mcp"
   },
-  "homepage": "https://github.com/george43g/imsg-mcp#readme",
+  "homepage": "https://github.com/george43g/EQStack#readme",
   "bugs": {
-    "url": "https://github.com/george43g/imsg-mcp/issues"
+    "url": "https://github.com/george43g/EQStack/issues"
   },
   "license": "MIT",
   "dependencies": {
