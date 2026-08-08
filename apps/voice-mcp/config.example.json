@@ -1,0 +1,51 @@
+{
+  "server": {
+    "publicBaseUrl": "https://your-tunnel.trycloudflare.com",
+    "publicPort": 8790,
+    "adminPort": 8791
+  },
+  "telephony": {
+    "type": "twilio-conversation-relay",
+    "fromNumber": "+61255500000"
+  },
+  "llm": {
+    "type": "openai-compatible",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "model": "openai/gpt-5-mini",
+    "fallbackModel": "anthropic/claude-haiku-4.5",
+    "apiKeyRef": "OPENROUTER_API_KEY"
+  },
+  "voice": {
+    "voiceId": "your-elevenlabs-voice-id",
+    "model": "flash_v2_5",
+    "speed": 1,
+    "stability": 0.7,
+    "similarity": 0.8,
+    "language": "en-AU",
+    "transcription": { "provider": "Deepgram", "model": "flux" }
+  },
+  "recipients": {
+    "example-person": {
+      "number": "+61400000000",
+      "displayName": "Example Person",
+      "recordingPolicy": "manual"
+    }
+  },
+  "profiles": {
+    "default": {
+      "systemPrompt": "You are a polite, efficient assistant making a phone call on behalf of George. Stay on the stated objective, be concise, and end the call once the objective is met.",
+      "greeting": "Hi! This is George's AI assistant calling.",
+      "maxDurationMinutes": 15,
+      "record": false
+    }
+  },
+  "limits": {
+    "maxConcurrentCalls": 1,
+    "defaultMaxDurationMinutes": 15,
+    "hardMaxDurationMinutes": 30,
+    "callRequestTtlMinutes": 10
+  },
+  "disclosure": {
+    "text": "Just so you know, I'm an AI assistant and this call may be recorded from this point."
+  }
+}
