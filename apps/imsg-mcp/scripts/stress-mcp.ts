@@ -5,7 +5,11 @@ import type { Buffer } from "node:buffer";
  * selection, watchdog). Run before publishing. Exits non-zero on any failure.
  *
  * Usage:
- *   pnpm exec tsx scripts/stress-mcp.ts [.env.test|.env.local]
+ *   pnpm exec tsx scripts/stress-mcp.ts [.env.test|.env.local] [--report <path>]
+ *
+ * --report writes a machine-readable JSON report (same spirit as
+ * stress-tui-report.json) for CI artifact upload. Console output is
+ * unchanged when the flag is absent.
  *
  * Cases:
  *   1. Long export (largest chat) -> file > 1MB; peak heap < 200MB
@@ -18,7 +22,7 @@ import type { Buffer } from "node:buffer";
  *   8. boundMessagesIfNeeded eviction shape (pure, runs in-process)
  */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, statSync, unlinkSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { boundMessagesIfNeeded } from "../src/tui/types.js";
@@ -40,6 +44,10 @@ class McpClient {
   constructor(envFile: string) {
     this.proc = spawn("node", [`--env-file=${envFile}`, "dist/cli.js", "mcp"], {
       stdio: ["pipe", "pipe", "pipe"],
+      // health_check is dev-gated (DEV_TOOL_NAMES) and this harness leans on
+      // it; the stress run always drives the repo checkout, so dev mode is
+      // the intended mode here.
+      env: { ...process.env, IMSG_DEV: "1" },
     }) as ChildProcessWithoutNullStreams;
     this.proc.stdout.on("data", (chunk: Buffer) => {
       this.buffer += chunk.toString("utf8");
@@ -137,7 +145,62 @@ function fakeMsgs(n: number): Message[] {
   }));
 }
 
+// ── CLI args ─────────────────────────────────────────────────────
+// Positional: env file (default .env.test). Flag: --report <path>.
+const cliArgs = process.argv.slice(2);
+let reportPath: string | undefined;
+const positionals: string[] = [];
+for (let i = 0; i < cliArgs.length; i++) {
+  const a = cliArgs[i];
+  if (a === "--report") {
+    reportPath = cliArgs[i + 1];
+    if (!reportPath || reportPath.startsWith("--")) {
+      console.error("--report requires a file path argument");
+      process.exit(2);
+    }
+    i++;
+  } else if (a !== "--") {
+    positionals.push(a);
+  }
+}
+const envFile = positionals[0] ?? ".env.test";
+
+// ── Report state (mirrors stress-tui-report.json's role in CI) ───
+interface CheckResult {
+  section: string;
+  name: string;
+  ok: boolean;
+  detail?: string;
+}
+const checkResults: CheckResult[] = [];
+let currentSection = "";
+const startedAt = new Date();
+
+function writeReport(fatal?: string): void {
+  if (!reportPath) return;
+  const passed = checkResults.filter((c) => c.ok).length;
+  const report = {
+    kind: "stress-mcp",
+    envFile,
+    startedAt: startedAt.toISOString(),
+    durationMs: Date.now() - startedAt.getTime(),
+    checksRun: checkResults.length,
+    passed,
+    failures,
+    fatal: fatal ?? null,
+    result: failures === 0 && !fatal ? "PASS" : "FAIL",
+    checks: checkResults,
+  };
+  try {
+    writeFileSync(reportPath, JSON.stringify(report, null, 2));
+    console.log(`report file: ${reportPath}`);
+  } catch (e) {
+    console.error(`Failed to write report to ${reportPath}:`, e);
+  }
+}
+
 function header(s: string) {
+  currentSection = s;
   console.log(`\n\x1b[1;36m── ${s} ──\x1b[0m`);
 }
 function pass(msg: string) {
@@ -156,20 +219,24 @@ async function check(name: string, fn: () => Promise<boolean | string>): Promise
     const r = await fn();
     if (r === true) {
       pass(name);
+      checkResults.push({ section: currentSection, name, ok: true });
     } else if (typeof r === "string") {
       pass(`${name} — ${r}`);
+      checkResults.push({ section: currentSection, name, ok: true, detail: r });
     } else {
       fail(name);
       failures++;
+      checkResults.push({ section: currentSection, name, ok: false });
     }
   } catch (e) {
-    fail(`${name} — ${e instanceof Error ? e.message : String(e)}`);
+    const detail = e instanceof Error ? e.message : String(e);
+    fail(`${name} — ${detail}`);
     failures++;
+    checkResults.push({ section: currentSection, name, ok: false, detail });
   }
 }
 
 async function main() {
-  const envFile = process.argv[2] ?? ".env.test";
   console.log(`\x1b[1mMCP stress test\x1b[0m  env=${envFile}`);
 
   const tmpDir = mkdtempSync(join(tmpdir(), "imsg-stress-"));
@@ -217,6 +284,9 @@ async function main() {
   const slug = slugMatches[0]?.[1];
   if (!slug) {
     fail("Could not find a chat slug from list_conversations — fixture empty?");
+    failures++;
+    client.close();
+    writeReport("no chat slug found in list_conversations output");
     process.exit(1);
   }
   info(`using slug: ${slug}`);
@@ -349,10 +419,12 @@ async function main() {
   console.log(
     `\n\x1b[1mResult:\x1b[0m ${failures === 0 ? "\x1b[32mall passed\x1b[0m" : `\x1b[31m${failures} failures\x1b[0m`}`,
   );
+  writeReport();
   process.exit(failures === 0 ? 0 : 1);
 }
 
 main().catch((e) => {
   console.error("Fatal:", e);
+  writeReport(e instanceof Error ? e.message : String(e));
   process.exit(1);
 });

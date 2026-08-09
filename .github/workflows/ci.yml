@@ -40,6 +40,13 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Fails if a public tool in src/mcp-tools.ts is missing from README.md's
+      # tool table (one direction only; dev-gated tools exempt). CI-only —
+      # deliberately not part of `pnpm lint` to keep lint fast.
+      - name: README tool-table drift check
+        working-directory: apps/imsg-mcp
+        run: node scripts/check-readme-tools.mjs
+
       - name: Build (TS + native arm64)
         run: pnpm build
 
@@ -52,9 +59,28 @@ jobs:
       - name: Test (TS-only fallback path, IMSG_DISABLE_NATIVE=1)
         run: pnpm test:no-native
 
-      - name: Verify npm tarball is publishable
+      # Verifies the tarball is packable AND under the size limit (guards
+      # against accidental fixture/DB inclusion). Threshold + baseline live
+      # in scripts/check-pack-size.mjs.
+      - name: Pack-size guard (npm pack --dry-run)
         working-directory: apps/imsg-mcp
-        run: npm pack --dry-run
+        run: node scripts/check-pack-size.mjs
+
+      # ── e2e stress: MCP server over stdio against the fixtures env ──
+      # Same harness as `pnpm -C apps/imsg-mcp stress`: export, pagination,
+      # health_check-under-load, malformed-input recovery. Mock sends
+      # (.env.test, VITE_ENV=ai). Non-zero exit on any failed check.
+      - name: Stress test MCP server (fixtures env)
+        working-directory: apps/imsg-mcp
+        run: pnpm stress --report stress-mcp-report.json
+
+      - name: Upload MCP stress report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-mcp-report-macos
+          path: apps/imsg-mcp/stress-mcp-report.json
+          if-no-files-found: warn
 
       # ── e2e stress: 250k messages, 1200 chats, watchdog under load ──
       # Generates a heavy synthetic fixture (top 5 chats × 20k messages,
@@ -75,4 +101,49 @@ jobs:
         with:
           name: stress-tui-report
           path: apps/imsg-mcp/stress-tui-report.json
+          if-no-files-found: warn
+
+  # ── Linux: build + MCP stress on the pure-TS fallback path ──────────
+  # Proves the server runs on Linux without the Rust native module.
+  # `pnpm build` is safe without Rust: build:native:optional warn-skips
+  # when napi/cargo fails (and on GH runners with Rust preinstalled the
+  # native build simply succeeds — IMSG_DISABLE_NATIVE=1 forces the TS
+  # engine at runtime either way). Fixtures are generated synthetically
+  # (`pnpm fixtures`), same as the macOS job — no Git LFS content needed.
+  stress-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate synthetic fixtures
+        run: pnpm fixtures
+
+      - name: Build
+        run: pnpm build
+
+      - name: Stress test MCP server (TS fallback, fixtures env)
+        working-directory: apps/imsg-mcp
+        env:
+          IMSG_DISABLE_NATIVE: "1"
+        run: pnpm stress --report stress-mcp-report.json
+
+      - name: Upload MCP stress report (linux)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-mcp-report-linux
+          path: apps/imsg-mcp/stress-mcp-report.json
           if-no-files-found: warn
