@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.1](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.0...imsg-mcp-v1.21.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** coalesce wheel events, bound message cache, cool down pagination ([ea3c81e](https://github.com/george43g/EQStack/commit/ea3c81e62c943d351430b18f5ab099680ff53f9b))
+* **imsg-mcp:** grapheme-aware truncation for sender names and reply previews ([ee50ede](https://github.com/george43g/EQStack/commit/ee50ede8f56d9b5f4ebea6e3b878a256eed7f794))
+* **imsg-mcp:** watch the WAL file itself + safety poll — dir watch is silent on ~/Library/Messages ([5051151](https://github.com/george43g/EQStack/commit/50511515585c46c9cf5d8daa54777725207b74a8))
+
 # imsg-mcp [1.21.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.20.0...imsg-mcp-v1.21.0) (2026-08-09)
 
 
