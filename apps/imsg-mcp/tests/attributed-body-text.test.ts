@@ -9,7 +9,7 @@ import { extractAttributedBodyText } from "../src/attributed-body-text.js";
  *   - 0x94 preamble (most common)
  *   - 0x95 preamble (used when message has DataDetector annotations)
  *   - Doubled-letter prefix (length byte happens to equal the first content
- *     char — caused visible "HHeres..." artifacts before the fix)
+ *     char — caused visible doubled-first-letter artifacts before the fix)
  *   - Attachment-only blobs (no user text — should return undefined)
  *   - Emoji-only text
  *

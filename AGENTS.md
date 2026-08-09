@@ -236,15 +236,21 @@ with per-package tags. Key facts:
   now gates *which* package releases.
 - **Private = skipped.** `ignorePrivate` is on by default, so `apps/voice-mcp`, `apps/analysis`, and
   the `packages/@eqstack/*` configs (all `private: true`) never publish.
-- **Tags are namespaced per package.** `imsg-mcp` uses `imsg-mcp-v${version}` (its `.releaserc.json`
-  `tagFormat`). Legacy `v1.19.x` tags remain as history; `imsg-mcp-v1.19.2` is the migration baseline
-  so numbering continues from there.
-- **npm OIDC** (Trusted Publisher on npmjs.com, no `NPM_TOKEN`) and the `.mcpb` bundle
-  (`@semantic-release/exec`) are unchanged — msr runs each package's `semantic-release` with the
+- **Tags are namespaced per package — set GLOBALLY, not per package.** msr **always overrides** a
+  package's own `.releaserc.json` `tagFormat`, so the scheme lives in the root `release` script:
+  `multi-semantic-release --tag-format '${name}-v${version}'` → `imsg-mcp-v1.19.x`. (Learned the
+  hard way: with the default `${name}@${version}` msr missed the `imsg-mcp-v1.19.2` baseline and
+  computed **1.0.0**; run 31304184401.) Legacy `v1.19.x` tags remain as history; `imsg-mcp-v1.19.2`
+  is the migration baseline so numbering continues from there.
+- **Publish via `@anolilab/semantic-release-pnpm`, NOT `@semantic-release/npm`.** The npm plugin
+  shells out to the npm CLI, which rejects pnpm `workspace:*` deps (`EUNSUPPORTEDPROTOCOL`) now
+  that the root has a `workspaces` field. The pnpm plugin is workspace-aware and supports **npm
+  OIDC trusted publishing** (no `NPM_TOKEN`; workflow keeps `id-token: write`). The `.mcpb` bundle
+  (`@semantic-release/exec`) is unchanged — msr runs each package's `semantic-release` with the
   package dir as cwd, so package-relative `.releaserc.json` paths still resolve.
-- **Publish a new app:** give it a non-private `package.json` + its own `.releaserc.json` (with a
-  namespaced `tagFormat`) and it joins the release automatically. Keep `private: true` to stay
-  unpublished.
+- **Publish a new app:** give it a non-private `package.json` + its own `.releaserc.json` (using
+  `@anolilab/semantic-release-pnpm`) and it joins the release automatically — its tags follow the
+  global `--tag-format`. Keep `private: true` to stay unpublished.
 - **Merge PRs (not squash)** so `semantic-release` sees conventional-commit types.
 
 ## MCP servers (project scope)
