@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { _resetForTests } from "@george43g/robustness/logger";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getContactsDbPaths, getImsgDbPath } from "../src/config.js";
 import { IMessageDB } from "../src/imessage-db.js";
@@ -24,6 +25,9 @@ describe("logger", () => {
   const originalImsgDev = process.env.IMSG_DEV;
   beforeAll(() => {
     process.env.IMSG_DEV = "1";
+    // Kit logger state is per-worker (not reset between test files) — drop
+    // any stale logFilePath another file left behind before asserting paths.
+    _resetForTests();
   });
   afterAll(() => {
     if (originalImsgDev === undefined) delete process.env.IMSG_DEV;

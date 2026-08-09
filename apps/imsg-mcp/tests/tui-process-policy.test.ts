@@ -19,6 +19,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { _resetForTests } from "@george43g/robustness/logger";
 import { describe, expect, it, vi } from "vitest";
 import { appendLog, enableFileLogging, getLogFilePath } from "../src/logger.js";
 import type { ShutdownOpts } from "../src/shutdown.js";
@@ -31,6 +32,9 @@ describe("logger.enableFileLogging", () => {
     const dir = mkdtempSync(join(tmpdir(), "imsg-test-"));
     process.env.TMPDIR = dir;
     delete process.env.IMSG_DEV;
+    // Kit logger state is per-worker — clear any logFilePath a previous test
+    // file created, or the null assertion below fails under worker reuse.
+    _resetForTests();
 
     try {
       // Before flipping the flag: no file should exist for this PID.

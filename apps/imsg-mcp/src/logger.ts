@@ -1,44 +1,61 @@
 /**
- * Structured logger with performance monitoring.
+ * Structured logger — facade over `@george43g/robustness`'s logger (which was
+ * extracted from this module's previous 393-line implementation).
  *
- * - In-memory buffer for MCP `get_logs` tool (backwards compatible)
- * - NDJSON file output to $TMPDIR/imsg-mcp/ for post-mortem analysis
- * - Performance spans: `const span = perf("op"); ... span.end({ rows: 100 })`
- * - Heap memory tracking on every log entry
+ * What the kit provides (delegated): ring buffer for `get_logs`, NDJSON file
+ * output with 10MB rotation, stderr mirror, perf spans, safe stringification,
+ * and — the reason this migration ships as a `fix:` — **redaction of phone
+ * numbers and secret-shaped strings in every sink, ON by default**.
  *
- * Files in $TMPDIR are cleaned up by the OS automatically.
+ * What stays local, and why:
+ *  - the `IMSG_DEV` file gate (kit default is file-logging ON; imsg's contract
+ *    is OFF for end users unless IMSG_DEV=1 or the TUI forces it) — synced
+ *    into the kit before every emit so the gate stays call-time;
+ *  - `getFileLogLines` (prefers the CURRENT PID's file; the kit reads only
+ *    the newest file, which returns another instance's log when an MCP server
+ *    and a TUI share the machine — pinned by tests/get-logs-file-source);
+ *  - `startHeapMonitor` (IMSG_DEV-gated, 256MB default via IMSG_HEAP_WARN_MB
+ *    with a 64MB floor, IMSG_LOG_VERBOSE 10s cadence, `system_free_mb`);
+ *  - `setLastSendError`/`getLastSendError` (imsg-specific, feeds the
+ *    `get_last_send_error` MCP tool; the stored details stay RAW for the tool
+ *    response — only the log line is redacted);
+ *  - `logStartup` (imsg adds version/arch/abi to the marker);
+ *  - `appendLog` (legacy level-string API used by MCP tools + shutdown).
+ *
+ * `setLogFilePrefix("imsg-mcp")` keeps the NDJSON location byte-identical:
+ * `$TMPDIR/imsg-mcp/imsg-mcp-{PID}-{date}.ndjson`.
  */
 
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeSync,
-} from "node:fs";
-import { freemem, tmpdir } from "node:os";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { freemem } from "node:os";
 import { join } from "node:path";
+import {
+  clearLogs,
+  getLogDirectory,
+  getLogFilePath,
+  getLogs,
+  error as kitError,
+  info as kitInfo,
+  logShutdown as kitLogShutdown,
+  perf as kitPerf,
+  warn as kitWarn,
+  type LogEntry,
+  type LogLevel,
+  type PerfSpan,
+  setFileLogging,
+  setLogFilePrefix,
+  setStderrMirror,
+  writeStderrLine,
+} from "@george43g/robustness/logger";
 import { APP_VERSION } from "./meta.js";
 
-// ── Types ──────────────────────────────────────────────────────────────
+// Byte-identical NDJSON path/filename + `[imsg-mcp]` stderr prefix.
+setLogFilePrefix("imsg-mcp");
 
-export type LogLevel = "info" | "warn" | "error" | "perf";
+export type { LogEntry, LogLevel, PerfSpan };
+export { clearLogs, getLogDirectory, getLogFilePath, getLogs, writeStderrLine };
 
-export interface LogEntry {
-  ts: string;
-  level: LogLevel;
-  msg: string;
-  dur_ms?: number;
-  mem_mb: number;
-  mem_delta_mb?: number;
-  data?: Record<string, unknown>;
-}
-
-export interface PerfSpan {
-  /** End the span. Logs duration, memory delta, and optional metadata. */
-  end(data?: Record<string, unknown>): number;
-}
+// ── Types (imsg-specific) ──────────────────────────────────────────────
 
 export interface LastSendErrorDetails {
   message: string;
@@ -48,21 +65,20 @@ export interface LastSendErrorDetails {
   timestamp: string;
 }
 
-// ── State ──────────────────────────────────────────────────────────────
-
-const MAX_LOG_LINES = 500;
-const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB rotation
+// ── IMSG_DEV file gate ─────────────────────────────────────────────────
 
 /**
  * File logging is opt-in via IMSG_DEV=1 OR a programmatic `enableFileLogging()`
  * call. End users running the published `imsg mcp` bin don't get NDJSON files
  * in $TMPDIR by default. The TUI flips this on unconditionally so a future
- * crash leaves a postmortem trail — without it, the user's "tool exited on its
- * own" report has nothing to investigate. The in-memory ring buffer (500
- * lines) still works either way.
+ * crash leaves a postmortem trail. The in-memory ring buffer (500 lines)
+ * still works either way.
  *
  * Checked at call time, not module-load time, so tests can flip the flag
- * without needing to re-import the module.
+ * without re-importing the module. `syncFileGate()` pushes the current gate
+ * into the kit before every emit — this also means the kit's own
+ * `MCP_LOG_TO_FILE` default-ON never applies to imsg (programmatic override
+ * beats env in the kit).
  */
 let fileLoggingForced = false;
 
@@ -73,6 +89,7 @@ let fileLoggingForced = false;
  */
 export function enableFileLogging(): void {
   fileLoggingForced = true;
+  syncFileGate();
 }
 
 function isFileLoggingEnabled(): boolean {
@@ -83,116 +100,25 @@ function isVerboseLogging(): boolean {
   return process.env.IMSG_LOG_VERBOSE === "1";
 }
 
-const memoryLines: string[] = [];
-let logFilePath: string | null = null;
-let logFileBytes = 0;
-let lastSendError: LastSendErrorDetails | null = null;
-
-// ── File output ────────────────────────────────────────────────────────
-
-function getLogDir(): string {
-  return join(tmpdir(), "imsg-mcp");
+function syncFileGate(): void {
+  setFileLogging(isFileLoggingEnabled());
 }
 
-function ensureLogFile(): string | null {
-  if (logFilePath && logFileBytes < MAX_FILE_BYTES) return logFilePath;
-
-  try {
-    const dir = getLogDir();
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-
-    const date = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    logFilePath = join(dir, `imsg-mcp-${process.pid}-${date}.ndjson`);
-    logFileBytes = 0;
-    return logFilePath;
-  } catch {
-    return null;
-  }
-}
-
-function writeToFile(json: string): void {
-  if (!isFileLoggingEnabled()) return;
-  const path = ensureLogFile();
-  if (!path) return;
-  try {
-    const line = `${json}\n`;
-    appendFileSync(path, line);
-    logFileBytes += line.length;
-  } catch {
-    // Don't let file I/O failures break the app.
-  }
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────
-
-function heapMB(): number {
-  return Math.round((process.memoryUsage().heapUsed / 1024 / 1024) * 10) / 10;
-}
-
-function formatMemoryLine(entry: LogEntry): string {
-  let line = `${entry.ts} [${entry.level}] ${entry.msg}`;
-  if (entry.dur_ms != null) line += ` (${entry.dur_ms.toFixed(1)}ms)`;
-  if (entry.data != null) line += ` ${JSON.stringify(entry.data)}`;
-  return line;
-}
-
-// When enabled (MCP stdio mode), info/warn/error are mirrored to stderr so the
-// host (Claude Desktop, Cursor, …) surfaces them in its own connection log.
-// OFF by default: the TUI renders a full-screen Ink UI to the same terminal and
-// stray stderr writes would corrupt it. Enable explicitly in the MCP entrypoint.
-let stderrMirrorEnabled = false;
-
-/**
- * Mirror structured info/warn/error logs to stderr. Call once from the MCP
- * stdio entrypoint. Never call this from the TUI — it would garble the render.
- */
-export function enableStderrLogging(): void {
-  stderrMirrorEnabled = true;
-}
-
-/**
- * Write a line to stderr (fd 2) SYNCHRONOUSLY. Unlike `console.error`, a
- * synchronous fd write is flushed before the process can exit, so the line
- * survives even when we die microseconds later (the exact failure mode that
- * made startup crashes invisible in the host log). Never throws.
- */
-export function writeStderrLine(line: string): void {
-  try {
-    writeSync(2, `${line}\n`);
-  } catch {
-    // stderr may be closed mid-shutdown; never re-throw from the logger.
-  }
-}
-
-function emit(entry: LogEntry): void {
-  // In-memory buffer for MCP get_logs tool
-  const line = formatMemoryLine(entry);
-  memoryLines.push(line);
-  if (memoryLines.length > MAX_LOG_LINES) {
-    memoryLines.splice(0, memoryLines.length - MAX_LOG_LINES);
-  }
-
-  // NDJSON file output
-  writeToFile(JSON.stringify(entry));
-
-  // Mirror to stderr for the MCP host log (perf spans excluded — too chatty).
-  if (stderrMirrorEnabled && entry.level !== "perf") {
-    writeStderrLine(`[imsg-mcp] ${line}`);
-  }
-}
-
-// ── Public API ─────────────────────────────────────────────────────────
+// ── Emit API (delegated, gate-synced) ──────────────────────────────────
 
 export function info(msg: string, data?: Record<string, unknown>): void {
-  emit({ ts: new Date().toISOString(), level: "info", msg, mem_mb: heapMB(), data });
+  syncFileGate();
+  kitInfo(msg, data);
 }
 
 export function warn(msg: string, data?: Record<string, unknown>): void {
-  emit({ ts: new Date().toISOString(), level: "warn", msg, mem_mb: heapMB(), data });
+  syncFileGate();
+  kitWarn(msg, data);
 }
 
 export function error(msg: string, data?: Record<string, unknown>): void {
-  emit({ ts: new Date().toISOString(), level: "error", msg, mem_mb: heapMB(), data });
+  syncFileGate();
+  kitError(msg, data);
 }
 
 /**
@@ -206,56 +132,47 @@ export function error(msg: string, data?: Record<string, unknown>): void {
  * ```
  */
 export function perf(msg: string): PerfSpan {
-  const startTime = performance.now();
-  const startHeap = heapMB();
-
+  const span = kitPerf(msg);
   return {
     end(data?: Record<string, unknown>): number {
-      const dur_ms = performance.now() - startTime;
-      const endHeap = heapMB();
-      emit({
-        ts: new Date().toISOString(),
-        level: "perf",
-        msg,
-        dur_ms,
-        mem_mb: endHeap,
-        mem_delta_mb: Math.round((endHeap - startHeap) * 10) / 10,
-        data,
-      });
-      return dur_ms;
+      // The emit happens at end() time — sync the gate then, not at start.
+      syncFileGate();
+      return span.end(data);
     },
   };
 }
 
-// ── Backwards-compatible API (used by MCP tools in index.ts) ───────────
+/**
+ * Mirror structured info/warn/error logs to stderr. Call once from the MCP
+ * stdio entrypoint. Never call this from the TUI — it would garble the render.
+ */
+export function enableStderrLogging(): void {
+  setStderrMirror(true);
+}
+
+// ── Backwards-compatible API (used by MCP tools + shutdown wrapper) ────
 
 /** @deprecated Use info/warn/error instead. Kept for MCP tool compat. */
 export function appendLog(level: string, message: string, data?: unknown): void {
-  const entry: LogEntry = {
-    ts: new Date().toISOString(),
-    level: level as LogLevel,
-    msg: message,
-    mem_mb: heapMB(),
-    data:
-      data != null
-        ? typeof data === "object"
-          ? (data as Record<string, unknown>)
-          : { value: data }
-        : undefined,
-  };
-  emit(entry);
+  const normalized =
+    data != null
+      ? typeof data === "object"
+        ? (data as Record<string, unknown>)
+        : { value: data }
+      : undefined;
+  if (level === "error") error(message, normalized);
+  else if (level === "warn") warn(message, normalized);
+  else info(message, normalized);
 }
 
-export function getLogs(tail?: number): string[] {
-  if (tail != null && tail > 0) return memoryLines.slice(-tail);
-  return [...memoryLines];
-}
+// ── Last-send-error store (imsg-specific) ──────────────────────────────
 
-export function clearLogs(): void {
-  memoryLines.length = 0;
-}
+let lastSendError: LastSendErrorDetails | null = null;
 
 export function setLastSendError(details: Omit<LastSendErrorDetails, "timestamp">): void {
+  // Stored RAW for the get_last_send_error tool response (the agent needs the
+  // real stderr to diagnose a failed send); the log line below IS redacted by
+  // the kit like every other sink.
   lastSendError = { ...details, timestamp: new Date().toISOString() };
   error("send_message failed", details as Record<string, unknown>);
 }
@@ -264,15 +181,7 @@ export function getLastSendError(): LastSendErrorDetails | null {
   return lastSendError ? { ...lastSendError } : null;
 }
 
-/** Return the path to the current log file (if any). */
-export function getLogFilePath(): string | null {
-  return logFilePath;
-}
-
-/** Return the log directory path. */
-export function getLogDirectory(): string {
-  return getLogDir();
-}
+// ── Lifecycle markers ──────────────────────────────────────────────────
 
 /** Log a startup marker — call at process start. */
 export function logStartup(entrypoint: string): void {
@@ -289,25 +198,25 @@ export function logStartup(entrypoint: string): void {
 
 /** Log a shutdown marker — call before process exits. */
 export function logShutdown(reason: string): void {
-  info("shutdown", { pid: process.pid, reason, uptime_s: Math.round(process.uptime()) });
+  syncFileGate();
+  kitLogShutdown(reason);
 }
+
+// ── File tail (imsg-specific: current-PID preference) ──────────────────
 
 /**
  * Read the latest NDJSON log file from disk (for external access).
  * Returns the last N lines from the most recent log file.
+ *
+ * Kept local (not the kit's version): this prefers the file tagged with the
+ * CURRENT PID so the caller gets logs from THIS server process even when
+ * stale files from prior crashes / other instances sort later, falling back
+ * to the most-recent file when no current-PID file exists. Uses the kit's
+ * `getLogDirectory()` so reader and writer always agree on the directory.
  */
 export function getFileLogLines(tail = 50): string[] {
   try {
-    // Previously this used inline `require("node:fs")`, which throws
-    // ReferenceError under ESM and gets silently swallowed — returning []
-    // even when a 135-line NDJSON sat right next to it. The imports now
-    // live at the top of the file (ESM-correct).
-    //
-    // Strategy: read every PID-tagged file in the log dir so the caller
-    // gets logs from THIS server process even when stale files from prior
-    // crashes / older PIDs sort later. We fall back to the most-recent
-    // file if the current PID isn't present (e.g. file rotated).
-    const dir = getLogDir();
+    const dir = getLogDirectory();
     if (!existsSync(dir)) return [];
     const files = readdirSync(dir)
       .filter((f: string) => f.endsWith(".ndjson"))
@@ -317,6 +226,7 @@ export function getFileLogLines(tail = 50): string[] {
     const currentPid = String(process.pid);
     const mine = files.filter((f: string) => f.includes(`imsg-mcp-${currentPid}-`));
     const targetFile = mine[mine.length - 1] ?? files[files.length - 1];
+    if (targetFile === undefined) return [];
 
     const content = readFileSync(join(dir, targetFile), "utf8");
     const lines = content.trim().split("\n").filter(Boolean);
@@ -326,7 +236,7 @@ export function getFileLogLines(tail = 50): string[] {
   }
 }
 
-// ── Heap monitor ───────────────────────────────────────────────────────
+// ── Heap monitor (imsg-specific gate + thresholds) ─────────────────────
 
 /**
  * Heap warning threshold for the heartbeat monitor. Tunable via
@@ -343,6 +253,10 @@ const HEAP_WARN_MB = Math.max(
 );
 let heapMonitorTimer: ReturnType<typeof setInterval> | null = null;
 
+function heapMB(): number {
+  return Math.round((process.memoryUsage().heapUsed / 1024 / 1024) * 10) / 10;
+}
+
 /**
  * Start periodic heap monitoring. Logs a warning if heap exceeds the
  * threshold. Call once at server startup.
@@ -352,6 +266,9 @@ let heapMonitorTimer: ReturnType<typeof setInterval> | null = null;
  * unconditionally for self-healing; this monitor is purely observability.
  *
  * Heartbeats fire every 60s by default, or every 10s when IMSG_LOG_VERBOSE=1.
+ * Kept local (not the kit's): the kit monitor has no dev gate, a 150MB
+ * default, and no `system_free_mb` (which diagnoses "process vanished"
+ * reports where the kill came from outside — SIGKILL, OOM, parent host).
  */
 export function startHeapMonitor(): void {
   if (!isFileLoggingEnabled()) return;
@@ -364,21 +281,11 @@ export function startHeapMonitor(): void {
     if (heap > HEAP_WARN_MB) {
       warn("heap exceeds threshold", { heap_mb: heap, rss_mb: rssMb, threshold_mb: HEAP_WARN_MB });
     }
-    // System-level memory pressure — captures cases where the host or OS may
-    // be about to reclaim us. Helps diagnose "process vanished" reports where
-    // the kill came from outside (SIGKILL, OOM, parent host).
     const freeMb = Math.round(freemem() / 1024 / 1024);
-    // Always log a periodic heartbeat at info level for post-mortem analysis
-    emit({
-      ts: new Date().toISOString(),
-      level: "info",
-      msg: "heartbeat",
-      mem_mb: heap,
-      data: {
-        rss_mb: rssMb,
-        uptime_s: Math.round(process.uptime()),
-        system_free_mb: freeMb || undefined,
-      },
+    info("heartbeat", {
+      rss_mb: rssMb,
+      uptime_s: Math.round(process.uptime()),
+      system_free_mb: freeMb || undefined,
     });
   }, intervalMs);
   // Don't prevent process exit
