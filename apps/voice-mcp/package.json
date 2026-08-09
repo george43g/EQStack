@@ -23,6 +23,7 @@
     "clean": "rm -rf dist coverage"
   },
   "dependencies": {
+    "@george43g/robustness": "^0.5.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^14.0.0",
     "ws": "^8.18.3",

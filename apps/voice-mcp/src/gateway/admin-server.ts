@@ -5,7 +5,7 @@
  * through the tunnel; the public listener knows none of these routes.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { redactValue } from "../domain/redact.js";
+import { redactValue } from "@george43g/robustness";
 import type { CallEvent } from "../domain/types.js";
 import { logger } from "../log.js";
 import { type CallService, CallServiceError } from "./call-service.js";

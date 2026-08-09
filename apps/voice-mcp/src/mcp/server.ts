@@ -13,11 +13,11 @@
  * scope + confirmation.
  */
 import { existsSync } from "node:fs";
+import { redactValue } from "@george43g/robustness";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AdminClient } from "../client/admin-client.js";
 import type { Config } from "../config/schema.js";
-import { redactValue } from "../domain/redact.js";
 import { VERSION } from "../gateway/admin-server.js";
 import { dbPath } from "../paths.js";
 import { SqliteStore } from "../stores/sqlite-store.js";

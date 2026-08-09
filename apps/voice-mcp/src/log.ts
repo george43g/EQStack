@@ -3,7 +3,7 @@
  * transport (stdout) is never polluted. Fields pass through `redactValue`
  * so a full phone number or bearer token can never reach a log line.
  */
-import { redactValue } from "./domain/redact.js";
+import { redactValue } from "@george43g/robustness";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 

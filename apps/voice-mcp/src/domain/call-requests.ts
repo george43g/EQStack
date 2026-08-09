@@ -9,10 +9,11 @@
  * confirmation. Retries after a successful dial return the already-created
  * call instead of dialing twice (`startedCallId`).
  */
+
+import { lastFour } from "@george43g/robustness";
 import { type Config, ConfigError, effectiveCallSettings } from "../config/schema.js";
 import { ConsentError, initialRecordingState } from "./consent.js";
 import type { Clock, EventStore, IdProvider } from "./ports.js";
-import { lastFour } from "./redact.js";
 import type { CallMode, CallRequest } from "./types.js";
 
 export class CallRequestError extends Error {}
