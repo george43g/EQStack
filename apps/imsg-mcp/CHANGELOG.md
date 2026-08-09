@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+# imsg-mcp [1.20.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.19.4...imsg-mcp-v1.20.0) (2026-08-09)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** incremental messagesByGuid map in ThreadPane ([d926b35](https://github.com/george43g/EQStack/commit/d926b351a0fbf7d173465c569f9ffe79d50f00d9))
+
+
+### Features
+
+* **imsg-mcp:** cache hit-rate metrics ([26eeb5a](https://github.com/george43g/EQStack/commit/26eeb5a46e7d4b32e23a56a60ff129b4748507b6))
+
 ## imsg-mcp [1.19.4](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.19.3...imsg-mcp-v1.19.4) (2026-08-09)
 
 
