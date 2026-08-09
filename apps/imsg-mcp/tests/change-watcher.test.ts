@@ -182,12 +182,16 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
     const batches: (readonly ChangeEvent[])[] = [];
     bus.subscribe((e) => batches.push(e));
 
-    const w = new ChangeWatcher({ dbPath, db, bus, debounceMs: 40 });
+    const w = new ChangeWatcher({ dbPath, db, bus, debounceMs: 40, safetyPollMs: 0 });
     w.start();
     expect(w.isPolling()).toBe(false);
 
     push(msg(1), msg(2));
-    // Three rapid WAL touches must coalesce into ONE drain via the debounce.
+    // Three rapid WAL touches must coalesce into ONE emitted batch via the
+    // debounce. With the dir watch AND the wal file watch both live, a
+    // straggling event may schedule one extra EMPTY drain after the first —
+    // harmless (no rows past the cursor). The invariant is no duplicate
+    // EMISSIONS, not a single read.
     writeFileSync(join(dir, "chat.db-wal"), "a");
     writeFileSync(join(dir, "chat.db-wal"), "ab");
     writeFileSync(join(dir, "chat.db-wal"), "abc");
@@ -199,17 +203,20 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
       { timeout: 3_000 },
     );
     expect(batches[0]).toHaveLength(2);
-    expect(reads()).toBe(1);
+    expect(reads()).toBeLessThanOrEqual(2);
+    await new Promise((r) => setTimeout(r, 150)); // let any straggler drain settle
+    const settledReads = reads();
+    expect(batches).toHaveLength(1); // still exactly one emission
 
     // Unrelated files in the directory do not trigger drains.
     writeFileSync(join(dir, "unrelated.txt"), "x");
     await new Promise((r) => setTimeout(r, 120));
-    expect(reads()).toBe(1);
+    expect(reads()).toBe(settledReads);
 
     w.stop();
     writeFileSync(join(dir, "chat.db-wal"), "abcd");
     await new Promise((r) => setTimeout(r, 120));
-    expect(reads()).toBe(1); // disarmed
+    expect(reads()).toBe(settledReads); // disarmed
   });
 
   it("APPENDS to a pre-existing WAL trigger a drain (the production write mode)", async () => {
