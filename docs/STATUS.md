@@ -37,7 +37,18 @@ and a best-effort attachment sync nudge. The **feedback cycle (v1.15.1 → v1.19
 (node:sqlite fallback, Electron detection, XDG fix — see the Desktop banner above). The
 **monorepo/turborepo migration is DONE (2026-08-03)** — a corpus-consumer restructure for the future
 relationship-analytics app; record in [`../HANDOFF.md`](../HANDOFF.md), design in
-[`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md).
+[`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md). The **kit-adoption + realtime cycle (v1.19.3 → v1.21.0,
+2026-08-09/10)** then (a) fixed per-package publishing for real (msr tag-format, pnpm publish
+plugin, `.mcpb` staging — three `workspace:*`-vs-npm landmines, AGENTS.md § Releasing), (b) replaced
+the local watchdog/shutdown/color/useMouse/logger with thin wrappers over the published
+`@george43g/robustness@0.6.0` + `@george43g/tui-kit@0.3.3` kits — **logs now redact phones/secrets
+by default** (v1.19.4), (c) shipped cache hit-rate metrics + incremental ThreadPane lookup
+(v1.20.0), and (d) landed the realtime stack (v1.21.0): core `ChangeWatcher` (WAL fs.watch →
+high-water ROWID delta) + typed `EventBus`, **live TUI updates** via `useSyncExternalStore` (no more
+manual `r`), a `wait_for_changes` MCP long-poll tool, and `wait_for_reply` waking on bus events
+instead of pure polling. Stress-mcp now runs in CI (macOS + a linux TS-fallback job) with pack-size
+and README-drift guards, and the screenshots workflow is honest for the first time (ink CI-mode +
+two masking layers — see the 2026-08-10 HANDOFF entry).
 
 ### Shipped in the finalise cycle (v1.6.0 → v1.8.0)
 
@@ -148,11 +159,12 @@ Enable one at a time; fix call sites with `?.` / guards, not `@ts-expect-error`.
 `noUncheckedIndexedAccess` (~77 errors) and `exactOptionalPropertyTypes` (~18).
 `noImplicitOverride` + `verbatimModuleSyntax` already on.
 
-### 4. Stress harness → CI wiring (P1/P2)
-`scripts/stress-mcp.ts` **exists** (handshake, parallel calls, malformed args, force-timeout,
-SIGTERM, RSS-watchdog trip). Still open: emit a JSON report artifact and wire it into CI, plus a
-matrix CI (ubuntu + macos — CI is currently macOS-only), an `npm pack --dry-run` size/contents guard,
-and a README-drift check.
+### 4. Stress harness → CI wiring — **DONE 2026-08-10 (PR #68)**
+`stress-mcp --report <path>` emits a JSON artifact; CI runs it on macOS and on a new
+`stress-linux` job (`IMSG_DISABLE_NATIVE=1` TS fallback, synthetic fixtures, no LFS); pack-size
+guard (`scripts/check-pack-size.mjs`, threshold 2.3 MB) and README tool-table drift guard
+(`scripts/check-readme-tools.mjs`) gate the macOS job. Drive-by: the harness spawns the server
+with `IMSG_DEV=1` (`health_check` is dev-gated — without it check 5b#6 always failed).
 
 ### 5. Account diagnostics via AppleScript (P2)
 `listAccounts()` → surface `connection_status` / `service_type` / `enabled` per account in
@@ -192,17 +204,18 @@ Cycle shipped v1.9.0 → v1.15.0; these are the deliberately-out-of-scope tails.
 
 ### 9. Real-time streaming, memory scroll & Messages API-surface (P1–P3)
 Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](../apps/imsg-mcp/docs/plans/realtime-streaming-and-api-surface.md).
-- **Cache-hit metrics + viewport virtualization (P1)** — the TUI OOMs on long scroll. Bounded window
-  (`MESSAGES_HARD_CAP` 5000) + `messageCache` exist, but the *rendered Ink tree* isn't virtualized and
-  there's **no hit/miss instrumentation** (`cacheStats()` reports size only). Render visible+overscan
-  only; add `hits/misses/evictions` → dev-stats panel + a `cache_hit_rate` perf log.
-- **Core `ChangeWatcher` → EventBus (P1/P2)** — replace polling with a worker that watches
-  `chat.db-wal` and emits typed events (`message.new|edited|unsent|read`, `reaction`, `group.*`) by
-  reading rows past a high-water `ROWID`. **Reuse `IMessageDB.getMessagesAfter` — do not fork the
-  parser** (one parser, two callers: initial load + streamer). Frontends subscribe render-only: TUI
-  via `useSyncExternalStore`, console via async-iterator, MCP via a new long-poll `wait_for_changes`
-  tool (or resource-update notifications). "Detect-write-then-refresh" is a strictly *less* efficient
-  subset (same watch primitive, more render work) — build the event stream.
+- ~~Cache-hit metrics~~ **done 2026-08-09 (PR #65, v1.20.0)** — `hits/misses/evictions` in
+  `cacheStats()`, dev-stats row, `cache_hit_rate` perf line on the 60s sweep, incremental
+  `messagesByGuid` in ThreadPane. Remaining P2 tail: the rendered Ink tree itself is windowed but
+  not formally virtualized (render visible+overscan only).
+- ~~Core `ChangeWatcher` → EventBus + all three frontends~~ **done 2026-08-09/10 (PRs #66/#70/#72,
+  v1.21.0)** — WAL-dir fs.watch (debounced, poll fallback, high-water ROWID, paged drain) →
+  typed `EventBus` (`message.new` | `reaction`; edited/unsent/group.* variants reserved); TUI
+  streams live via `useSyncExternalStore` (active-chat append + sidebar patch, `r` kept as
+  fallback), console gained a bounded `watch` verb, MCP gained long-poll `wait_for_changes`,
+  and `wait_for_reply` now wakes on bus events (authoritative read + echo suppression unchanged;
+  `pollIntervalSeconds` is the fallback cadence). Remaining: live latency verify on a real
+  incoming text (George), and emitting the reserved event variants (below).
 - **Group joins / leaves / renames (P2) — real GAP.** `isHiddenSystemItem(item_type!=0)` filters all
   group-action rows out everywhere. Decode into a typed `ConversationEvent` (member_added/removed,
   renamed) via a dedicated path (keeps default `item_type=0` message queries + analytics unaffected).
