@@ -21,7 +21,7 @@
     "screenshots": "pnpm -C apps/imsg-mcp screenshots",
     "screenshots:check": "pnpm -C apps/imsg-mcp screenshots:check",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "release": "multi-semantic-release",
+    "release": "multi-semantic-release --tag-format '${name}-v${version}'",
     "mcp": "pnpm -C apps/imsg-mcp mcp",
     "cli": "pnpm -C apps/imsg-mcp cli",
     "tui": "pnpm -C apps/imsg-mcp tui",
@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@anolilab/multi-semantic-release": "^4.4.6",
+    "@anolilab/semantic-release-pnpm": "^8.1.17",
     "semantic-release": "^25.0.3",
     "turbo": "^2.10.7"
   },
