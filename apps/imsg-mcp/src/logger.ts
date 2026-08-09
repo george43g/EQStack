@@ -112,7 +112,7 @@ function isVerboseLogging(): boolean {
 }
 
 function syncFileGate(): void {
-  setFileLogging(isFileLoggingEnabled());
+  setFileLogging(false); // E2: file sink forced OFF
 }
 
 // ── Emit API (delegated, gate-synced) ──────────────────────────────────
