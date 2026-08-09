@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+# imsg-mcp [1.21.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.20.0...imsg-mcp-v1.21.0) (2026-08-09)
+
+
+### Features
+
+* **imsg-mcp:** live TUI updates via change stream ([68d56b1](https://github.com/george43g/EQStack/commit/68d56b1862ba41d61c6e65d3bb14ecaf68d640e6))
+* **imsg-mcp:** wait_for_changes MCP tool — long-poll the change-event bus ([2704a61](https://github.com/george43g/EQStack/commit/2704a61b8d56aaa055662efdf53af5b2f36301a9)), closes [#66](https://github.com/george43g/EQStack/issues/66)
+
 # imsg-mcp [1.20.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.19.4...imsg-mcp-v1.20.0) (2026-08-09)
 
 
