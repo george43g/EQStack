@@ -15,17 +15,19 @@ jobs:
   verify:
     runs-on: macos-14
     timeout-minutes: 15
-    # vhs + font rendering is non-deterministic at the byte level — running
-    # `pnpm screenshots:check` twice in a row on the same machine produces
-    # drift in the resulting PNGs. The check is useful as a "did the TUI
-    # surface change?" signal, but cannot be a hard gate without a tolerant
-    # image-diff (pixelmatch / ImageMagick `compare -metric AE`). The drift
-    # step is therefore REPORT-ONLY (warning annotation + file list, exit 0):
-    # job-level continue-on-error alone still painted a red X on the PR
-    # checks list even though the workflow run succeeded. continue-on-error
-    # stays to absorb infra flakiness (brew/vhs/font installs). Track a
-    # follow-up: replace byte-equality with a threshold-based pixel diff.
-    continue-on-error: true
+    # Two-tier gate:
+    #  - Tape EXECUTION is a HARD gate. It is deterministic — the historic
+    #    "flakiness" was ink's CI mode (GH exports CI=true → ink suppresses
+    #    interactive rendering → every TUI tape timed out on a blank ttyd
+    #    screen), double-masked by the screenshots for-loop only propagating
+    #    the LAST tape's exit code and by job-level continue-on-error turning
+    #    every failure into a run-level "success". Tapes now defeat is-in-ci
+    #    with CI=false, the loop fails fast, and this job fails honestly.
+    #  - PNG byte DRIFT stays REPORT-ONLY (warning + file list, exit 0): vhs
+    #    font rendering is non-deterministic at the byte level. Follow-up
+    #    idea: threshold-based pixel diff (pixelmatch / compare -metric AE).
+    # Infra flakiness absorption lives on the brew steps' continue-on-error,
+    # NOT the job — a job that cannot fail is not a check.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,6 +44,7 @@ jobs:
           run_install: false
 
       - name: Install JetBrains Mono
+        continue-on-error: true
         run: |
           brew tap homebrew/cask-fonts || true
           brew install --cask font-jetbrains-mono

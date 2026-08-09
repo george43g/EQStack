@@ -13,7 +13,7 @@ Set Padding 5
 Set TypingSpeed 50ms
 
 Hide
-Type "mkdir -p /tmp/imsg-demo && HOME=/tmp/imsg-demo IMSG_TUI_THEME=safe node --env-file=.env.test dist/cli.js tui"
+Type "mkdir -p /tmp/imsg-demo && CI=false CONTINUOUS_INTEGRATION=false HOME=/tmp/imsg-demo IMSG_TUI_THEME=safe node --env-file=.env.test dist/cli.js tui"
 Enter
 Wait+Screen@15s /Conversations/
 Sleep 1s
