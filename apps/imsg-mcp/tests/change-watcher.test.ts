@@ -8,7 +8,7 @@
  * through the debounce into a single drain.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -182,12 +182,16 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
     const batches: (readonly ChangeEvent[])[] = [];
     bus.subscribe((e) => batches.push(e));
 
-    const w = new ChangeWatcher({ dbPath, db, bus, debounceMs: 40 });
+    const w = new ChangeWatcher({ dbPath, db, bus, debounceMs: 40, safetyPollMs: 0 });
     w.start();
     expect(w.isPolling()).toBe(false);
 
     push(msg(1), msg(2));
-    // Three rapid WAL touches must coalesce into ONE drain via the debounce.
+    // Three rapid WAL touches must coalesce into ONE emitted batch via the
+    // debounce. With the dir watch AND the wal file watch both live, a
+    // straggling event may schedule one extra EMPTY drain after the first —
+    // harmless (no rows past the cursor). The invariant is no duplicate
+    // EMISSIONS, not a single read.
     writeFileSync(join(dir, "chat.db-wal"), "a");
     writeFileSync(join(dir, "chat.db-wal"), "ab");
     writeFileSync(join(dir, "chat.db-wal"), "abc");
@@ -199,16 +203,82 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
       { timeout: 3_000 },
     );
     expect(batches[0]).toHaveLength(2);
-    expect(reads()).toBe(1);
+    expect(reads()).toBeLessThanOrEqual(2);
+    await new Promise((r) => setTimeout(r, 150)); // let any straggler drain settle
+    const settledReads = reads();
+    expect(batches).toHaveLength(1); // still exactly one emission
 
     // Unrelated files in the directory do not trigger drains.
     writeFileSync(join(dir, "unrelated.txt"), "x");
     await new Promise((r) => setTimeout(r, 120));
-    expect(reads()).toBe(1);
+    expect(reads()).toBe(settledReads);
 
     w.stop();
     writeFileSync(join(dir, "chat.db-wal"), "abcd");
     await new Promise((r) => setTimeout(r, 120));
-    expect(reads()).toBe(1); // disarmed
+    expect(reads()).toBe(settledReads); // disarmed
+  });
+
+  it("APPENDS to a pre-existing WAL trigger a drain (the production write mode)", async () => {
+    // Companion to the silent-watch bug: on the real ~/Library/Messages the
+    // directory watch armed and then delivered nothing while rows landed
+    // (suspected TCC/FSEvents filtering — NOT reproducible in a temp dir,
+    // where dir watches do report appends, so this test cannot fail on the
+    // old code). What it pins is the new wal FILE watch wiring: with the
+    // safety poll disabled, a pure append to a PRE-EXISTING wal must drain.
+    dir = mkdtempSync(join(tmpdir(), "imsg-cw-app-"));
+    const dbPath = join(dir, "chat.db");
+    writeFileSync(dbPath, "");
+    writeFileSync(join(dir, "chat.db-wal"), "preexisting"); // BEFORE start()
+    const { db, push } = fakeDb(0);
+    const bus = new EventBus();
+    const batches: (readonly ChangeEvent[])[] = [];
+    bus.subscribe((e) => batches.push(e));
+
+    const w = new ChangeWatcher({ dbPath, db, bus, debounceMs: 40, safetyPollMs: 0 });
+    w.start();
+    push(msg(1));
+    appendFileSync(join(dir, "chat.db-wal"), "-more"); // pure append, no entry change
+
+    await vi.waitFor(
+      () => {
+        expect(batches).toHaveLength(1);
+      },
+      { timeout: 3_000 },
+    );
+    expect(batches[0]).toHaveLength(1);
+    w.stop();
+  });
+
+  it("keeps firing after the WAL is truncated and recreated (checkpoint survival)", async () => {
+    dir = mkdtempSync(join(tmpdir(), "imsg-cw-ckpt-"));
+    const dbPath = join(dir, "chat.db");
+    writeFileSync(dbPath, "");
+    writeFileSync(join(dir, "chat.db-wal"), "gen1");
+    const { db, push } = fakeDb(0);
+    const bus = new EventBus();
+    const batches: (readonly ChangeEvent[])[] = [];
+    bus.subscribe((e) => batches.push(e));
+
+    const w = new ChangeWatcher({ dbPath, db, bus, debounceMs: 40, safetyPollMs: 0 });
+    w.start();
+
+    // Simulate a checkpoint: wal deleted and recreated (entry events re-arm
+    // the file watch), then a later APPEND must still be seen.
+    unlinkSync(join(dir, "chat.db-wal"));
+    await new Promise((r) => setTimeout(r, 150));
+    writeFileSync(join(dir, "chat.db-wal"), "gen2");
+    await new Promise((r) => setTimeout(r, 250));
+
+    push(msg(1));
+    appendFileSync(join(dir, "chat.db-wal"), "-post-checkpoint-append");
+
+    await vi.waitFor(
+      () => {
+        expect(batches.flat().length).toBeGreaterThanOrEqual(1);
+      },
+      { timeout: 3_000 },
+    );
+    w.stop();
   });
 });
