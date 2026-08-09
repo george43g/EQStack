@@ -215,7 +215,7 @@ Tool responses include performance metadata: engine (TS/Rust), query time, resul
 - "Operation not permitted" → Full Disk Access.
 - "Can't get buddy" → recipient not iMessage/SMS reachable; try full number or email.
 - Messages.app must be running for sending.
-- DB can lag 1–2 seconds; `wait_for_reply` uses polling to handle that.
+- DB can lag 1–2 seconds; `wait_for_reply` re-reads on WAL-watcher wakes plus a fallback poll (`pollIntervalSeconds`) to handle that.
 
 ## Cursor Cloud specific instructions
 

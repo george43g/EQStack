@@ -219,7 +219,8 @@ export const TOOLS: Tool[] = [
         pollIntervalSeconds: {
           type: "number",
           default: 10,
-          description: "Polling interval in seconds, 5-60",
+          description:
+            "Fallback poll cadence in seconds, 5-60 (kept for compatibility). New chat.db writes wake the wait immediately via the change watcher; this only bounds the re-check interval when watch events are missed or unavailable.",
         },
         afterMessageId: { type: "number", description: "Only return messages after this id" },
         includeSelf: {

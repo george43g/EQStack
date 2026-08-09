@@ -236,7 +236,14 @@ export const WaitForReplySchema = z.object({
   chatIdentifier: nonEmptyString("Phone number, email, or chat ID to monitor").optional(),
   threadSlug: nonEmptyString("Thread slug from list_conversations to monitor").optional(),
   timeoutSeconds: z.number().min(10).max(3600).default(300),
-  pollIntervalSeconds: z.number().min(5).max(60).default(10),
+  pollIntervalSeconds: z
+    .number()
+    .min(5)
+    .max(60)
+    .default(10)
+    .describe(
+      "Fallback poll cadence, 5-60s (kept for compatibility). New chat.db writes wake the wait immediately via the change watcher; this only bounds the re-check interval when watch events are missed or unavailable.",
+    ),
   afterMessageId: z.number().int().positive().optional(),
   includeSelf: z
     .boolean()

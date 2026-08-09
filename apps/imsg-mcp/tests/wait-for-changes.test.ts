@@ -70,33 +70,33 @@ describe("WaitForChangesSchema", () => {
   });
 });
 
+// ONE server for the whole file (like mcp-output-schema.test.ts) — every
+// construction opens the shared fixture DBs, and parallel test files
+// already contend on them.
+let server: any;
+let bus: EventBus;
+
+beforeAll(() => {
+  server = new IMessageMCPServer();
+});
+
+afterAll(() => {
+  server.db?.close();
+});
+
+beforeEach(() => {
+  bus = new EventBus();
+  // Pre-seed the lazy stream: ensureChangeStream() reuses these and never
+  // arms a real fs.watch (the watcher is constructed but NOT started).
+  server.changeBus = bus;
+  server.changeWatcher = new ChangeWatcher({
+    dbPath: "/nonexistent-dir-xyz/chat.db",
+    db: { getMaxMessageRowId: () => 0, getMessagesAfterRowid: async () => [] },
+    bus,
+  });
+});
+
 describe("handleWaitForChanges", () => {
-  // ONE server for the whole file (like mcp-output-schema.test.ts) — every
-  // construction opens the shared fixture DBs, and parallel test files
-  // already contend on them.
-  let server: any;
-  let bus: EventBus;
-
-  beforeAll(() => {
-    server = new IMessageMCPServer();
-  });
-
-  afterAll(() => {
-    server.db?.close();
-  });
-
-  beforeEach(() => {
-    bus = new EventBus();
-    // Pre-seed the lazy stream: ensureChangeStream() reuses these and never
-    // arms a real fs.watch (the watcher is constructed but NOT started).
-    server.changeBus = bus;
-    server.changeWatcher = new ChangeWatcher({
-      dbPath: "/nonexistent-dir-xyz/chat.db",
-      db: { getMaxMessageRowId: () => 0, getMessagesAfterRowid: async () => [] },
-      bus,
-    });
-  });
-
   it("returns the first matching batch of events", async () => {
     const resP = server.handleWaitForChanges({ timeoutSeconds: 5 });
     setTimeout(() => bus.emit([newEvent(101), reactionEvent(102)]), 10);
@@ -201,4 +201,32 @@ describe("handleWaitForChanges", () => {
     expect(res.content[0].text).toContain("Cancelled by client");
     expect(Date.now() - started).toBeLessThan(2_000);
   });
+});
+
+describe("handleWaitForReply event-bus wake (rebased on the change stream)", () => {
+  it("a change event wakes the wait long before the fallback poll tick", async () => {
+    server.db.findChatByHandle = async () => CHAT;
+    let replyReady = false;
+    server.db.getMessagesAfter = async () =>
+      replyReady ? [makeMsg(601, "instant reply", CHAT.chatIdentifier)] : [];
+
+    const started = Date.now();
+    // pollIntervalSeconds is pinned to its 60s max: the fallback tick can
+    // never fire inside this test, so a received reply PROVES the bus wake.
+    const resP = server.handleWaitForReply({
+      chatIdentifier: CHAT.chatIdentifier,
+      timeoutSeconds: 10,
+      pollIntervalSeconds: 60,
+      afterMessageId: 600,
+    });
+    setTimeout(() => {
+      replyReady = true;
+      bus.emit([newEvent(601)]);
+    }, 50);
+    const res = await resP;
+
+    expect(res.structuredContent.received).toBe(true);
+    expect(res.structuredContent.messages[0].text).toBe("instant reply");
+    expect(Date.now() - started).toBeLessThan(5_000); // woke on the event, not a poll tick
+  }, 15_000);
 });

@@ -1081,51 +1081,94 @@ export class IMessageMCPServer {
     // Canonical thread key — must match what handleSendMessage registered.
     const chatKey = chat.threadSlug ?? chat.chatIdentifier;
 
-    // Poll for new messages — bail out early on cancellation
-    while (Date.now() - startTime < timeoutMs) {
-      if (signal?.aborted) {
-        return toolError(
-          `Cancelled by client after ${Math.round((Date.now() - startTime) / 1000)}s`,
-          {
-            cancelled: true,
-            elapsedSeconds: Math.round((Date.now() - startTime) / 1000),
-          },
-        );
-      }
-      const newMessages = await this.db.getMessagesAfter(chat.chatIdentifier, lastKnownId, {
-        includeSelf,
-      });
-      // In includeSelf mode, drop this process's own send echoes — a from-me
-      // row is only a genuine interjection if the registry doesn't claim it.
-      const visible = includeSelf
-        ? newMessages.filter((m) => !m.isFromMe || !this.sentEchoes.consume(chatKey, m))
-        : newMessages;
+    // Event-driven wake: subscribe to the shared change stream so a chat.db
+    // write ends the wait immediately instead of on the next poll tick. The
+    // AUTHORITATIVE read stays getMessagesAfter below (cursor semantics, the
+    // 1-2s chat.db write-lag tolerance, and echo suppression are unchanged) —
+    // the bus only wakes the loop, and any conversation's write may wake it
+    // (the scoped delta read is cheap). pollIntervalSeconds is now the
+    // FALLBACK cadence for when watch events are missed or unavailable.
+    const { bus } = this.ensureChangeStream();
+    let busWake: (() => void) | null = null;
+    let busPending = false;
+    const unsubscribeBus = bus.subscribe(() => {
+      busPending = true;
+      busWake?.();
+    });
 
-      if (visible.length > 0) {
-        const selfCount = visible.filter((m) => m.isFromMe).length;
-        const header =
-          selfCount > 0
-            ? `Received ${visible.length} new message(s) — ${selfCount} sent by the user from their own account (another device), ${visible.length - selfCount} from the other party:`
-            : `Received ${visible.length} new message(s):`;
-        const formatted = visible.map((m) => formatMessage(m)).join("\n");
-        const humansHint = this.humansIndex.hintFor(chat.participants);
-        const humansLine = humansHint ? humansHintText(humansHint) : "";
-        return toolText(`${header}\n\n${formatted}${humansLine}`, {
-          received: true,
-          messages: visible.map(messageToStructured),
-          count: visible.length,
-          selfCount,
-          ...(humansHint ? { humans: humansHint } : {}),
+    try {
+      // Poll for new messages — bail out early on cancellation
+      while (Date.now() - startTime < timeoutMs) {
+        if (signal?.aborted) {
+          return toolError(
+            `Cancelled by client after ${Math.round((Date.now() - startTime) / 1000)}s`,
+            {
+              cancelled: true,
+              elapsedSeconds: Math.round((Date.now() - startTime) / 1000),
+            },
+          );
+        }
+        const newMessages = await this.db.getMessagesAfter(chat.chatIdentifier, lastKnownId, {
+          includeSelf,
         });
-      }
-      if (newMessages.length > 0) {
-        // Everything new was our own echo — advance the cursor past it so
-        // subsequent polls stay cheap (the echo row is a real row in
-        // (date, ROWID) order).
-        lastKnownId = newMessages[newMessages.length - 1].id;
-      }
+        // In includeSelf mode, drop this process's own send echoes — a from-me
+        // row is only a genuine interjection if the registry doesn't claim it.
+        const visible = includeSelf
+          ? newMessages.filter((m) => !m.isFromMe || !this.sentEchoes.consume(chatKey, m))
+          : newMessages;
 
-      await sleep(pollIntervalMs, signal);
+        if (visible.length > 0) {
+          const selfCount = visible.filter((m) => m.isFromMe).length;
+          const header =
+            selfCount > 0
+              ? `Received ${visible.length} new message(s) — ${selfCount} sent by the user from their own account (another device), ${visible.length - selfCount} from the other party:`
+              : `Received ${visible.length} new message(s):`;
+          const formatted = visible.map((m) => formatMessage(m)).join("\n");
+          const humansHint = this.humansIndex.hintFor(chat.participants);
+          const humansLine = humansHint ? humansHintText(humansHint) : "";
+          return toolText(`${header}\n\n${formatted}${humansLine}`, {
+            received: true,
+            messages: visible.map(messageToStructured),
+            count: visible.length,
+            selfCount,
+            ...(humansHint ? { humans: humansHint } : {}),
+          });
+        }
+        if (newMessages.length > 0) {
+          // Everything new was our own echo — advance the cursor past it so
+          // subsequent polls stay cheap (the echo row is a real row in
+          // (date, ROWID) order).
+          lastKnownId = newMessages[newMessages.length - 1].id;
+        }
+
+        if (busPending) {
+          // A write landed while we were reading — re-poll immediately.
+          busPending = false;
+          continue;
+        }
+        // Wait for: a bus wake (instant), the fallback poll tick, or abort —
+        // whichever comes first. Mirrors sleep()'s abort semantics: resolve
+        // promptly and let the loop-top check produce the cancel result.
+        await new Promise<void>((resolve) => {
+          if (signal?.aborted) {
+            resolve();
+            return;
+          }
+          const done = () => {
+            clearTimeout(timer);
+            signal?.removeEventListener("abort", done);
+            busWake = null;
+            resolve();
+          };
+          const timer = setTimeout(done, pollIntervalMs);
+          busWake = done;
+          signal?.addEventListener("abort", done, { once: true });
+        });
+        busPending = false;
+      }
+    } finally {
+      unsubscribeBus();
+      busWake = null;
     }
 
     // Timeout reached

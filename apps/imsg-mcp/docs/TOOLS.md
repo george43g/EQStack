@@ -94,7 +94,7 @@ Output is pretty text with color by default; pass `--json` or `--yaml` for machi
 | Tool | Required args | Notes |
 |---|---|---|
 | `send_message` | `message` + (`recipient` or `threadSlug`) | Optional `attachments[]` array of file paths — files are staged into `~/Library/Messages/imsg-mcp-staging/` before sending (macOS 15+ Messages silently drops sends from paths outside its sandbox); staged copies are swept after an hour. Routes on the thread's real service from chat.db (SMS threads send as SMS/MMS, iMessage threads as iMessage); new recipients with no history default to iMessage-first. |
-| `wait_for_reply` | `chatIdentifier` or `threadSlug` | `timeoutSeconds`, `pollIntervalSeconds`, `afterMessageId`, `includeSelf` (default true — also returns the user's own interjections from other devices; the agent's just-sent message never echoes). Honors `notifications/cancelled`. |
+| `wait_for_reply` | `chatIdentifier` or `threadSlug` | `timeoutSeconds`, `pollIntervalSeconds` (fallback cadence — the WAL change watcher wakes the wait instantly on a write), `afterMessageId`, `includeSelf` (default true — also returns the user's own interjections from other devices; the agent's just-sent message never echoes). Honors `notifications/cancelled`. |
 
 ### Exporting
 
