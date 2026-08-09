@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { useCallback, useRef } from "react";
 import {
   type SendService,
@@ -5,7 +6,9 @@ import {
   sendToChat,
   sendToChatId,
 } from "../../applescript.js";
+import { ChangeWatcher } from "../../change-watcher.js";
 import { getContactsDbPaths, getImsgDbPath, getSlugsDbPath } from "../../config.js";
+import type { EventBus } from "../../event-bus.js";
 import { IMessageDB } from "../../imessage-db.js";
 import { applyInlineInterpretations } from "../../media-intel-runtime.js";
 import {
@@ -167,6 +170,33 @@ export function useImsg() {
     [resolveRecipientInput, getDb],
   );
 
+  /**
+   * Arm a ChangeWatcher over this hook's DB connection onto the given bus.
+   * Returns null when no chat.db exists at the configured path (nothing to
+   * watch). The caller owns `stop()`.
+   */
+  const startChangeWatcher = useCallback(
+    (bus: EventBus): ChangeWatcher | null => {
+      const dbPath = getImsgDbPath();
+      if (!existsSync(dbPath)) return null;
+      const watcher = new ChangeWatcher({ dbPath, db: getDb(), bus });
+      watcher.start();
+      return watcher;
+    },
+    [getDb],
+  );
+
+  /**
+   * Per-identity thread slug for one chat LEG (a Message's `chatId`). Every
+   * leg of a merged conversation maps to the SAME slug, so comparing this
+   * against a Conversation.threadSlug answers "does this event belong to
+   * that thread?" without re-deriving the merge.
+   */
+  const getThreadSlugForLeg = useCallback(
+    (chatIdentifier: string): string | null => getDb().getSlugForChatIdentifier(chatIdentifier),
+    [getDb],
+  );
+
   const refresh = useCallback(() => {
     getDb().scheduleBackgroundRefresh();
   }, [getDb]);
@@ -189,6 +219,8 @@ export function useImsg() {
     send,
     sendToRecipient,
     resolveRecipientInput,
+    startChangeWatcher,
+    getThreadSlugForLeg,
     refresh,
     close,
   };

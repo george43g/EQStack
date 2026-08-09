@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { checkLocalAccess, formatAccessReport } from "./access-check.js";
 import { ANALYTIC_INFO, type AnalyticType, IMPLEMENTED_TYPES } from "./analytics.js";
 import { toYaml } from "./analytics-render.js";
+import type { ChangeEvent } from "./event-bus.js";
 import { LocalMcpClient } from "./mcp-client.js";
 import { APP_VERSION } from "./meta.js";
 import { installShutdownHandlers, registerCleanup } from "./shutdown.js";
@@ -83,6 +84,24 @@ export function parseWindowDays(value: string | undefined, fallback: number): nu
     throw new Error(`windowDays must be a positive number of days, got "${value}".`);
   }
   return n;
+}
+
+/**
+ * One console line per live change event: type, thread slug (falls back to
+ * the raw leg identifier when the slug store can't map it), sender, and a
+ * single-line snippet capped at 80 chars. Group events return null — the
+ * watcher doesn't emit them yet. Pure function, exported for tests.
+ */
+export function formatChangeEventLine(
+  event: ChangeEvent,
+  slugForLeg: (chatIdentifier: string) => string | null,
+): string | null {
+  if (!("message" in event)) return null;
+  const m = event.message;
+  const thread = (m.chatId ? slugForLeg(m.chatId) : null) ?? m.chatId ?? "?";
+  const who = m.isFromMe ? "me" : (m.displayName ?? m.handle);
+  const snippet = (m.text ?? "(no text)").replace(/\s+/g, " ").trim().slice(0, 80);
+  return `[${event.type}] ~${thread} ${who}: ${snippet}`;
 }
 
 // ── Interactive console ────────────────────────────────────────────────
@@ -246,6 +265,37 @@ export async function runConsoleCommand(
       await printToolResult(client, "chat_analytics", { type, windowDays }, undefined, format);
       return;
     }
+    case "watch": {
+      // Live change stream: the SAME core ChangeWatcher → EventBus pipeline
+      // the TUI rides, printed one line per event. Bounded duration (like
+      // `wait`) — the console's line loop queues commands while one runs, so
+      // an unbounded stream would wedge the REPL.
+      const seconds = Number(args[0] ?? 60);
+      if (!Number.isFinite(seconds) || seconds <= 0) throw new Error("Usage: watch [seconds]");
+      const { EventBus } = await import("./event-bus.js");
+      const { ChangeWatcher } = await import("./change-watcher.js");
+      const { IMessageDB } = await import("./imessage-db.js");
+      const { getContactsDbPaths, getImsgDbPath, getSlugsDbPath } = await import("./config.js");
+      const db = new IMessageDB(getImsgDbPath(), getContactsDbPaths(), getSlugsDbPath());
+      const bus = new EventBus();
+      const watcher = new ChangeWatcher({ dbPath: getImsgDbPath(), db, bus });
+      const unsubscribe = bus.subscribe((events) => {
+        for (const e of events) {
+          const line = formatChangeEventLine(e, (leg) => db.getSlugForChatIdentifier(leg));
+          if (line) console.log(line);
+        }
+      });
+      watcher.start();
+      log(`Watching for new messages/reactions for ${seconds}s…`, "dim");
+      try {
+        await new Promise((r) => setTimeout(r, seconds * 1000));
+      } finally {
+        unsubscribe();
+        watcher.stop();
+        await db.close();
+      }
+      return;
+    }
     case "logs":
       await printToolResult(client, "get_logs", args[0] ? { tail: Number(args[0]) } : {});
       return;
@@ -293,6 +343,7 @@ Available commands:
   search <query> [n]   Search messages
   resolve <name> [n]   Resolve a name/phrase to ranked conversations
   wait <chat> [secs]   Wait for a reply (default 60s)
+  watch [secs]         Stream new messages/reactions live (default 60s)
   send <target> <msg>  Send a message
   contacts [verb]      Contacts: list [n] [offset] | search <q> [n] | resolve <handle> | show <handle-or-id>
   humans <verb>        Relationship files: init <contact|slug> | init top [n] | top [days]
