@@ -176,10 +176,11 @@ Two findings in `native/src/attributed_body.rs` (verified):
    a structured `TypedStreamParser` (`src/parsers/typedstream-parser.ts`). So the two engines use
    **different strategies** (structured TS vs. heuristic Rust) for the same job — a correctness and
    maintenance smell (their outputs can diverge on edge cases).
-2. **Real-message-derived example fragments in comments.** The doc comments illustrate heuristics
-   with snippets that read like real message text — e.g. *"Imagine…"* (described as an 82-char
-   message), *"Heres the question"*, *"Heres"*. No names/numbers/PII, but message *content* fragments
-   should not live in published source (project rule: never commit real personal data).
+2. **Real-message-derived example fragments in comments — SCRUBBED (2026-08-09).** The doc comments
+   and test fixtures used to illustrate heuristics with snippets derived from real message text.
+   All were replaced with clearly-synthetic strings of identical byte lengths (the length-byte
+   values are what the tests exercise). The originals remain in git history only; removing them
+   from history is a separate, George-owned decision (force-push of signed history).
 
 ### Recommendations
 - **Scrub the examples** — replace real-looking fragments with clearly-synthetic ones

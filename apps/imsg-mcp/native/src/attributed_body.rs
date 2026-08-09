@@ -139,18 +139,18 @@ fn normalize_candidate(text: &str) -> Option<String> {
         return None;
     }
 
-    // Strip doubled-uppercase-letter prefix: "HHeres" -> "Heres".
+    // Strip doubled-uppercase-letter prefix: "TTesting" -> "Testing".
     // This pattern is almost always a typedstream length-byte leak — Apple
     // stores the length byte as a single ASCII char immediately before the
     // content, and when the length-byte char happens to match the content's
-    // first letter (e.g. message of length 72 = 'H', starting with "Heres"),
+    // first letter (e.g. message of length 84 = 'T', starting with "Testing"),
     // our heuristic byte-scan picks them up as one continuous run.
     let stripped = strip_doubled_letter_prefix(&cleaned);
     Some(stripped)
 }
 
 /// If `text` starts with `[A-Z]\1[a-z]`, drop the first char.
-/// Example: "HHeres the question" -> "Heres the question".
+/// Example: "TTesting the strip path" -> "Testing the strip path".
 fn strip_doubled_letter_prefix(text: &str) -> String {
     let bytes = text.as_bytes();
     if bytes.len() >= 3
@@ -165,8 +165,8 @@ fn strip_doubled_letter_prefix(text: &str) -> String {
 
 /// Boost added to structured-parse candidates so they win against byte-scan
 /// noise even when the byte-scan happens to produce a longer string (e.g. a
-/// length-byte prefix collated with content, like "RImagine..." for an 82-char
-/// message starting with "Imagine...").
+/// length-byte prefix collated with content, like "RSynthetic..." for an
+/// 82-char message starting with "Synthetic...", 0x52 = 'R').
 const STRUCTURED_BOOST: i32 = 500;
 
 /// Parse a length-prefixed NSString at `marker_end` (the byte index *after*
@@ -419,10 +419,11 @@ mod tests {
     }
 
     /// Doubled-letter prefix from typedstream length-byte must be stripped.
-    /// "HHeres the question..." was a real bug from a 72-char msg starting with H.
+    /// The artifact surfaced as a real bug on a 72-char message whose first
+    /// letter matched its length byte ('H' = 0x48 = 72).
     #[test]
     fn test_strip_doubled_letter_prefix() {
-        assert_eq!(strip_doubled_letter_prefix("HHeres the question"), "Heres the question");
+        assert_eq!(strip_doubled_letter_prefix("TTesting the strip path"), "Testing the strip path");
         assert_eq!(strip_doubled_letter_prefix("WWhat happened"), "What happened");
         assert_eq!(strip_doubled_letter_prefix("OOkay"), "Okay");
         // Should NOT strip when not a doubled-uppercase-then-lowercase pattern
@@ -433,22 +434,24 @@ mod tests {
         assert_eq!(strip_doubled_letter_prefix(""), "");
     }
 
-    /// Real-world artifact: the structured NSString parse must beat the
-    /// byte-scan so the length byte never leaks into the result. Mirrors
-    /// the bug surfaced live (e.g. "RImagine im dying..." for an 82-char
-    /// message starting with "Imagine...", length byte 0x52 = 'R').
+    /// Real-world artifact class: the structured NSString parse must beat the
+    /// byte-scan so the length byte never leaks into the result. Mirrors bugs
+    /// surfaced live where a printable-ASCII length byte (e.g. 0x52 = 'R'
+    /// before an 82-byte message) leaked as a leading character. Fixture text
+    /// is synthetic; the (length byte, byte length) pairs are what matter.
     #[test]
     fn test_structured_parse_strips_length_byte_prefix() {
-        // Cases where the doubled-letter strip CANNOT catch the artifact:
-        //   - length 0x52 'R' before "Imagine im dying..." (82 bytes)
-        //   - length 0x5d ']' before "One of my favourite..." (93 bytes)
-        //   - length 0x5c '\' before "Lmao no problem..." (92 bytes)
-        //   - length 0x35 '5' before "No im saying..." (53 bytes)
+        // Cases where the doubled-letter strip CANNOT catch the artifact
+        // (length-byte char differs from the content's first char):
+        //   - length 0x52 'R' before an 82-byte string
+        //   - length 0x5d ']' before a 93-byte string
+        //   - length 0x5c '\' before a 92-byte string
+        //   - length 0x35 '5' before a 53-byte string
         let cases: &[(u8, &str)] = &[
-            (0x52, "Imagine im dying of horniness and then go beast mode on u and take it all out on u"),
-            (0x5d, "One of my favourite things to do is listen to ur voice / listen to u moan whilst im fukin you"),
-            (0x5c, "Lmao no problem. Altho unsure abt drug psychosis lmao not sure when thats every happened lol"),
-            (0x35, "No im saying u mentioning clay was good advice lmaooo"),
+            (0x52, "Synthetic replacement fixture padded to exactly eighty two ascii chars for a test."),
+            (0x5d, "Synthetic fixture two: this replacement sentence is padded out to exactly ninety three chars."),
+            (0x5c, "Another synthetic replacement fixture padded out to exactly ninety two ascii characters here"),
+            (0x35, "A synthetic fixture padded to fifty three ascii chars"),
         ];
 
         for &(length_byte, content) in cases {
@@ -483,7 +486,7 @@ mod tests {
     /// Same coverage for the 0x95 preamble variant (DataDetector-annotated messages).
     #[test]
     fn test_structured_parse_handles_0x95_preamble() {
-        let content = "Ur crazy. Changing my masterbation fantasy for tonight effective immediately";
+        let content = "Synthetic fixture for the DataDetector annotated preamble variant of the test";
         let mut blob: Vec<u8> = b"\x04\x0bstreamtyped\x81\xe8\x03\x84\x01@".to_vec();
         blob.extend_from_slice(b"NSString\x01\x95\x84\x01+");
         blob.push(content.len() as u8);
@@ -508,22 +511,22 @@ mod tests {
         assert_eq!(result, content);
     }
 
-    /// Synthetic blob with embedded "HHeres" pattern should produce the
-    /// de-doubled "Heres" via normalize_candidate's prefix strip.
+    /// Synthetic blob with embedded "TTesting" pattern should produce the
+    /// de-doubled "Testing" via normalize_candidate's prefix strip.
     #[test]
     fn test_extract_text_strips_doubled_letter_prefix() {
         // Build a blob whose embedded printable run looks like a length-byte
-        // leak: control byte + "HHeres the question tho" (the doubled H simulates
-        // length byte 0x48 followed by "Heres...").
+        // leak: control byte + "TTesting..." (the doubled T simulates length
+        // byte 0x54 followed by "Testing...").
         let mut blob = b"\x04\x0bstreamtyped\x81\xe8\x03\x84\x01@".to_vec();
-        blob.extend_from_slice(b"\x00HHeres the question tho if i go thrre\x00");
+        blob.extend_from_slice(b"\x00TTesting the doubled letter strip path here\x00");
         let result = extract_text(&blob);
         assert!(result.is_some());
         let text = result.unwrap();
         assert!(
-            text.starts_with("Heres"),
-            "expected 'Heres...', got: {text:?}"
+            text.starts_with("Testing"),
+            "expected 'Testing...', got: {text:?}"
         );
-        assert!(!text.starts_with("HHeres"));
+        assert!(!text.starts_with("TTesting"));
     }
 }
