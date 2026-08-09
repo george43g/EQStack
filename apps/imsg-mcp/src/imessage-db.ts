@@ -921,6 +921,69 @@ export class IMessageDB {
   }
 
   /**
+   * Fetch every message row with ROWID greater than `afterRowid`, across ALL
+   * chats, ascending by ROWID. The delta primitive for the ChangeWatcher —
+   * "poll-for-rows-after-high-water, but triggered by a WAL write instead of
+   * a timer" (docs/plans/realtime-streaming-and-api-surface.md). Reuses the
+   * same parse/convert pipeline as every other reader (one parser, N
+   * callers): reactions and from-me rows are INCLUDED (the event bus
+   * classifies them; consumers filter), hidden system items are dropped.
+   *
+   * `limit` bounds one delta read; callers loop while `length === limit`
+   * (a bulk sync can land thousands of rows in one WAL burst).
+   */
+  async getMessagesAfterRowid(afterRowid: number, limit = 500): Promise<Message[]> {
+    const span = perf("getMessagesAfterRowid");
+    const sql = `
+      SELECT m.ROWID, m.guid, m.text, m.attributedBody, m.date, m.date_read, m.date_delivered,
+             m.is_read, m.is_delivered,
+        m.error, m.is_from_me, h.id as handle_id,
+             h.service as handle_service,
+             m.cache_has_attachments, m.associated_message_type,
+             m.associated_message_guid, m.associated_message_emoji,
+             m.thread_originator_guid, m.thread_originator_part,
+             m.balloon_bundle_id, m.message_summary_info,
+             m.date_edited, m.date_retracted,
+             m.item_type, c.chat_identifier
+      FROM ${Tables.MESSAGE} m
+      LEFT JOIN ${Tables.HANDLE} h ON m.handle_id = h.ROWID
+      LEFT JOIN ${Tables.CHAT_MESSAGE_JOIN} cmj ON m.ROWID = cmj.message_id
+      LEFT JOIN ${Tables.CHAT} c ON cmj.chat_id = c.ROWID
+      WHERE m.ROWID > ?
+      ORDER BY m.ROWID ASC
+      LIMIT ?
+    `;
+    const rows = this.raw.prepare(sql).all(afterRowid, limit) as any[];
+    const out: Message[] = [];
+    for (const r of rows) {
+      if (isHiddenSystemItem(r.item_type)) continue;
+      const text = this.parseMessageText(r);
+      const ext: ExtendedMessageData = {
+        is_read: r.is_read,
+        date_read: r.date_read,
+        is_delivered: r.is_delivered,
+        date_delivered: r.date_delivered,
+        handle_id: r.handle_id,
+        handle_service: r.handle_service,
+        associated_message_type: r.associated_message_type,
+        associated_message_guid: r.associated_message_guid,
+        associated_message_emoji: r.associated_message_emoji,
+        thread_originator_guid: r.thread_originator_guid,
+        thread_originator_part: r.thread_originator_part,
+        balloon_bundle_id: r.balloon_bundle_id,
+        message_summary_info: r.message_summary_info,
+        date_edited: r.date_edited,
+        date_retracted: r.date_retracted,
+        cache_has_attachments: r.cache_has_attachments,
+        item_type: r.item_type,
+      };
+      out.push(this.convertMessage(r, text, r.chat_identifier || "", ext));
+    }
+    span.end({ afterRowid, returned: out.length });
+    return out;
+  }
+
+  /**
    * List all conversations with metadata, sorted by last message date (newest first).
    * Populates lastMessageDate, lastMessageSnippet, and unreadCount to match Messages.app left pane.
    */
