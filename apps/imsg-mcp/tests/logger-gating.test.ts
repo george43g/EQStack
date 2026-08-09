@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { _resetForTests } from "@george43g/robustness/logger";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getLogFilePath, info } from "../src/logger.js";
 
@@ -7,6 +8,11 @@ describe("logger IMSG_DEV gating", () => {
 
   beforeEach(() => {
     delete process.env.IMSG_DEV;
+    // The kit logger is a per-worker singleton NOT reset by vitest's
+    // module-registry isolation — a stale logFilePath from another test file
+    // in this worker (often pointing into a deleted temp dir) would corrupt
+    // the assertions below.
+    _resetForTests();
   });
 
   afterEach(() => {
