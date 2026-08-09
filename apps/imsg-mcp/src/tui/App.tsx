@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { useMouse } from "@george43g/tui-kit";
 import { useScreenSize } from "fullscreen-ink";
 import { Box, useApp, useInput } from "ink";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
@@ -38,7 +39,6 @@ import { nextGroupBoundary, prevGroupBoundary, ThreadPane } from "./components/T
 import { filterMatchIndices } from "./filter.js";
 import { useDevStats } from "./hooks/useDevStats.js";
 import { useImsg } from "./hooks/useImsg.js";
-import { useMouse } from "./hooks/useMouse.js";
 import { allCommands, findModule } from "./modules/registry.js";
 import {
   applySettingsKey,

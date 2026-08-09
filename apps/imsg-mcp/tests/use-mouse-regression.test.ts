@@ -5,16 +5,22 @@
  * CPU before this was caught. The hook should use ?1000h
  * (button-event-only — clicks + scroll wheel).
  *
- * If a future refactor reverts this, the test fails loudly. We grep for
- * the actual escape-sequence emit (e.g. `\x1b[?1003h`) inside a write
- * call, not the literal substring "?1003h", because comments may legitimately
- * mention the bug.
+ * Since the migration to `@george43g/tui-kit` (whose `useMouse` is the
+ * lifted copy of imsg's original hook), this pins the KIT's published
+ * source — the tarball ships `src/`, so the pin now guards against
+ * upstream regressions of the same incident. If a future kit version
+ * reverts to ?1003h, this fails loudly before it reaches a user.
  */
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const SRC = readFileSync(resolve(__dirname, "../src/tui/hooks/useMouse.ts"), "utf8");
+// The kit's exports map doesn't expose "./package.json", so resolve the main
+// entry (<root>/dist/index.js) and walk up to the package root.
+const require = createRequire(import.meta.url);
+const kitRoot = dirname(dirname(require.resolve("@george43g/tui-kit")));
+const SRC = readFileSync(join(kitRoot, "src/hooks/useMouse.ts"), "utf8");
 
 /** Strip block comments + line comments before scanning code for escapes. */
 function stripComments(s: string): string {
@@ -25,7 +31,7 @@ function stripComments(s: string): string {
     .join("\n");
 }
 
-describe("useMouse hook", () => {
+describe("useMouse hook (@george43g/tui-kit)", () => {
   const code = stripComments(SRC);
 
   it("does NOT emit ?1003h (any-event mouse tracking — floods event loop)", () => {
