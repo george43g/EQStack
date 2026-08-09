@@ -4,7 +4,7 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-08-03 · current release **v1.19.2** (npm)._
+_Last updated 2026-08-10 · current release **v1.21.0** (npm; 1.21.1 in flight — wheel/memory + WAL-watch fixes)._
 
 > **🖥️ Claude Desktop / distribution / online-MCP:** the `.mcpb type:node` extension crashes in
 > Desktop (Electron has no in-process SQLite); iMessage works there today via a **manual `mcpServers`
@@ -115,7 +115,7 @@ Durable facts that repeatedly bite — keep these in mind before touching the re
   windows (90/365d) read 0 in fixture tests — use `1825`. Fixtures are gitignored (NOT Git LFS);
   `pnpm fixtures` regenerates them. Never test the TUI against the real `~/Library/Messages/chat.db`
   — point it at `fixtures/chat.db` + a fresh `VITE_SLUGS_DB_PATH`.
-- **Vitest is v2.** The 2→3 jump is the one real dependency skew for the eventual monorepo alignment.
+- ~~Vitest is v2~~ **stale — the monorepo migration landed Vitest 3.2.7** (kept for history; no skew remains).
 - **Real dev DB shape** (`~/Library/Messages/chat.db`, ~403k messages): scheduled-message columns
   exist but have **0 rows** (that path is unprovable here — deferred); `date_retracted` is 0 across
   the whole DB; `person_centric_id` is NULL on the dev chat.db, so cross-source merge leans on the
@@ -177,6 +177,14 @@ Optional `listFileTransfers()` as a TUI progress widget. Patterns are compile-ch
 `structuredContent.messages[i].text`. Hosts that pipe `structuredContent` straight into a prompt are
 still exposed. Thread it through `messageToStructured` behind an opt-in flag. See
 [`GUARDRAILS_MCP_RESPONSES.md`](../apps/imsg-mcp/docs/GUARDRAILS_MCP_RESPONSES.md).
+
+### 6b. Parked decisions / small guards (P3)
+- **`pack:mcpb` CI guard**: exercise the `.mcpb` staging build in CI so release-time landmines (the
+  `workspace:*` npm-install class from #64, the `rm -rf release` class from #69 — both caught only
+  AT release) surface pre-merge. Idea survived only in memory notes until now.
+- **Git-history scrub of the pre-#57 real-message fragments** (public repo): #57 fixed forward with
+  synthetic fixtures; the ORIGINALS remain in git history. Rewriting is a deliberate George-owned
+  decision (force-push of signed history) — parked here so it can't silently expire.
 
 ### 7. Lower-priority (P3)
 - **Streamable-HTTP transport** — stdio-only today; add the template's HTTP transport (constant-time
