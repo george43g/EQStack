@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
 import type { Conversation, Message } from "../../types.js";
 import { visualWidth } from "../../visual-width.js";
 import { useTheme } from "../themes/ThemeContext.js";
@@ -126,19 +126,39 @@ export function ThreadPane({
   const visibleMessages = messages.slice(visibleStart, Math.min(visibleEnd, messages.length));
 
   // Build a GUID → text lookup so MessageBubble can resolve missing replyToText
-  // from the loaded message set when iMessage didn't populate it. Memoized to
-  // avoid rebuilding on every render.
-  const messagesByGuid = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const m of messages) {
-      if (!m.guid) continue;
-      // Prefer the message text; fall back to a synced voice-note transcript so
-      // a reply to a voice note resolves to its words, not "(unknown)".
-      if (m.text) map.set(m.guid, m.text);
-      else if (m.appleAudioTranscript) map.set(m.guid, m.appleAudioTranscript);
+  // from the loaded message set when iMessage didn't populate it. Maintained
+  // incrementally: the hot path (poller appends new messages to the tail)
+  // reuses the previous map and only adds the tail entries — rebuilding over a
+  // multi-thousand-message thread on every append is wasted work. Any other
+  // shape change (thread switch, prepend from loadOlderMessages, eviction
+  // reshuffle) rebuilds into a NEW Map so no stale entries leak across resets.
+  const guidMapRef = useRef<{ source: readonly Message[]; map: Map<string, string> }>({
+    source: [],
+    map: new Map(),
+  });
+  if (messages !== guidMapRef.current.source) {
+    const prev = guidMapRef.current;
+    const prevSource = prev.source;
+    // Append-only detection: same first item, same item at the previous last
+    // index, and no shrink. Content-mutating reducer actions replace the whole
+    // array, so shared endpoints imply a shared prefix.
+    const appendedOnly =
+      prevSource.length > 0 &&
+      prevSource.length <= messages.length &&
+      prevSource[0] === messages[0] &&
+      prevSource[prevSource.length - 1] === messages[prevSource.length - 1];
+    if (appendedOnly) {
+      for (let i = prevSource.length; i < messages.length; i++) {
+        addGuidEntry(prev.map, messages[i]);
+      }
+      prev.source = messages;
+    } else {
+      const map = new Map<string, string>();
+      for (const m of messages) addGuidEntry(map, m);
+      guidMapRef.current = { source: messages, map };
     }
-    return map;
-  }, [messages]);
+  }
+  const messagesByGuid = guidMapRef.current.map;
 
   const lookupReplyText = (guid: string): string | null => messagesByGuid.get(guid) ?? null;
 
@@ -308,6 +328,15 @@ export function ThreadPane({
       )}
     </Box>
   );
+}
+
+/** Add one message's reply-lookup entry to the GUID → text map. Prefer the
+ * message text; fall back to a synced voice-note transcript so a reply to a
+ * voice note resolves to its words, not "(unknown)". */
+function addGuidEntry(map: Map<string, string>, m: Message): void {
+  if (!m.guid) return;
+  if (m.text) map.set(m.guid, m.text);
+  else if (m.appleAudioTranscript) map.set(m.guid, m.appleAudioTranscript);
 }
 
 /** Wrap rows a text consumes at a given inner width (grapheme-aware). */
