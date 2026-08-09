@@ -34,6 +34,13 @@ function envNum(name: string, fallback: number): number {
 const TTL_MS = envNum("IMSG_TUI_CACHE_TTL_MS", 600_000); // 10 min
 const STALE_MS = envNum("IMSG_TUI_CACHE_STALE_MS", 30_000); // 30s
 const MEMORY_PRESSURE_MB = envNum("IMSG_TUI_CACHE_MEM_PRESSURE_MB", 200); // heap MB
+// Hard byte budget enforced ON WRITE. The memory-pressure eviction above only
+// runs on the watchdog's 60s sample — a fast pagination spree (wheel held at
+// the top of a big thread) can accumulate hundreds of MB inside one window,
+// which is exactly how a real session hit the 1024MB RSS watchdog kill in
+// under 3 minutes. Budget is in estimateBytes() space (text-only, so real
+// retained memory is a multiple of it) — the default is deliberately small.
+const MAX_TOTAL_BYTES = envNum("IMSG_TUI_CACHE_MAX_BYTES", 24 * 1024 * 1024);
 
 const cache = new Map<string, CacheEntry>();
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -86,6 +93,7 @@ export function setCached(chatIdentifier: string, messages: Message[], oldestId:
     lastAccess: now,
     bytesEstimate: estimateBytes(messages),
   });
+  enforceByteBudget(chatIdentifier);
 }
 
 /** Prepend older messages to an existing entry (dedup by id). */
@@ -108,6 +116,7 @@ export function prependCached(chatIdentifier: string, olderMessages: Message[]):
   entry.oldestId = Math.min(entry.oldestId, minFresh);
   entry.lastAccess = Date.now();
   entry.bytesEstimate = estimateBytes(merged);
+  enforceByteBudget(chatIdentifier);
 }
 
 /**
@@ -127,6 +136,28 @@ export function appendCached(chatIdentifier: string, newMessages: Message[]): vo
   entry.messages = [...entry.messages, ...fresh];
   entry.lastAccess = Date.now();
   entry.bytesEstimate = estimateBytes(entry.messages);
+  enforceByteBudget(chatIdentifier);
+}
+
+/**
+ * Evict LRU entries until total estimated bytes fit the budget. The entry
+ * named by `protectKey` (the chat just written — i.e. the active thread) is
+ * never evicted, so a single over-budget thread stays viewable; the budget
+ * then bounds everything else. Called from every write path.
+ */
+function enforceByteBudget(protectKey: string): void {
+  let total = 0;
+  for (const e of cache.values()) total += e.bytesEstimate;
+  if (total <= MAX_TOTAL_BYTES) return;
+  const lru = [...cache.entries()]
+    .filter(([k]) => k !== protectKey)
+    .sort((a, b) => a[1].lastAccess - b[1].lastAccess);
+  for (const [k, e] of lru) {
+    if (total <= MAX_TOTAL_BYTES) break;
+    cache.delete(k);
+    total -= e.bytesEstimate;
+    evictions++;
+  }
 }
 
 /** Clear all cached entries — used on shutdown / explicit refresh. */

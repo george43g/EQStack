@@ -397,11 +397,21 @@ export function App({ changeBus }: AppProps = {}) {
   const NEAR_TOP_THRESHOLD = 10;
   const _MSG_BATCH_SIZE = 100;
 
+  // Cooldown between older-page loads. Sequentiality alone doesn't bound the
+  // page RATE: a held wheel at the top re-fires the near-top effect the
+  // moment each page lands, and on big real-DB threads each page carries a
+  // heavy transient allocation cost (extended-data blobs for up to 2×limit
+  // rows per merged leg) — sustained, that inflated RSS to the watchdog's
+  // kill threshold inside 3 minutes. 300ms still walks >3 pages/second.
+  const OLDER_LOAD_COOLDOWN_MS = 300;
+  const lastOlderLoadAtRef = useRef(0);
+
   const loadOlderMessages = useCallback(async () => {
     if (!selected) return;
     if (state.messageLoadingOlder) return;
     if (state.messageOldestLoadedId == null) return;
     dispatch({ type: "SET_LOADING_OLDER", loading: true });
+    lastOlderLoadAtRef.current = Date.now();
     const olderMsgs = await imsg.loadOlderMessages(
       selected.chatIdentifier,
       state.messageOldestLoadedId,
@@ -424,6 +434,7 @@ export function App({ changeBus }: AppProps = {}) {
     if (state.loading || state.messageLoadingOlder) return;
     if (state.messages.length === 0) return;
     if (state.messageOldestLoadedId === -1) return; // exhausted
+    if (Date.now() - lastOlderLoadAtRef.current < OLDER_LOAD_COOLDOWN_MS) return;
     if (state.selectedMsgIdx >= 0 && state.selectedMsgIdx < NEAR_TOP_THRESHOLD) {
       loadOlderMessages();
     }
@@ -1296,6 +1307,33 @@ export function App({ changeBus }: AppProps = {}) {
 
   // ── Mouse ──────────────────────────────────────────────────────────
 
+  // Wheel events are COALESCED: a physical wheel flick / trackpad momentum
+  // swipe arrives as dozens of SGR events in a burst, and dispatching one
+  // MOVE_MSG per event meant one full render per wheel notch — the cursor
+  // teleported, and at the top of a thread every render cycle re-fired the
+  // older-messages pagination (the memory-blowup path that RSS-killed a real
+  // session). Deltas accumulate per pane and flush as ONE clamped dispatch
+  // per WHEEL_FLUSH_MS window.
+  const WHEEL_FLUSH_MS = 40;
+  const WHEEL_MAX_STEP = 15;
+  const wheelAccum = useRef({ sidebar: 0, thread: 0 });
+  const wheelFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushWheel = useCallback(() => {
+    wheelFlushTimer.current = null;
+    const { sidebar, thread } = wheelAccum.current;
+    wheelAccum.current = { sidebar: 0, thread: 0 };
+    const clamp = (d: number) => Math.max(-WHEEL_MAX_STEP, Math.min(WHEEL_MAX_STEP, d));
+    if (sidebar !== 0) dispatch({ type: "SCROLL_SIDEBAR", delta: clamp(sidebar) });
+    if (thread !== 0) dispatch({ type: "MOVE_MSG", delta: clamp(thread) });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (wheelFlushTimer.current) clearTimeout(wheelFlushTimer.current);
+    };
+  }, []);
+
   const handleMouse = useCallback(
     (event: { type: string; x: number; y: number }) => {
       if (event.type === "click") {
@@ -1310,20 +1348,12 @@ export function App({ changeBus }: AppProps = {}) {
         } else {
           dispatch({ type: "FOCUS", pane: "thread" });
         }
-      } else if (event.type === "scroll-up") {
-        // Wheel delta: 1 line per event for fine-grained control. macOS / iTerm
-        // typically batch 2-3 wheel events per touchpad swipe so this still feels
-        // responsive in practice.
-        if (event.x <= sidebarWidth) {
-          dispatch({ type: "SCROLL_SIDEBAR", delta: -1 });
-        } else {
-          dispatch({ type: "MOVE_MSG", delta: -1 });
-        }
-      } else if (event.type === "scroll-down") {
-        if (event.x <= sidebarWidth) {
-          dispatch({ type: "SCROLL_SIDEBAR", delta: 1 });
-        } else {
-          dispatch({ type: "MOVE_MSG", delta: 1 });
+      } else if (event.type === "scroll-up" || event.type === "scroll-down") {
+        const step = event.type === "scroll-up" ? -1 : 1;
+        if (event.x <= sidebarWidth) wheelAccum.current.sidebar += step;
+        else wheelAccum.current.thread += step;
+        if (!wheelFlushTimer.current) {
+          wheelFlushTimer.current = setTimeout(flushWheel, WHEEL_FLUSH_MS);
         }
       }
     },
@@ -1333,6 +1363,7 @@ export function App({ changeBus }: AppProps = {}) {
       state.conversations.length,
       state.moduleInstances.length,
       selectSidebarCombined,
+      flushWheel,
     ],
   );
 
