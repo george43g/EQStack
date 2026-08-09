@@ -27,8 +27,8 @@ function nativeResultLooksTrustworthy(text: string): boolean {
   if (/\$class|streamtyped|NSKeyedArchiver/.test(text)) return false;
   if (/^NS[A-Z][a-z]+/.test(text)) return false;
   // Doubled-uppercase-letter prefix — almost certainly a typedstream length-byte
-  // leak (e.g. "HHeres the question..." where the byte 'H' = 0x48 = 72 is the
-  // length of the actual content "Heres the question..."). The Rust path uses
+  // leak (e.g. "TTesting..." where the byte 'T' = 0x54 = 84 is the length of
+  // the actual content "Testing..."). The Rust path uses
   // simple split-on-control heuristics that don't understand typedstream framing,
   // so it can include the length byte as the first char of the result.
   // Reject so we fall through to the TS path's structured parser.

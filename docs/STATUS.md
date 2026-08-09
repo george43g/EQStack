@@ -208,10 +208,10 @@ Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](../apps/ims
   renamed) via a dedicated path (keeps default `item_type=0` message queries + analytics unaffected).
 - **Rust parser hygiene (P2 privacy / P3 unify).** `native/src/attributed_body.rs` is the persisted
   "simplified initial implementation" (comment: *"A full typedstream binary parser will be added in a
-  later phase"*) while TS has a structured `TypedStreamParser` — two strategies for one job. **Scrub
-  real-message-derived example fragments** ("Imagine…", "Heres the question") from its comments soon;
-  later, port Rust to the structured algorithm + differential test (`native == TS`), then delete the
-  heuristic path.
+  later phase"*) while TS has a structured `TypedStreamParser` — two strategies for one job.
+  ~~Scrub real-message-derived example fragments from its comments~~ **done 2026-08-09** (synthetic
+  same-length fixtures; originals remain in git history only); later, port Rust to the structured
+  algorithm + differential test (`native == TS`), then delete the heuristic path.
 - **P3 tails** — derived `serviceConfidence` heuristic so glitchy MMS-vs-iMessage data stays queryable
   under a ruleset (don't drop it); first-class read-receipt indicator + reactive `message.read`;
   explicit `focus_messages`/`activate` affordance (mirrors the reliable `tell Messages to activate`).
