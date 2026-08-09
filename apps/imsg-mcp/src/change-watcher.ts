@@ -1,24 +1,35 @@
 /**
  * ChangeWatcher — turns chat.db writes into typed EventBus batches.
  *
- * Detection primitive per docs/plans/realtime-streaming-and-api-surface.md
- * Part A: watch the DIRECTORY containing chat.db with fs.watch (FSEvents on
- * macOS) and react to events for the WAL file — SQLite appends there before
- * checkpointing, so every logical write touches it. A directory watch (not a
- * file watch) survives WAL truncate/rename during checkpoints; the
- * authoritative cursor is a high-water ROWID, never a file offset.
+ * Detection uses THREE layered primitives (the original design's single
+ * directory watch was blind in production — see below):
  *
- * On an event: debounce ~150ms (one logical message = several WAL writes),
+ *  1. A file watch on `chat.db-wal` ITSELF — kqueue on an opened fd, which
+ *     delivers write/extend events regardless of which process writes.
+ *  2. A directory watch on dirname(dbPath) — re-arms the file watch when a
+ *     checkpoint truncates/recreates the wal (stale inode), and is the
+ *     drain signal on platforms where it does report file events.
+ *  3. A slow safety poll (default 10s; one MAX(ROWID) query per tick) that
+ *     always runs alongside the watches.
+ *
+ * Why not the original directory watch alone: on the REAL
+ * `~/Library/Messages` it armed cleanly and then delivered NOTHING while
+ * rows landed in chat.db (observed live, 2026-08-10; suspected TCC/FSEvents
+ * filtering on the protected directory — plain temp dirs DO report appends,
+ * which is why the integration tests couldn't catch it). The file watch and
+ * the safety poll are the primitives that don't depend on that delivery.
+ *
+ * If fs.watch throws outright (exotic filesystems), degrade to the
+ * documented fast-poll fallback of the same drain path (default 2s).
+ * The authoritative cursor is always a high-water ROWID, never file state.
+ *
+ * On a signal: debounce ~150ms (one logical message = several WAL writes),
  * then delta-read rows past the high-water mark via
  * `IMessageDB.getMessagesAfterRowid` — the same parse/convert pipeline as
  * every other reader ("one parser, N callers"; no forked streamer parser) —
  * classify, and emit ONE coalesced batch per drain. Bulk syncs loop the
  * delta read in `maxBatch` pages so thousands of rows become a few batches,
  * not a subscriber storm.
- *
- * If fs.watch is unavailable (exotic filesystems), degrade to the documented
- * fallback: a slow poll of the same drain path. Detection cost is identical;
- * only latency differs.
  *
  * The watcher never throws into the host process: drain errors are logged
  * and retried on the next event. Timers are unref'd; `stop()` is idempotent
@@ -47,6 +58,8 @@ export interface ChangeWatcherOptions {
   debounceMs?: number;
   /** Poll cadence for the degenerate no-fs.watch fallback. */
   pollFallbackMs?: number;
+  /** Slow backstop poll cadence while fs.watch is armed (0 disables). */
+  safetyPollMs?: number;
   /** Rows per delta page; drains loop while a page comes back full. */
   maxBatch?: number;
 }
@@ -59,8 +72,12 @@ export class ChangeWatcher {
   private readonly pollFallbackMs: number;
   private readonly maxBatch: number;
 
+  private readonly safetyPollMs: number;
+
   private watcher: ReturnType<typeof watch> | null = null;
+  private walWatcher: ReturnType<typeof watch> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private safetyTimer: ReturnType<typeof setInterval> | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private highWaterRowid = 0;
   private draining = false;
@@ -74,6 +91,7 @@ export class ChangeWatcher {
     this.bus = opts.bus;
     this.debounceMs = opts.debounceMs ?? 150;
     this.pollFallbackMs = opts.pollFallbackMs ?? 2_000;
+    this.safetyPollMs = opts.safetyPollMs ?? 10_000;
     this.maxBatch = opts.maxBatch ?? 500;
   }
 
@@ -90,11 +108,14 @@ export class ChangeWatcher {
     const dir = dirname(this.dbPath);
     const dbFile = basename(this.dbPath);
     try {
-      this.watcher = watch(dir, (_eventType, filename) => {
-        // WAL writes are the signal; plain-db events also count (non-WAL
-        // journal modes, checkpoint truncations arriving as `rename`).
-        // filename can be null on some platforms — treat that as a hit.
+      this.watcher = watch(dir, (eventType, filename) => {
+        // Directory watches only report ENTRY changes (create/rename/delete)
+        // on macOS — a checkpoint truncating/recreating the wal lands here.
+        // Any wal entry event means the file watch's inode may be stale:
+        // re-arm it, then drain. filename can be null on some platforms —
+        // treat that as a hit.
         if (filename === null || filename === `${dbFile}-wal` || filename === dbFile) {
+          if (eventType === "rename" || this.walWatcher === null) this.armWalWatch();
           this.scheduleDrain();
         }
       });
@@ -107,10 +128,14 @@ export class ChangeWatcher {
         this.teardownWatch();
         this.armPollFallback();
       });
+      this.armWalWatch();
+      this.armSafetyPoll();
       info("change_watcher_started", {
         dir,
         high_water_rowid: this.highWaterRowid,
         debounce_ms: this.debounceMs,
+        wal_file_watch: this.walWatcher !== null,
+        safety_poll_ms: this.safetyPollMs,
       });
     } catch (err) {
       warn("change_watcher_fs_watch_unavailable", { message: String(err) });
@@ -118,13 +143,57 @@ export class ChangeWatcher {
     }
   }
 
-  /** Idempotent teardown — clears the watch, timers, and pending drains. */
+  /**
+   * Watch the WAL file itself — the only fs.watch mode that fires on APPENDS
+   * on macOS (kqueue on the file). Best-effort: the wal may not exist yet
+   * (fresh db, post-checkpoint gap); the directory watch re-arms us when its
+   * entry appears, and the safety poll covers the meantime.
+   */
+  private armWalWatch(): void {
+    if (!this.started) return;
+    if (this.walWatcher) {
+      this.walWatcher.close();
+      this.walWatcher = null;
+    }
+    try {
+      this.walWatcher = watch(`${this.dbPath}-wal`, () => {
+        this.scheduleDrain();
+      });
+      this.walWatcher.unref();
+      this.walWatcher.on("error", () => {
+        // Stale inode (checkpoint) or vanished file — the dir watch will
+        // re-arm on the next wal entry event; don't fall back to full poll.
+        if (this.walWatcher) {
+          this.walWatcher.close();
+          this.walWatcher = null;
+        }
+      });
+    } catch {
+      // ENOENT etc. — covered by dir watch + safety poll.
+      this.walWatcher = null;
+    }
+  }
+
+  /** Slow backstop drain while fs.watch is armed — catches silent watches. */
+  private armSafetyPoll(): void {
+    if (this.safetyTimer || this.safetyPollMs <= 0) return;
+    this.safetyTimer = setInterval(() => {
+      void this.drain();
+    }, this.safetyPollMs);
+    this.safetyTimer.unref();
+  }
+
+  /** Idempotent teardown — clears the watches, timers, and pending drains. */
   stop(): void {
     this.started = false;
     this.teardownWatch();
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
+    }
+    if (this.safetyTimer) {
+      clearInterval(this.safetyTimer);
+      this.safetyTimer = null;
     }
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
@@ -154,6 +223,10 @@ export class ChangeWatcher {
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
+    }
+    if (this.walWatcher) {
+      this.walWatcher.close();
+      this.walWatcher = null;
     }
   }
 
