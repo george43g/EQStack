@@ -162,6 +162,9 @@ importers:
 
   apps/voice-mcp:
     dependencies:
+      '@george43g/robustness':
+        specifier: ^0.5.2
+        version: 0.5.2
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.30.0(zod@3.25.76)
