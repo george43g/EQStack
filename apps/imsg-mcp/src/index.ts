@@ -31,6 +31,7 @@ import {
   sendToChatId,
 } from "./applescript.js";
 import { type EnsureDownloadedResult, ensureAttachmentDownloaded } from "./attachment-sync.js";
+import { ChangeWatcher } from "./change-watcher.js";
 import {
   getContactsDbPaths,
   getHumansDirPath,
@@ -41,6 +42,7 @@ import {
 import { rememberSearch, resolveContactSelector } from "./contact-resolver.js";
 import { normalizedPhoneVariants } from "./contacts-db.js";
 import { parseUserDate } from "./date-parse.js";
+import { type ChangeEvent, EventBus } from "./event-bus.js";
 import { ExportInterpretGuardError, streamExport } from "./exportStream.js";
 import { rankFuzzy } from "./fuzzy.js";
 import { HUMANS_INIT_HINT, HumansIndex, humansHintText } from "./humans-hints.js";
@@ -102,6 +104,7 @@ import {
   SendMessageSchema,
   TOOL_TIMEOUTS_MS,
   type ToolName,
+  WaitForChangesSchema,
   WaitForReplySchema,
 } from "./mcp-tools.js";
 import {
@@ -206,6 +209,11 @@ export class IMessageMCPServer {
   // the user's interjections without echoing the agent's just-sent message.
   private sentEchoes = new SentEchoRegistry();
   private humansIndex = new HumansIndex();
+
+  // Shared change stream (WAL watcher → typed EventBus), armed lazily by
+  // ensureChangeStream() on the first long-poll. Null until then.
+  private changeBus: EventBus | null = null;
+  private changeWatcher: ChangeWatcher | null = null;
 
   constructor() {
     this.server = new Server(
@@ -381,6 +389,8 @@ export class IMessageMCPServer {
         return await this.handleSendMessage(args);
       case "wait_for_reply":
         return await this.handleWaitForReply(args, signal);
+      case "wait_for_changes":
+        return await this.handleWaitForChanges(args, signal);
       case "list_conversations":
         return await this.handleListConversations(args);
       case "search_messages":
@@ -1071,51 +1081,94 @@ export class IMessageMCPServer {
     // Canonical thread key — must match what handleSendMessage registered.
     const chatKey = chat.threadSlug ?? chat.chatIdentifier;
 
-    // Poll for new messages — bail out early on cancellation
-    while (Date.now() - startTime < timeoutMs) {
-      if (signal?.aborted) {
-        return toolError(
-          `Cancelled by client after ${Math.round((Date.now() - startTime) / 1000)}s`,
-          {
-            cancelled: true,
-            elapsedSeconds: Math.round((Date.now() - startTime) / 1000),
-          },
-        );
-      }
-      const newMessages = await this.db.getMessagesAfter(chat.chatIdentifier, lastKnownId, {
-        includeSelf,
-      });
-      // In includeSelf mode, drop this process's own send echoes — a from-me
-      // row is only a genuine interjection if the registry doesn't claim it.
-      const visible = includeSelf
-        ? newMessages.filter((m) => !m.isFromMe || !this.sentEchoes.consume(chatKey, m))
-        : newMessages;
+    // Event-driven wake: subscribe to the shared change stream so a chat.db
+    // write ends the wait immediately instead of on the next poll tick. The
+    // AUTHORITATIVE read stays getMessagesAfter below (cursor semantics, the
+    // 1-2s chat.db write-lag tolerance, and echo suppression are unchanged) —
+    // the bus only wakes the loop, and any conversation's write may wake it
+    // (the scoped delta read is cheap). pollIntervalSeconds is now the
+    // FALLBACK cadence for when watch events are missed or unavailable.
+    const { bus } = this.ensureChangeStream();
+    let busWake: (() => void) | null = null;
+    let busPending = false;
+    const unsubscribeBus = bus.subscribe(() => {
+      busPending = true;
+      busWake?.();
+    });
 
-      if (visible.length > 0) {
-        const selfCount = visible.filter((m) => m.isFromMe).length;
-        const header =
-          selfCount > 0
-            ? `Received ${visible.length} new message(s) — ${selfCount} sent by the user from their own account (another device), ${visible.length - selfCount} from the other party:`
-            : `Received ${visible.length} new message(s):`;
-        const formatted = visible.map((m) => formatMessage(m)).join("\n");
-        const humansHint = this.humansIndex.hintFor(chat.participants);
-        const humansLine = humansHint ? humansHintText(humansHint) : "";
-        return toolText(`${header}\n\n${formatted}${humansLine}`, {
-          received: true,
-          messages: visible.map(messageToStructured),
-          count: visible.length,
-          selfCount,
-          ...(humansHint ? { humans: humansHint } : {}),
+    try {
+      // Poll for new messages — bail out early on cancellation
+      while (Date.now() - startTime < timeoutMs) {
+        if (signal?.aborted) {
+          return toolError(
+            `Cancelled by client after ${Math.round((Date.now() - startTime) / 1000)}s`,
+            {
+              cancelled: true,
+              elapsedSeconds: Math.round((Date.now() - startTime) / 1000),
+            },
+          );
+        }
+        const newMessages = await this.db.getMessagesAfter(chat.chatIdentifier, lastKnownId, {
+          includeSelf,
         });
-      }
-      if (newMessages.length > 0) {
-        // Everything new was our own echo — advance the cursor past it so
-        // subsequent polls stay cheap (the echo row is a real row in
-        // (date, ROWID) order).
-        lastKnownId = newMessages[newMessages.length - 1].id;
-      }
+        // In includeSelf mode, drop this process's own send echoes — a from-me
+        // row is only a genuine interjection if the registry doesn't claim it.
+        const visible = includeSelf
+          ? newMessages.filter((m) => !m.isFromMe || !this.sentEchoes.consume(chatKey, m))
+          : newMessages;
 
-      await sleep(pollIntervalMs, signal);
+        if (visible.length > 0) {
+          const selfCount = visible.filter((m) => m.isFromMe).length;
+          const header =
+            selfCount > 0
+              ? `Received ${visible.length} new message(s) — ${selfCount} sent by the user from their own account (another device), ${visible.length - selfCount} from the other party:`
+              : `Received ${visible.length} new message(s):`;
+          const formatted = visible.map((m) => formatMessage(m)).join("\n");
+          const humansHint = this.humansIndex.hintFor(chat.participants);
+          const humansLine = humansHint ? humansHintText(humansHint) : "";
+          return toolText(`${header}\n\n${formatted}${humansLine}`, {
+            received: true,
+            messages: visible.map(messageToStructured),
+            count: visible.length,
+            selfCount,
+            ...(humansHint ? { humans: humansHint } : {}),
+          });
+        }
+        if (newMessages.length > 0) {
+          // Everything new was our own echo — advance the cursor past it so
+          // subsequent polls stay cheap (the echo row is a real row in
+          // (date, ROWID) order).
+          lastKnownId = newMessages[newMessages.length - 1].id;
+        }
+
+        if (busPending) {
+          // A write landed while we were reading — re-poll immediately.
+          busPending = false;
+          continue;
+        }
+        // Wait for: a bus wake (instant), the fallback poll tick, or abort —
+        // whichever comes first. Mirrors sleep()'s abort semantics: resolve
+        // promptly and let the loop-top check produce the cancel result.
+        await new Promise<void>((resolve) => {
+          if (signal?.aborted) {
+            resolve();
+            return;
+          }
+          const done = () => {
+            clearTimeout(timer);
+            signal?.removeEventListener("abort", done);
+            busWake = null;
+            resolve();
+          };
+          const timer = setTimeout(done, pollIntervalMs);
+          busWake = done;
+          signal?.addEventListener("abort", done, { once: true });
+        });
+        busPending = false;
+      }
+    } finally {
+      unsubscribeBus();
+      busWake = null;
     }
 
     // Timeout reached
@@ -1129,6 +1182,161 @@ export class IMessageMCPServer {
         chatIdentifier: chat.chatIdentifier,
       },
     );
+  }
+
+  /**
+   * Lazily construct the shared change stream: one EventBus fed by one WAL
+   * ChangeWatcher, reusing this server's IMessageDB (one parser, N callers).
+   * Armed on FIRST use rather than at startup — most sessions never long-poll,
+   * so we don't pay for an fs.watch on ~/Library/Messages (or the high-water
+   * seed query) until a tool actually needs the stream. The watcher's stop()
+   * is registered with the shutdown cleanup registry; if fs.watch is
+   * unavailable the watcher degrades to its built-in slow-poll fallback and
+   * never throws into the handler.
+   */
+  private ensureChangeStream(): { bus: EventBus; watcher: ChangeWatcher } {
+    if (this.changeBus && this.changeWatcher) {
+      return { bus: this.changeBus, watcher: this.changeWatcher };
+    }
+    const bus = new EventBus();
+    const watcher = new ChangeWatcher({ dbPath: getImsgDbPath(), db: this.db, bus });
+    watcher.start();
+    registerCleanup(() => watcher.stop());
+    this.changeBus = bus;
+    this.changeWatcher = watcher;
+    return { bus, watcher };
+  }
+
+  /**
+   * Long-poll the change stream for typed events. Unlike wait_for_reply there
+   * is no cursor and no echo suppression — this is the raw event feed,
+   * optionally filtered to one merged conversation and/or event types.
+   * Semantics: without maxEvents, return on the first batch containing a
+   * matching event; with maxEvents, keep collecting until that many arrived
+   * (a timeout returns the partial set). A quiet timeout is a clean
+   * non-error result.
+   */
+  private async handleWaitForChanges(args: unknown, signal?: AbortSignal): Promise<any> {
+    const { chatIdentifier, threadSlug, types, timeoutSeconds, maxEvents } =
+      WaitForChangesSchema.parse(args ?? {});
+
+    // Optional conversation filter — resolved exactly like wait_for_reply.
+    let chat: Awaited<ReturnType<typeof this.db.findChatByHandle>> = null;
+    if (threadSlug) {
+      const slugRecord = this.db.getSlugRecord(threadSlug);
+      if (!slugRecord) {
+        return toolError(`Unknown thread slug: ${threadSlug}`, { threadSlug });
+      }
+      chat = await this.db.findChatByHandle(slugRecord.chatIdentifier);
+    } else if (chatIdentifier) {
+      chat = await this.db.findChatByHandle(chatIdentifier);
+    }
+    if ((threadSlug || chatIdentifier) && !chat) {
+      return toolError(`Could not find conversation for: ${threadSlug || chatIdentifier}`, {
+        threadSlug,
+        chatIdentifier,
+      });
+    }
+
+    const { bus, watcher } = this.ensureChangeStream();
+    const wanted = new Set<string>(types);
+    const startTime = Date.now();
+
+    // Merge-aware conversation match: an event belongs to the monitored
+    // thread when its chat_identifier maps to the same per-identity slug
+    // (covers the phone/email/SMS/iMessage legs of one contact — see
+    // docs/CONTACT_MERGE_AND_SLUGS.md), or equals the resolved identifier.
+    const matchesChat = (event: ChangeEvent): boolean => {
+      if (!chat) return true;
+      if (!("message" in event)) return false; // group.* events carry no message (reserved)
+      const eventChatId = event.message.chatId;
+      if (eventChatId === chat.chatIdentifier) return true;
+      if (!eventChatId) return false;
+      const slug = this.db.getSlugForChatIdentifier(eventChatId);
+      return slug !== null && slug === chat.threadSlug;
+    };
+
+    const collected: ChangeEvent[] = [];
+    const target = maxEvents ?? 1;
+    // Object property (not a bare `let`): the mutations happen inside the
+    // subscriber/abort closures, which TS's flow analysis can't track.
+    const outcome = { cause: "timeout" as "events" | "timeout" | "abort" };
+
+    await new Promise<void>((resolve) => {
+      let finished = false;
+      let unsubscribe: () => void = () => {};
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        unsubscribe();
+        resolve();
+      };
+      const onAbort = () => {
+        outcome.cause = "abort";
+        finish();
+      };
+      const timer = setTimeout(finish, timeoutSeconds * 1000);
+      unsubscribe = bus.subscribe((events) => {
+        for (const event of events) {
+          if (!wanted.has(event.type) || !matchesChat(event)) continue;
+          collected.push(event);
+          if (maxEvents !== undefined && collected.length >= maxEvents) break;
+        }
+        if (collected.length >= target) {
+          outcome.cause = "events";
+          finish();
+        }
+      });
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener("abort", onAbort, { once: true });
+    });
+
+    const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+    if (outcome.cause === "abort") {
+      return toolError(`Cancelled by client after ${elapsedSeconds}s`, {
+        cancelled: true,
+        elapsedSeconds,
+      });
+    }
+
+    const watcherMode = watcher.isPolling() ? ("poll" as const) : ("fs-watch" as const);
+    const scope = chat ? { threadSlug: chat.threadSlug, chatIdentifier: chat.chatIdentifier } : {};
+    const scopeLabel = chat ? ` in conversation ${chat.threadSlug ?? chat.chatIdentifier}` : "";
+
+    if (collected.length === 0) {
+      return toolText(`No changes within ${timeoutSeconds}s${scopeLabel}.`, {
+        events: [],
+        count: 0,
+        timedOut: true,
+        timeoutSeconds,
+        ...scope,
+        watcherMode,
+      });
+    }
+
+    const structuredEvents = collected.map((event) =>
+      "message" in event
+        ? { type: event.type, message: messageToStructured(event.message) }
+        : { type: event.type, chatIdentifier: event.chatIdentifier },
+    );
+    const partial = outcome.cause === "timeout";
+    const header = `Received ${collected.length} change event(s)${scopeLabel}${
+      partial ? ` (timeout after ${timeoutSeconds}s before maxEvents=${maxEvents} arrived)` : ""
+    }:`;
+    const lines = collected
+      .map((event) =>
+        "message" in event ? `[${event.type}] ${formatMessage(event.message)}` : `[${event.type}]`,
+      )
+      .join("\n");
+    return toolText(`${header}\n\n${lines}`, {
+      events: structuredEvents,
+      count: collected.length,
+      ...(partial ? { timedOut: true, timeoutSeconds } : {}),
+      ...scope,
+      watcherMode,
+    });
   }
 
   private async handleListConversations(args: unknown) {

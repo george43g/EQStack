@@ -236,7 +236,14 @@ export const WaitForReplySchema = z.object({
   chatIdentifier: nonEmptyString("Phone number, email, or chat ID to monitor").optional(),
   threadSlug: nonEmptyString("Thread slug from list_conversations to monitor").optional(),
   timeoutSeconds: z.number().min(10).max(3600).default(300),
-  pollIntervalSeconds: z.number().min(5).max(60).default(10),
+  pollIntervalSeconds: z
+    .number()
+    .min(5)
+    .max(60)
+    .default(10)
+    .describe(
+      "Fallback poll cadence, 5-60s (kept for compatibility). New chat.db writes wake the wait immediately via the change watcher; this only bounds the re-check interval when watch events are missed or unavailable.",
+    ),
   afterMessageId: z.number().int().positive().optional(),
   includeSelf: z
     .boolean()
@@ -258,6 +265,65 @@ export const WaitForReplyOutputSchema = z.object({
   chatIdentifier: z.string().optional(),
   cancelled: z.boolean().optional(),
   elapsedSeconds: z.number().optional(),
+});
+
+/**
+ * Change-event types the ChangeWatcher currently emits (src/event-bus.ts).
+ * The union has reserved variants (message.edited, group.*) for the
+ * mutation-detection backlog; they join this enum when the watcher emits them.
+ */
+export const CHANGE_EVENT_TYPES = ["message.new", "reaction"] as const;
+
+export const WaitForChangesSchema = z.object({
+  chatIdentifier: nonEmptyString(
+    "Only return events for this conversation (phone number, email, or chat ID).",
+  ).optional(),
+  threadSlug: nonEmptyString(
+    "Only return events for this conversation (thread slug from list_conversations).",
+  ).optional(),
+  types: z
+    .array(z.enum(CHANGE_EVENT_TYPES))
+    .min(1)
+    .default([...CHANGE_EVENT_TYPES])
+    .describe("Event types to return. Defaults to every emitted type."),
+  timeoutSeconds: z
+    .number()
+    .min(1)
+    .max(3600)
+    .default(60)
+    .describe("Give up after this many seconds with a clean (non-error) empty result."),
+  maxEvents: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe(
+      "Keep collecting until this many events arrived, then return early. " +
+        "Omit to return as soon as the first matching batch lands.",
+    ),
+});
+
+export const ChangeEventOutputSchema = z.object({
+  type: z.enum(CHANGE_EVENT_TYPES),
+  message: MessageSchema,
+});
+
+export const WaitForChangesOutputSchema = z.object({
+  events: z.array(ChangeEventOutputSchema),
+  count: z.number().int(),
+  timedOut: z
+    .boolean()
+    .optional()
+    .describe("True when the wait ended on the timeout (events may still be present)."),
+  timeoutSeconds: z.number().optional(),
+  threadSlug: z.string().optional(),
+  chatIdentifier: z.string().optional(),
+  cancelled: z.boolean().optional(),
+  elapsedSeconds: z.number().optional(),
+  watcherMode: z
+    .enum(["fs-watch", "poll"])
+    .optional()
+    .describe("How changes are detected: fs.watch push (normal) or the slow-poll fallback."),
 });
 
 export const ListConversationsSchema = z.object({
@@ -657,6 +723,7 @@ export const TOOL_SCHEMAS = {
   get_unread_messages: GetUnreadMessagesSchema,
   send_message: SendMessageSchema,
   wait_for_reply: WaitForReplySchema,
+  wait_for_changes: WaitForChangesSchema,
   list_conversations: ListConversationsSchema,
   search_messages: SearchMessagesSchema,
   get_logs: GetLogsSchema,
@@ -682,6 +749,7 @@ export const OUTPUT_SCHEMAS = {
   get_unread_messages: GetUnreadMessagesOutputSchema,
   send_message: SendMessageOutputSchema,
   wait_for_reply: WaitForReplyOutputSchema,
+  wait_for_changes: WaitForChangesOutputSchema,
   list_conversations: ListConversationsOutputSchema,
   search_messages: SearchMessagesOutputSchema,
   get_logs: GetLogsOutputSchema,

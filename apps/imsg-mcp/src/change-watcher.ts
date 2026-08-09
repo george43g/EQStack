@@ -98,6 +98,10 @@ export class ChangeWatcher {
           this.scheduleDrain();
         }
       });
+      // Like the timers, the fs.watch handle must never keep the process
+      // alive on its own — entry points arm the watcher lazily inside
+      // request handlers, and shutdown() already stops it explicitly.
+      this.watcher.unref();
       this.watcher.on("error", (err) => {
         warn("change_watcher_fs_error_falling_back_to_poll", { message: String(err) });
         this.teardownWatch();

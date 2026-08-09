@@ -88,6 +88,7 @@ One human conversation is often split across multiple `chat` rows (phone vs emai
 | `get_unread_messages`  | All unread messages. `limit` (`0` = unlimited, default 100). |
 | `send_message`         | `recipient` and/or **`threadSlug`** (from `list_conversations`); **`message`** required. Messages.app + Automation when not mocked. |
 | `wait_for_reply`       | **`chatIdentifier`** or **`threadSlug`**; `timeoutSeconds`, `pollIntervalSeconds`, optional `afterMessageId`. Honors MCP `notifications/cancelled`. |
+| `wait_for_changes`     | Long-poll typed change events (`message.new` \| `reaction`) from the WAL-watcher EventBus — all conversations or one via `chatIdentifier`/`threadSlug` (merge-aware); `types` filter, `timeoutSeconds` (default 60), `maxEvents`. Quiet timeout = clean non-error. Honors `notifications/cancelled`. |
 | `list_conversations`   | List chats with **`threadSlug`**, snippets, unread; `limit` (`0` = unlimited, default 20). |
 | `search_messages`      | Search text; `query`, `limit` (`0` = unlimited, default 20). |
 | `resolve_conversation` | Free-form name/phrase → ranked threads in ONE call (fuses contacts + recent-thread names + message content). Returns `[{name, threadSlug, chatIdentifier, lastMessageDate, matchType, score}]`. Solves "check Selena's messages" without chaining `search_contacts` → `get_contact`. |
@@ -96,7 +97,7 @@ One human conversation is often split across multiple `chat` rows (phone vs emai
 ### Tool limits & timeouts
 
 - **No upper cap on `limit`.** `0` = unlimited (bounded only by per-tool timeout). Default is 20 for most tools; 100 for `get_unread_messages`.
-- **Per-tool timeouts** (in `src/mcp-tools.ts:TOOL_TIMEOUTS_MS`): default 30s. `wait_for_reply` has its own `timeoutSeconds` arg and skips the wrapper. `health_check` is capped at 5s. On timeout the server returns `isError: true` so the host unblocks immediately, even if the underlying SQL keeps running.
+- **Per-tool timeouts** (in `src/mcp-tools.ts:TOOL_TIMEOUTS_MS`): default 30s. `wait_for_reply` and `wait_for_changes` have their own `timeoutSeconds` arg and skip the wrapper. `health_check` is capped at 5s. On timeout the server returns `isError: true` so the host unblocks immediately, even if the underlying SQL keeps running.
 
 ## Conventions for Development
 
@@ -214,7 +215,7 @@ Tool responses include performance metadata: engine (TS/Rust), query time, resul
 - "Operation not permitted" → Full Disk Access.
 - "Can't get buddy" → recipient not iMessage/SMS reachable; try full number or email.
 - Messages.app must be running for sending.
-- DB can lag 1–2 seconds; `wait_for_reply` uses polling to handle that.
+- DB can lag 1–2 seconds; `wait_for_reply` re-reads on WAL-watcher wakes plus a fallback poll (`pollIntervalSeconds`) to handle that.
 
 ## Cursor Cloud specific instructions
 
