@@ -36,3 +36,5 @@ Escape
 Sleep 200ms
 Type "q"
 Sleep 200ms
+
+# canary: trigger screenshots-check from plain main (no functional change)
