@@ -188,6 +188,8 @@ Written to `$TMPDIR/imsg-mcp/imsg-mcp-{PID}-{date}.ndjson`. Contains:
 
 **Crash detection**: A log file with no `"shutdown"` entry means the process crashed or hung.
 
+**Log knobs** (robustness kit, `IMSG` env prefix): `IMSG_LOG_LEVEL` (`debug`|`info`|`warn`|`error`|`silent`, default `debug` = emit everything), `IMSG_LOG_DIR`, `IMSG_LOG_TO_FILE`. File logging still needs `IMSG_DEV=1` (or the TUI, which forces it).
+
 ### MCP response metadata
 
 Tool responses include performance metadata: engine (TS/Rust), query time, result count.
