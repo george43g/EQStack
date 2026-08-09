@@ -83,6 +83,13 @@ jobs:
       - name: Regenerate screenshots
         run: pnpm screenshots
 
+      - name: Dump TUI NDJSON logs from vhs runs (canary only)
+        if: always()
+        run: |
+          echo "--- log dir ---"
+          ls -la "$TMPDIR"/imsg-mcp/ 2>/dev/null || echo "(no log dir)"
+          for f in "$TMPDIR"/imsg-mcp/*.ndjson; do echo "== $f =="; tail -30 "$f"; done 2>/dev/null || true
+
       - name: Report drift (informational)
         run: |
           if ! git diff --quiet -- apps/imsg-mcp/docs/screenshots/; then
