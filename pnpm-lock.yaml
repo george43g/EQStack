@@ -51,11 +51,11 @@ importers:
   apps/imsg-mcp:
     dependencies:
       '@george43g/robustness':
-        specifier: ^0.5.2
-        version: 0.5.2
+        specifier: ^0.6.0
+        version: 0.6.0
       '@george43g/tui-kit':
-        specifier: ^0.3.1
-        version: 0.3.1(@george43g/robustness@0.5.2)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))(react@19.2.8)
+        specifier: ^0.3.3
+        version: 0.3.3(@george43g/robustness@0.6.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))(react@19.2.8)
       '@inkjs/ui':
         specifier: ^2.0.0
         version: 2.0.0(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))
@@ -163,8 +163,8 @@ importers:
   apps/voice-mcp:
     dependencies:
       '@george43g/robustness':
-        specifier: ^0.5.2
-        version: 0.5.2
+        specifier: ^0.6.0
+        version: 0.6.0
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.30.0(zod@3.25.76)
@@ -647,15 +647,15 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@george43g/robustness@0.5.2':
-    resolution: {integrity: sha512-LbCnABvwi+1FddHTSAYqJOT+FGTK3YF8tqsLGZ8J+yujBXYf/drUaIa4qM0VJRvu3x8bU28mGzKOnp1rD3Y0WA==}
+  '@george43g/robustness@0.6.0':
+    resolution: {integrity: sha512-txRM8vueafx6bsCbs2wYbh1jncOpYU2iPgDSKk+IXnbZkgWLkZ0moRtJsr205fb7TT+p7t4OFQj/4UunU3A4fw==}
     engines: {node: '>=24'}
 
-  '@george43g/tui-kit@0.3.1':
-    resolution: {integrity: sha512-pEOByBA7Fpfg8x0N4nlAaKYxNWe0LwYF8cQtY3CDgpEO9Zgm4/8+LpPkTL8S8Ikl3yydwtPFvDpnXTTfIcEr8g==}
+  '@george43g/tui-kit@0.3.3':
+    resolution: {integrity: sha512-aclnaBN2TWcy1jr53WN3mvpn3upJdzz+NQVF1nR9DjVLFPopjtYtGNzHwLEnAnrSqFaeQhqPZa1X63/Wd7FOmg==}
     engines: {node: '>=24'}
     peerDependencies:
-      '@george43g/robustness': ^0.1.1 || ^0.2.0 || ^0.3.0 || ^0.4.0 || ^0.5.0
+      '@george43g/robustness': ^0.1.1 || ^0.2.0 || ^0.3.0 || ^0.4.0 || ^0.5.0 || ^0.6.0
       ink: ^7.1.1
       react: ^19.2.8
 
@@ -4154,11 +4154,11 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@george43g/robustness@0.5.2': {}
+  '@george43g/robustness@0.6.0': {}
 
-  '@george43g/tui-kit@0.3.1(@george43g/robustness@0.5.2)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))(react@19.2.8)':
+  '@george43g/tui-kit@0.3.3(@george43g/robustness@0.6.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@george43g/robustness': 0.5.2
+      '@george43g/robustness': 0.6.0
       fullscreen-ink: 0.1.0(@types/react@19.2.14)
       ink: 7.1.1(@types/react@19.2.14)(react@19.2.8)
       react: 19.2.8

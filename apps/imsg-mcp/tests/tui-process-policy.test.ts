@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetForTests } from "@george43g/robustness/logger";
 import { describe, expect, it, vi } from "vitest";
-import { appendLog, enableFileLogging, getLogFilePath } from "../src/logger.js";
+import { appendLog, configureKitLogger, enableFileLogging, getLogFilePath } from "../src/logger.js";
 import type { ShutdownOpts } from "../src/shutdown.js";
 
 describe("logger.enableFileLogging", () => {
@@ -34,7 +34,9 @@ describe("logger.enableFileLogging", () => {
     delete process.env.IMSG_DEV;
     // Kit logger state is per-worker — clear any logFilePath a previous test
     // file created, or the null assertion below fails under worker reuse.
+    // Since robustness 0.6.0 the reset also clears the file/env prefixes.
     _resetForTests();
+    configureKitLogger();
 
     try {
       // Before flipping the flag: no file should exist for this PID.

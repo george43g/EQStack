@@ -11,9 +11,6 @@
  *  - the `IMSG_DEV` file gate (kit default is file-logging ON; imsg's contract
  *    is OFF for end users unless IMSG_DEV=1 or the TUI forces it) — synced
  *    into the kit before every emit so the gate stays call-time;
- *  - `getFileLogLines` (prefers the CURRENT PID's file; the kit reads only
- *    the newest file, which returns another instance's log when an MCP server
- *    and a TUI share the machine — pinned by tests/get-logs-file-source);
  *  - `startHeapMonitor` (IMSG_DEV-gated, 256MB default via IMSG_HEAP_WARN_MB
  *    with a 64MB floor, IMSG_LOG_VERBOSE 10s cadence, `system_free_mb`);
  *  - `setLastSendError`/`getLastSendError` (imsg-specific, feeds the
@@ -22,19 +19,21 @@
  *  - `logStartup` (imsg adds version/arch/abi to the marker);
  *  - `appendLog` (legacy level-string API used by MCP tools + shutdown).
  *
- * `setLogFilePrefix("imsg-mcp")` keeps the NDJSON location byte-identical:
- * `$TMPDIR/imsg-mcp/imsg-mcp-{PID}-{date}.ndjson`.
+ * `configureKitLogger()` (module scope) pins the `imsg-mcp` file prefix —
+ * NDJSON stays at `$TMPDIR/imsg-mcp/imsg-mcp-{PID}-{date}.ndjson` — and the
+ * `IMSG` env prefix, so every kit knob reads `IMSG_LOG_DIR`, `IMSG_LOG_LEVEL`,
+ * `IMSG_LOG_TO_FILE`, … (the level gate defaults to `debug` = emit everything,
+ * so upgrading changes nothing until a user opts in).
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { freemem } from "node:os";
-import { join } from "node:path";
 import {
   clearLogs,
   getLogDirectory,
   getLogFilePath,
   getLogs,
   error as kitError,
+  getFileLogLines as kitGetFileLogLines,
   info as kitInfo,
   logShutdown as kitLogShutdown,
   perf as kitPerf,
@@ -43,14 +42,26 @@ import {
   type LogLevel,
   type PerfSpan,
   setFileLogging,
+  setLogEnvPrefix,
   setLogFilePrefix,
   setStderrMirror,
   writeStderrLine,
 } from "@george43g/robustness/logger";
 import { APP_VERSION } from "./meta.js";
 
-// Byte-identical NDJSON path/filename + `[imsg-mcp]` stderr prefix.
-setLogFilePrefix("imsg-mcp");
+/**
+ * (Re)apply imsg's kit-logger configuration: the `imsg-mcp` file prefix keeps
+ * the NDJSON path byte-identical, and the `IMSG` env prefix makes every kit
+ * knob read `IMSG_LOG_DIR` / `IMSG_LOG_LEVEL` / … instead of `MCP_*`.
+ *
+ * Exported for tests: the kit's `_resetForTests()` (robustness ≥0.6.0) resets
+ * both prefixes, so any test that calls it must call this afterwards.
+ */
+export function configureKitLogger(): void {
+  setLogFilePrefix("imsg-mcp");
+  setLogEnvPrefix("IMSG");
+}
+configureKitLogger();
 
 export type { LogEntry, LogLevel, PerfSpan };
 export { clearLogs, getLogDirectory, getLogFilePath, getLogs, writeStderrLine };
@@ -202,38 +213,18 @@ export function logShutdown(reason: string): void {
   kitLogShutdown(reason);
 }
 
-// ── File tail (imsg-specific: current-PID preference) ──────────────────
+// ── File tail (delegated) ──────────────────────────────────────────────
 
 /**
  * Read the latest NDJSON log file from disk (for external access).
- * Returns the last N lines from the most recent log file.
- *
- * Kept local (not the kit's version): this prefers the file tagged with the
- * CURRENT PID so the caller gets logs from THIS server process even when
- * stale files from prior crashes / other instances sort later, falling back
- * to the most-recent file when no current-PID file exists. Uses the kit's
- * `getLogDirectory()` so reader and writer always agree on the directory.
+ * Returns the last N lines, preferring the CURRENT PID's file so the caller
+ * gets logs from THIS process even when stale files from prior crashes /
+ * other instances sort newer. The kit's version defaults to exactly this
+ * (robustness ≥0.6.0 grew `preferPid`, defaulting to `process.pid`, from
+ * our report), so the previous local implementation is gone.
  */
 export function getFileLogLines(tail = 50): string[] {
-  try {
-    const dir = getLogDirectory();
-    if (!existsSync(dir)) return [];
-    const files = readdirSync(dir)
-      .filter((f: string) => f.endsWith(".ndjson"))
-      .sort();
-    if (files.length === 0) return [];
-
-    const currentPid = String(process.pid);
-    const mine = files.filter((f: string) => f.includes(`imsg-mcp-${currentPid}-`));
-    const targetFile = mine[mine.length - 1] ?? files[files.length - 1];
-    if (targetFile === undefined) return [];
-
-    const content = readFileSync(join(dir, targetFile), "utf8");
-    const lines = content.trim().split("\n").filter(Boolean);
-    return tail > 0 ? lines.slice(-tail) : lines;
-  } catch {
-    return [];
-  }
+  return kitGetFileLogLines(tail);
 }
 
 // ── Heap monitor (imsg-specific gate + thresholds) ─────────────────────

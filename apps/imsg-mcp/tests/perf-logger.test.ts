@@ -8,6 +8,7 @@ import { IMessageDB } from "../src/imessage-db.js";
 import type { LogEntry } from "../src/logger.js";
 import {
   clearLogs,
+  configureKitLogger,
   error,
   getLogDirectory,
   getLogFilePath,
@@ -27,7 +28,9 @@ describe("logger", () => {
     process.env.IMSG_DEV = "1";
     // Kit logger state is per-worker (not reset between test files) — drop
     // any stale logFilePath another file left behind before asserting paths.
+    // Since robustness 0.6.0 the reset also clears the file/env prefixes.
     _resetForTests();
+    configureKitLogger();
   });
   afterAll(() => {
     if (originalImsgDev === undefined) delete process.env.IMSG_DEV;
