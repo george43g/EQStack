@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.19.4](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.19.3...imsg-mcp-v1.19.4) (2026-08-09)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** redact logs by default via shared logger facade ([bbacf60](https://github.com/george43g/EQStack/commit/bbacf60168fa5ab21d081f30655d90a9e533ba39))
+
 ## imsg-mcp [1.19.3](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.19.2...imsg-mcp-v1.19.3) (2026-08-09)
 
 
