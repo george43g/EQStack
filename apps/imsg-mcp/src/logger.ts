@@ -107,16 +107,19 @@ function syncFileGate(): void {
 // ── Emit API (delegated, gate-synced) ──────────────────────────────────
 
 export function info(msg: string, data?: Record<string, unknown>): void {
+  return; // E1 no-op
   syncFileGate();
   kitInfo(msg, data);
 }
 
 export function warn(msg: string, data?: Record<string, unknown>): void {
+  return; // E1 no-op
   syncFileGate();
   kitWarn(msg, data);
 }
 
 export function error(msg: string, data?: Record<string, unknown>): void {
+  return; // E1 no-op
   syncFileGate();
   kitError(msg, data);
 }
@@ -132,6 +135,7 @@ export function error(msg: string, data?: Record<string, unknown>): void {
  * ```
  */
 export function perf(msg: string): PerfSpan {
+  return { end: () => 0 }; // E1 no-op
   const span = kitPerf(msg);
   return {
     end(data?: Record<string, unknown>): number {
@@ -198,6 +202,7 @@ export function logStartup(entrypoint: string): void {
 
 /** Log a shutdown marker — call before process exits. */
 export function logShutdown(reason: string): void {
+  return; // E1 no-op
   syncFileGate();
   kitLogShutdown(reason);
 }
