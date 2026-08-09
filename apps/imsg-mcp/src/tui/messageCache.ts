@@ -12,6 +12,7 @@
  * via `cacheStats()` for the dev stats panel.
  */
 
+import { info } from "../logger.js";
 import type { Message } from "../types.js";
 import { onMemorySample } from "../watchdog.js";
 
@@ -38,6 +39,13 @@ const cache = new Map<string, CacheEntry>();
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
 let unsubMemSample: (() => void) | null = null;
 
+// Hit-rate accounting — cumulative for the process lifetime. `clearCache()`
+// deliberately leaves these alone: it's a manual reset, not an eviction.
+let hits = 0;
+let misses = 0;
+let evictions = 0;
+let lastLoggedLookups = 0; // hits+misses at the last cache_hit_rate emission
+
 function estimateBytes(messages: Message[]): number {
   // Rough — only matters for relative sizing during eviction
   let bytes = 0;
@@ -49,9 +57,16 @@ function estimateBytes(messages: Message[]): number {
   return bytes;
 }
 
-/** Get cached entry; returns undefined if missing. Touches lastAccess. */
+/** Get cached entry; returns undefined if missing. Touches lastAccess.
+ *
+ * This is the read boundary for hit-rate accounting: a fresh entry counts as
+ * a hit; absent or stale counts as a miss — matching the `useImsg`
+ * read-through, which treats a stale entry as a DB round-trip.
+ */
 export function getCached(chatIdentifier: string): CacheEntry | undefined {
   const entry = cache.get(chatIdentifier);
+  if (entry && isFresh(entry)) hits++;
+  else misses++;
   if (entry) entry.lastAccess = Date.now();
   return entry;
 }
@@ -100,11 +115,17 @@ export function clearCache(): void {
   cache.clear();
 }
 
-/** Number of cached chats and total estimated bytes. For dev stats display. */
-export function cacheStats(): { entries: number; bytes: number } {
+/** Cache size + cumulative hit/miss/eviction counters. For dev stats display. */
+export function cacheStats(): {
+  entries: number;
+  bytes: number;
+  hits: number;
+  misses: number;
+  evictions: number;
+} {
   let bytes = 0;
   for (const e of cache.values()) bytes += e.bytesEstimate;
-  return { entries: cache.size, bytes };
+  return { entries: cache.size, bytes, hits, misses, evictions };
 }
 
 /** TTL sweep: drop entries older than TTL_MS. Exported for tests. */
@@ -114,6 +135,7 @@ export function ttlSweep(now = Date.now()): number {
     if (now - v.loadedAt > TTL_MS) {
       cache.delete(k);
       dropped++;
+      evictions++;
     }
   }
   return dropped;
@@ -129,8 +151,26 @@ export function evictUnderPressure(heapMb: number): number {
   const half = Math.ceil(sorted.length / 2);
   for (let i = 0; i < half; i++) {
     cache.delete(sorted[i][0]);
+    evictions++;
   }
   return half;
+}
+
+/**
+ * Emit one `cache_hit_rate` log line per sweep tick — but only when a lookup
+ * happened since the last emission, so an idle TUI doesn't heartbeat-spam.
+ */
+function logHitRate(): void {
+  const lookups = hits + misses;
+  if (lookups === lastLoggedLookups) return;
+  lastLoggedLookups = lookups;
+  info("cache_hit_rate", {
+    hits,
+    misses,
+    evictions,
+    entries: cache.size,
+    hit_rate: lookups === 0 ? 0 : Math.round((hits / lookups) * 100) / 100,
+  });
 }
 
 /** Install TTL sweep + memory-pressure subscription. Idempotent. */
@@ -139,6 +179,7 @@ export function installCacheSweepers(): void {
 
   sweepTimer = setInterval(() => {
     ttlSweep();
+    logHitRate();
   }, 60_000);
   sweepTimer.unref();
 
