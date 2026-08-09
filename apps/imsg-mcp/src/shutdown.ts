@@ -1,37 +1,77 @@
 /**
- * Central shutdown / cleanup registry.
+ * Central shutdown / cleanup registry — thin wrapper over
+ * `@george43g/robustness`'s ShutdownController (which was extracted from this
+ * module's previous 191-line implementation; behaviour is 1:1 except where
+ * noted below).
  *
  * Any module can register a cleanup function. On process exit (via signal,
  * stdin EOF, or orphan detection), all registered functions run exactly once
  * before the process exits.
  *
- * Prevents orphaned processes by:
- * 1. Trapping SIGINT, SIGTERM, SIGHUP, SIGQUIT
- * 2. Detecting stdin EOF (parent MCP host died)
- * 3. Watching for parent PID change (reparented to launchd = orphaned)
+ * This module OWNS its controller instance (created at module scope) rather
+ * than using the kit's singleton, so that:
+ *  1. diagnostics are wired into imsg's logger exactly once, at construction,
+ *     for every entry point (MCP / CLI / TUI) with no per-entry wiring;
+ *  2. `vi.resetModules()` in tests re-instantiates a fresh controller — the
+ *     kit's externalized module-level singleton would survive a registry
+ *     reset and leak state across test files;
+ *  3. imsg policy (unhandled rejections NEVER exit — see below) is pinned
+ *     here, not repeated at call sites.
+ *
+ * Deliberate deltas from the old implementation:
+ *  - The kit arms its 3s force-exit net on the FIRST `shutdown()` call (the
+ *    old code only armed it on a concurrent second call), so a wedged cleanup
+ *    on SIGTERM can no longer hang the process forever.
+ *  - Failing cleanups now log a `cleanup_failed` diagnostic instead of being
+ *    swallowed silently.
  */
 
+import { createShutdownController } from "@george43g/robustness";
 import { appendLog } from "./logger.js";
 
 type CleanupFn = () => void | Promise<void>;
 
-const registry = new Set<CleanupFn>();
-let shuttingDown = false;
-let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+const controller = createShutdownController({
+  // imsg policy: log unhandled rejections but DO NOT exit. Pre-fix, a single
+  // unhandled rejection in a background task (heartbeat / cache sweeper /
+  // contact-sync) would crash the MCP without any trace in the NDJSON log —
+  // the host saw an EPIPE and reconnected with a fresh PID. The MCP SDK's
+  // per-request error handler already isolates request failures, and the TUI
+  // must never die over a stray async error. (Kit default is exit(70);
+  // pinned false for every imsg entry point.)
+  exitOnUnhandledRejection: false,
+  onDiagnostic: (d) => {
+    // Route lifecycle events (signal_received, unhandled_rejection,
+    // uncaught_exception, cleanup_failed, cleanup_timeout, …) into imsg's
+    // ring buffer + NDJSON, keeping event names grep-compatible with the old
+    // implementation. Stderr mirroring rides the logger's existing
+    // enableStderrLogging() gate, so this stays TUI-safe. The logger never
+    // throws mid-shutdown (writeToFile/writeStderrLine swallow), so no
+    // try/catch is needed here.
+    appendLog(d.level, d.event, d.data);
+  },
+});
+
+/**
+ * @internal Consumed by `watchdog.ts` so watchdog kills run THIS registry's
+ * cleanups (DB close, heap-monitor stop, screen unmount) — the kit watchdog's
+ * default is its own package singleton, whose registry would be empty.
+ */
+export const _controller = controller;
 
 /**
  * Register a cleanup function to run on shutdown.
  * Functions are called in registration order.
  */
 export function registerCleanup(fn: CleanupFn): void {
-  registry.add(fn);
+  controller.registerCleanup(fn);
 }
 
 /**
  * Unregister a previously registered cleanup function.
  */
 export function unregisterCleanup(fn: CleanupFn): void {
-  registry.delete(fn);
+  controller.unregisterCleanup(fn);
 }
 
 /**
@@ -39,47 +79,12 @@ export function unregisterCleanup(fn: CleanupFn): void {
  * Safe to call multiple times — only runs once.
  */
 export async function shutdown(exitCode = 0): Promise<never> {
-  if (shuttingDown) {
-    // Already shutting down — force exit after 3s safety net
-    setTimeout(() => process.exit(exitCode), 3000).unref();
-    // Block forever (the timeout or a prior shutdown will exit)
-    return new Promise<never>(() => {});
-  }
-  shuttingDown = true;
-
-  // Stop watchdog
-  if (watchdogTimer) {
-    clearInterval(watchdogTimer);
-    watchdogTimer = null;
-  }
-
-  // Run all cleanup functions (best-effort, don't let one failure block others)
-  for (const fn of registry) {
-    try {
-      await fn();
-    } catch {
-      // Ignore cleanup errors during shutdown
-    }
-  }
-  registry.clear();
-
-  process.exit(exitCode);
-}
-
-/** Synchronous cleanup — last resort on process.on('exit') */
-function syncCleanup(): void {
-  for (const fn of registry) {
-    try {
-      // Only call sync-safe functions here; async ones will be no-ops
-      const result = fn();
-      // If it returns a promise, we can't await it here — just ignore
-      if (result && typeof (result as Promise<void>).catch === "function") {
-        (result as Promise<void>).catch(() => {});
-      }
-    } catch {
-      // Ignore
-    }
-  }
+  await controller.shutdown(exitCode);
+  // controller.shutdown() resolves only when its exit hook didn't terminate
+  // the process (tests / embedders / re-entry). Callers treat shutdown() as
+  // terminal, so block forever — the force-exit net or the first caller's
+  // process.exit will end the process.
+  return new Promise<never>(() => {});
 }
 
 export interface ShutdownOpts {
@@ -91,67 +96,22 @@ export interface ShutdownOpts {
    * **Set to `false` for the TUI**, where killing a long-running interactive
    * session over a transient render or async error wastes the user's work
    * and feels like a phantom crash. The TUI keeps running; the error is
-   * still recorded via `appendLog("error", "uncaught_exception", …)` so the
+   * still recorded via the `uncaught_exception` diagnostic so the
    * postmortem trail is intact.
    */
   exitOnUncaughtException?: boolean;
 }
 
 /**
- * Install signal handlers and orphan detection.
- * Call once at process startup.
+ * Install signal handlers (SIGINT/SIGTERM/SIGHUP/SIGQUIT), the
+ * unhandledRejection/uncaughtException observers, and the sync last-resort
+ * cleanup on `exit`. Call once at process startup.
  */
 export function installShutdownHandlers(opts: ShutdownOpts = {}): void {
-  const exitOnUncaught = opts.exitOnUncaughtException ?? true;
-  // Signal handlers — log the signal name before cleanup so the post-mortem
-  // NDJSON tells us *why* the process ended (e.g. host sent SIGTERM at $time).
-  const onSignal = (signal: string) => {
-    try {
-      appendLog("info", "signal_received", { signal });
-    } catch {
-      // logger may already be torn down; never fail shutdown over logging.
-    }
-    shutdown(signal === "SIGINT" ? 130 : 0);
-  };
-
-  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"] as const) {
-    process.on(sig, () => onSignal(sig));
+  if (opts.exitOnUncaughtException !== undefined) {
+    controller.reconfigure({ exitOnUncaughtException: opts.exitOnUncaughtException });
   }
-
-  // Catch-all for stray async errors. Pre-fix, a single unhandled
-  // rejection in a background task (heartbeat / cache sweeper /
-  // contact-sync) would crash the MCP without any trace in the NDJSON
-  // log — the host saw an EPIPE and reconnected with a fresh PID.
-  // We log + record but DO NOT exit; the SDK's per-request error
-  // handler already isolates request failures.
-  process.on("unhandledRejection", (reason) => {
-    try {
-      appendLog("error", "unhandled_rejection", {
-        reason: reason instanceof Error ? reason.message : String(reason),
-        stack: reason instanceof Error ? reason.stack : undefined,
-      });
-    } catch {
-      // Logger may be torn down mid-shutdown; never re-throw from here.
-    }
-  });
-  process.on("uncaughtException", (err) => {
-    try {
-      appendLog("error", "uncaught_exception", {
-        message: err.message,
-        stack: err.stack,
-      });
-    } catch {
-      // Same as above.
-    }
-    // MCP / CLI policy: shutdown on uncaughtException — state is undefined,
-    // a restart is the right answer. TUI policy (opt-in): log + keep
-    // running so a transient React/Ink error doesn't kill the user's
-    // session mid-compose.
-    if (exitOnUncaught) shutdown(70);
-  });
-
-  // Synchronous last-resort cleanup
-  process.on("exit", syncCleanup);
+  controller.installHandlers();
 }
 
 /**
@@ -159,10 +119,7 @@ export function installShutdownHandlers(opts: ShutdownOpts = {}): void {
  * Essential for MCP stdio servers to detect host death.
  */
 export function enableStdinEofDetection(): void {
-  process.stdin.on("end", () => {
-    if (!shuttingDown) shutdown(0);
-  });
-  process.stdin.resume();
+  controller.enableStdinEofDetection();
 }
 
 /**
@@ -171,21 +128,12 @@ export function enableStdinEofDetection(): void {
  * Timer is unref'd so it doesn't prevent natural exit.
  */
 export function enableOrphanWatchdog(intervalMs = 5000): void {
-  if (watchdogTimer) return;
-  const parentPid = process.ppid;
-
-  watchdogTimer = setInterval(() => {
-    // ppid changes to 1 (launchd/init) when parent dies
-    if (process.ppid === 1 || process.ppid !== parentPid) {
-      shutdown(0);
-    }
-  }, intervalMs);
-  watchdogTimer.unref();
+  controller.enableOrphanWatchdog(intervalMs);
 }
 
 /**
  * Check if shutdown is in progress.
  */
 export function isShuttingDown(): boolean {
-  return shuttingDown;
+  return controller.isShuttingDown();
 }
