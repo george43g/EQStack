@@ -392,8 +392,9 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   `@george43g/robustness@0.6.0` + `@george43g/tui-kit@0.3.3` (−~1000 lines of duplicated code);
   **v1.19.4 = logs redact phones/secrets by default**; `setLogEnvPrefix("IMSG")` +
   `IMSG_LOG_LEVEL` gate + kit PID-aware `getFileLogLines` adopted the same day upstream shipped
-  them from our brief (`docs/agent-handoff/SCAFFOLD-UPSTREAM-2026-08-09.md`, untracked — George
-  relays). #57 scrubbed real-message fragments from the Rust parser (shipped v1.19.3).
+  them from our brief (`docs/agent-handoff/SCAFFOLD-UPSTREAM-2026-08-09.md`, untracked — delivered
+  DIRECTLY via Claude Code cross-session messaging on 2026-08-10; correspondence closed, nothing
+  left to relay). #57 scrubbed real-message fragments from the Rust parser (shipped v1.19.3).
   (3) **Realtime stack shipped** (PRs #66/#70/#72 → v1.21.0, + #65 cache metrics → v1.20.0):
   `ChangeWatcher` (WAL-dir fs.watch, high-water ROWID, poll fallback) → typed `EventBus` → live TUI
   via `useSyncExternalStore` (manual `r` now a fallback), console `watch` verb, MCP
