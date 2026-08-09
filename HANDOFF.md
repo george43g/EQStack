@@ -381,6 +381,31 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   the Trusted Publisher to `george43g/EQStack`. The post-merge Release run is now **green** and
   correctly no-ops ("Released 0 of 1"). A future 2nd published app (`gmail-MCP-server`) will be
   imported via **git filter-repo** (clean, re-pathed history) + its own `.releaserc.json`.
+- 2026-08-09/10 · Claude · **ITER 13: kit adoption + realtime stack — v1.19.3 → v1.21.0 all live on
+  npm.** (1) **Release pipeline actually works now** (PRs #61/#64/#69): msr silently overrides
+  per-package `tagFormat` → global `--tag-format '${name}-v${version}'` (a near-miss v1.0.0 publish
+  was blocked only by npm's `workspace:*` rejection); `@semantic-release/npm` →
+  `@anolilab/semantic-release-pnpm`; `pack:mcpb` staging strips devDeps AND no longer `rm -rf`s the
+  tarball the pnpm plugin just packed (GH releases carry both `.tgz` + `.mcpb` again from v1.21.0).
+  Details: AGENTS.md § Releasing. (2) **Kit adoption complete** (PRs #58/#59/#60/#62/#63/#67):
+  watchdog + shutdown + theme color helpers + useMouse + logger are thin wrappers over
+  `@george43g/robustness@0.6.0` + `@george43g/tui-kit@0.3.3` (−~1000 lines of duplicated code);
+  **v1.19.4 = logs redact phones/secrets by default**; `setLogEnvPrefix("IMSG")` +
+  `IMSG_LOG_LEVEL` gate + kit PID-aware `getFileLogLines` adopted the same day upstream shipped
+  them from our brief (`docs/agent-handoff/SCAFFOLD-UPSTREAM-2026-08-09.md`, untracked — George
+  relays). #57 scrubbed real-message fragments from the Rust parser (shipped v1.19.3).
+  (3) **Realtime stack shipped** (PRs #66/#70/#72 → v1.21.0, + #65 cache metrics → v1.20.0):
+  `ChangeWatcher` (WAL-dir fs.watch, high-water ROWID, poll fallback) → typed `EventBus` → live TUI
+  via `useSyncExternalStore` (manual `r` now a fallback), console `watch` verb, MCP
+  `wait_for_changes` long-poll, `wait_for_reply` wakes on bus events. Owed: live-latency check on a
+  real incoming text. (4) **Stress-mcp in CI** (PR #68): `--report` JSON artifact, macOS + linux
+  (TS-fallback) jobs, pack-size + README-drift guards. (5) **screenshots-check was NEVER green on
+  CI** (PR #76): GH's `CI=true` makes ink suppress interactive rendering → every TUI tape blank at
+  every commit, masked by the tape loop's last-exit-code and job-level `continue-on-error`; the
+  "stale pr-checks records" folklore was backwards — job-level conclusions were the truth. Fixed
+  with `CI=false` tape prefixes, fail-fast loop, honest job gating; first job-level-green runs
+  recorded. PRs #70/#72/#68 were implemented by subagents in isolated worktrees, reviewed line-by-line
+  here before merge.
 
 ---
 
