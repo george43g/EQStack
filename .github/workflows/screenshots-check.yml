@@ -65,6 +65,21 @@ jobs:
       - name: Regenerate fixtures (test mode)
         run: pnpm fixtures
 
+      - name: Debug TUI boot (canary only — dumps pty capture + NDJSON)
+        working-directory: apps/imsg-mcp
+        run: |
+          mkdir -p /tmp/imsg-demo
+          (HOME=/tmp/imsg-demo IMSG_TUI_THEME=safe script -q /tmp/tuiboot.log node --env-file=.env.test dist/cli.js tui &) || true
+          sleep 12
+          pkill -f 'dist/cli.js tui' || true
+          sleep 1
+          echo "--- pty capture (first 4KB, control chars visible) ---"
+          head -c 4000 /tmp/tuiboot.log | cat -v || true
+          echo ""
+          echo "--- NDJSON log tail ---"
+          ls "$TMPDIR"/imsg-mcp/ 2>/dev/null || echo "(no log dir)"
+          for f in "$TMPDIR"/imsg-mcp/*.ndjson; do echo "== $f =="; tail -50 "$f"; done 2>/dev/null || true
+
       - name: Regenerate screenshots
         run: pnpm screenshots
 
