@@ -5,8 +5,8 @@
  * grapheme cluster mid-emoji and to budget for emoji as 2 cells.
  */
 
+import { clusterWidth, truncateToWidth, visualWidth } from "@george43g/tui-kit";
 import { describe, expect, it } from "vitest";
-import { clusterWidth, truncateToWidth, visualWidth } from "../src/visual-width.js";
 
 describe("clusterWidth", () => {
   it("is 1 for ASCII letters and digits", () => {

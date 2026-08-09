@@ -1,8 +1,8 @@
 import { parseArgs } from "node:util";
+import { detectNerdFont } from "@george43g/tui-kit";
 import { withFullScreen } from "fullscreen-ink";
 import { checkLocalAccess, formatAccessReport } from "../access-check.js";
 import { EventBus } from "../event-bus.js";
-import { detectNerdFont } from "../font-detect.js";
 import {
   enableFileLogging,
   logShutdown,

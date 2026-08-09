@@ -7,8 +7,8 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { _resetDetectNerdFontCache, detectNerdFont } from "@george43g/tui-kit";
 import { describe, expect, it } from "vitest";
-import { _resetDetectNerdFontCache, detectNerdFont } from "../src/font-detect.js";
 import { buildPowerlineFontWarning } from "../src/tui/index.js";
 
 describe("detectNerdFont", () => {

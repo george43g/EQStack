@@ -1,6 +1,6 @@
+import { truncateToWidth, visualWidth } from "@george43g/tui-kit";
 import { Box, Text } from "ink";
 import type { Conversation } from "../../types.js";
-import { truncateToWidth, visualWidth } from "../../visual-width.js";
 import { useTheme } from "../themes/ThemeContext.js";
 
 function relativeDate(date: Date | null): string {
@@ -74,7 +74,8 @@ export function ConversationItem({
 
   const nameW = nameBudget(width, hasUnread, c.unreadCount, c.isGroupChat);
   // Grapheme-aware truncation — never splits a surrogate pair (emoji)
-  // and budgets each emoji as 2 terminal cells. See src/visual-width.ts.
+  // and budgets each emoji as 2 terminal cells. See @george43g/tui-kit's
+  // visual-width module (lifted verbatim from this repo).
   const truncatedName = truncateToWidth(name, nameW);
   const snippetW = Math.max(width - 6, 8); // -5 for left padding, -1 safety
   const truncatedSnippet = truncateToWidth(snippet, snippetW, "");

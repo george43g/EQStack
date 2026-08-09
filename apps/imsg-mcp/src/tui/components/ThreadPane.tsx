@@ -1,7 +1,7 @@
+import { visualWidth } from "@george43g/tui-kit";
 import { Box, Text } from "ink";
 import React, { useMemo, useRef } from "react";
 import type { Conversation, Message } from "../../types.js";
-import { visualWidth } from "../../visual-width.js";
 import { useTheme } from "../themes/ThemeContext.js";
 import type { Mode, PendingMessage } from "../types.js";
 import { ComposeBar } from "./ComposeBar.js";
