@@ -5,13 +5,18 @@ import { join } from "node:path";
 import { useMouse } from "@george43g/tui-kit";
 import { useScreenSize } from "fullscreen-ink";
 import { Box, useApp, useInput } from "ink";
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useSyncExternalStore } from "react";
 import { loadTuiConfig, resolveInterpretConfig, writeTuiConfig } from "../app-config.js";
 import { formatJumpTarget, parseUserDate } from "../date-parse.js";
+import type { ChangeEvent, EventBus } from "../event-bus.js";
 import { extensionFor, toCSV, toJSON, toMarkdown } from "../export-formats.js";
-import { getInterpretRuntime, primaryMediaRef } from "../media-intel-runtime.js";
+import {
+  applyInlineInterpretations,
+  getInterpretRuntime,
+  primaryMediaRef,
+} from "../media-intel-runtime.js";
 import { registerCleanup } from "../shutdown.js";
-import { type Conversation, type Message, minMessageId } from "../types.js";
+import { type Conversation, type Message, minMessageId, type Reaction } from "../types.js";
 import { getInstalledChatApps } from "../url-schemes.js";
 import {
   nudgeAttachmentDownload,
@@ -23,6 +28,7 @@ import {
   saveAttachmentFile,
   saveAttachmentWithNudge,
 } from "./attachmentActions.js";
+import { createChangeStream, emptyChangeSnapshot, noopSubscribe } from "./change-stream.js";
 import { CommandPalette } from "./components/CommandPalette.js";
 import { ComposeRecipientModal } from "./components/ComposeRecipientModal.js";
 import { DateJumpModal } from "./components/DateJumpModal.js";
@@ -39,6 +45,7 @@ import { nextGroupBoundary, prevGroupBoundary, ThreadPane } from "./components/T
 import { filterMatchIndices } from "./filter.js";
 import { useDevStats } from "./hooks/useDevStats.js";
 import { useImsg } from "./hooks/useImsg.js";
+import { appendCached } from "./messageCache.js";
 import { allCommands, findModule } from "./modules/registry.js";
 import {
   applySettingsKey,
@@ -49,9 +56,35 @@ import {
   type SettingsKeyAction,
   stepSelectable,
 } from "./settings-model.js";
-import { initialState, reducer, sidebarRowCount } from "./types.js";
+import { type ConversationTouch, initialState, reducer, sidebarRowCount } from "./types.js";
 
-export function App() {
+/** Fold one live message into a per-thread sidebar touch (latest wins for
+ *  snippet/date; unread deltas accumulate across a batch). */
+function mergeTouch(
+  prev: ConversationTouch | undefined,
+  threadSlug: string,
+  m: Message,
+  unreadDelta: number,
+): ConversationTouch {
+  return {
+    threadSlug,
+    snippet: m.text ?? prev?.snippet ?? null,
+    lastMessageDate: m.date,
+    unreadDelta: (prev?.unreadDelta ?? 0) + unreadDelta,
+  };
+}
+
+export interface AppProps {
+  /**
+   * Live change stream (ChangeWatcher → EventBus). runTui constructs the
+   * bus; App arms a ChangeWatcher over its own DB connection onto it. Tests
+   * inject a fake bus and emit on it directly. Omitted → the TUI stays
+   * refresh-only (manual `r`).
+   */
+  changeBus?: EventBus;
+}
+
+export function App({ changeBus }: AppProps = {}) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { exit } = useApp();
   const { width: columns, height: rows } = useScreenSize();
@@ -247,6 +280,105 @@ export function App() {
       if (idx >= 0) dispatch({ type: "SELECT", index: idx, visibleCount: sidebarVisibleCount });
     }
   }, [imsg, selected?.threadSlug, sidebarVisibleCount]);
+
+  // ── Live change stream (ChangeWatcher → EventBus → useSyncExternalStore) ──
+
+  const changeStream = useMemo(
+    () => (changeBus ? createChangeStream(changeBus) : null),
+    [changeBus],
+  );
+  // Hooks can't be conditional — without a bus, subscribe/getSnapshot are the
+  // stable no-op pair from the adapter module.
+  const changeSnapshot = useSyncExternalStore(
+    changeStream ? changeStream.subscribe : noopSubscribe,
+    changeStream ? changeStream.getSnapshot : emptyChangeSnapshot,
+  );
+  const lastLiveVersionRef = useRef(0);
+
+  /**
+   * Route one accumulated event batch:
+   *  - Events on the ACTIVE thread append to the message list (or fold as
+   *    reactions). Membership check = per-identity thread slug (every merged
+   *    leg shares it — see useImsg.getThreadSlugForLeg), never a new merge.
+   *  - Other known threads get an in-place sidebar patch (snippet / date /
+   *    unread) — no reorder, no per-event DB round trip.
+   *  - An event for a thread not in the sidebar (brand-new conversation, or
+   *    a leg the slug store can't map yet) falls back to one
+   *    refreshConversations() so the row appears.
+   */
+  const handleLiveEvents = useCallback(
+    (events: readonly ChangeEvent[]) => {
+      const activeSlug = selected?.threadSlug ?? null;
+      const appendable: Message[] = [];
+      const reactions: Reaction[] = [];
+      const touches = new Map<string, ConversationTouch>();
+      let unknownConversation = false;
+      const knownSlugs = new Set(state.conversations.map((c) => c.threadSlug));
+
+      for (const e of events) {
+        if (!("message" in e)) continue; // group.* variants — no consumer yet
+        const m = e.message;
+        const slug = m.chatId ? imsg.getThreadSlugForLeg(m.chatId) : null;
+        if (activeSlug && slug === activeSlug) {
+          if (e.type === "reaction") {
+            if (m.reaction) reactions.push(m.reaction);
+          } else {
+            appendable.push(m);
+            // Keep the active row's snippet/date current too — but never bump
+            // its unread count while the user is looking at it.
+            touches.set(activeSlug, mergeTouch(touches.get(activeSlug), activeSlug, m, 0));
+          }
+          continue;
+        }
+        if (e.type !== "message.new") continue; // sidebar ignores foreign reactions
+        if (!slug || !knownSlugs.has(slug)) {
+          unknownConversation = true;
+          continue;
+        }
+        touches.set(slug, mergeTouch(touches.get(slug), slug, m, m.isFromMe ? 0 : 1));
+      }
+
+      if (appendable.length > 0) {
+        // Same inline-interpretation peek as the initial load (cached /
+        // instant results only — never a blocking cloud call).
+        applyInlineInterpretations(appendable);
+        if (selected) appendCached(selected.chatIdentifier, appendable);
+        dispatch({ type: "APPEND_LIVE_MESSAGES", data: appendable });
+      }
+      if (reactions.length > 0) dispatch({ type: "APPLY_LIVE_REACTIONS", reactions });
+      if (touches.size > 0) {
+        dispatch({ type: "TOUCH_CONVERSATIONS", touches: [...touches.values()] });
+      }
+      if (unknownConversation) void refreshConversations();
+    },
+    [selected, state.conversations, imsg, refreshConversations],
+  );
+
+  // Process each new snapshot version exactly once. On adapter overflow the
+  // delta is incomplete — fall back to the manual-refresh path instead.
+  useEffect(() => {
+    if (!changeStream) return;
+    if (changeSnapshot.version <= lastLiveVersionRef.current) return;
+    lastLiveVersionRef.current = changeSnapshot.version;
+    if (changeSnapshot.overflowed) {
+      changeStream.ack(changeSnapshot.version);
+      void refreshAll();
+      return;
+    }
+    handleLiveEvents(changeSnapshot.batch);
+    changeStream.ack(changeSnapshot.version);
+  }, [changeStream, changeSnapshot, handleLiveEvents, refreshAll]);
+
+  // Arm the ChangeWatcher over this App's DB connection. registerCleanup
+  // covers process exit; the effect teardown covers unmount (tests).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: arm once on mount
+  useEffect(() => {
+    if (!changeBus) return;
+    const watcher = imsg.startChangeWatcher(changeBus);
+    if (!watcher) return;
+    registerCleanup(() => watcher.stop());
+    return () => watcher.stop();
+  }, []);
 
   // ── Lazy-load more conversations when user nears the end ──────────────
   const NEAR_END_THRESHOLD = 20;

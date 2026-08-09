@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import { withFullScreen } from "fullscreen-ink";
 import { checkLocalAccess, formatAccessReport } from "../access-check.js";
+import { EventBus } from "../event-bus.js";
 import { detectNerdFont } from "../font-detect.js";
 import {
   enableFileLogging,
@@ -121,9 +122,14 @@ export async function runTui(): Promise<void> {
     logShutdown("normal");
   });
 
+  // Live change stream: the bus is constructed here (one per TUI process);
+  // App arms a ChangeWatcher over its own DB connection onto it and stops it
+  // via registerCleanup. New messages then appear without a manual `r`.
+  const changeBus = new EventBus();
+
   const screen = withFullScreen(
     <ThemeProvider value={theme}>
-      <App />
+      <App changeBus={changeBus} />
     </ThemeProvider>,
   );
 

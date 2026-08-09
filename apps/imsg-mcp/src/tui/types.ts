@@ -5,6 +5,7 @@ import {
   type ConversationAttachment,
   type Message,
   minMessageId,
+  type Reaction,
 } from "../types.js";
 import { filterMatchIndices } from "./filter.js";
 import type { ModuleInstance } from "./modules/types.js";
@@ -29,6 +30,19 @@ export interface PendingMessage {
   text: string;
   sentAt: Date;
   status: "sending" | "sent" | "failed";
+}
+
+/**
+ * Live-stream sidebar patch for one conversation row (keyed by the
+ * per-identity threadSlug — every merged leg of a thread shares it).
+ */
+export interface ConversationTouch {
+  threadSlug: string;
+  /** New snippet, or null to keep the row's current one. */
+  snippet: string | null;
+  lastMessageDate: Date;
+  /** How much to bump unreadCount by (0 for from-me / active-thread rows). */
+  unreadDelta: number;
 }
 
 export interface AppState {
@@ -136,6 +150,9 @@ export type Action =
   | { type: "TOGGLE_DEV_STATS" }
   | { type: "APPEND_CONVERSATIONS"; data: Conversation[]; loadedCount: number }
   | { type: "PREPEND_MESSAGES"; data: Message[]; oldestId: number }
+  | { type: "APPEND_LIVE_MESSAGES"; data: Message[] }
+  | { type: "APPLY_LIVE_REACTIONS"; reactions: Reaction[] }
+  | { type: "TOUCH_CONVERSATIONS"; touches: ConversationTouch[] }
   | { type: "SET_LOADING_OLDER"; loading: boolean }
   | { type: "ENTER_SELECT_MODE" }
   | { type: "EXIT_SELECT_MODE" }
@@ -373,6 +390,41 @@ export function combinedSidebarIndex(state: AppState): number {
   return state.moduleInstances.length + state.selectedIdx;
 }
 
+/**
+ * Apply live tapback events to their target messages (matched by guid),
+ * mirroring the DB layer's consolidation semantics: one reaction per
+ * sender+type+part, removals delete, re-adds replace. Returns the ORIGINAL
+ * array when nothing matched so the reducer can bail without a re-render.
+ * Pure function — exported for tests.
+ */
+export function applyLiveReactions(messages: Message[], reactions: Reaction[]): Message[] {
+  const byTarget = new Map<string, Reaction[]>();
+  for (const r of reactions) {
+    if (!r.targetMessageGuid) continue;
+    const list = byTarget.get(r.targetMessageGuid);
+    if (list) list.push(r);
+    else byTarget.set(r.targetMessageGuid, [r]);
+  }
+  if (byTarget.size === 0) return messages;
+
+  let changed = false;
+  const next = messages.map((m) => {
+    const incoming = byTarget.get(m.guid);
+    if (!incoming) return m;
+    const keyOf = (r: Reaction) => `${r.fromHandle}-${r.type}-${r.targetMessagePart}`;
+    const consolidated = new Map<string, Reaction>();
+    for (const r of m.reactions ?? []) consolidated.set(keyOf(r), r);
+    for (const r of incoming) {
+      if (r.isRemoval) consolidated.delete(keyOf(r));
+      else consolidated.set(keyOf(r), r);
+    }
+    changed = true;
+    const list = [...consolidated.values()];
+    return { ...m, reactions: list.length > 0 ? list : undefined };
+  });
+  return changed ? next : messages;
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "SET_CONVERSATIONS":
@@ -445,6 +497,65 @@ export function reducer(state: AppState, action: Action): AppState {
         messageOldestLoadedId: action.oldestId,
         messageLoadingOlder: false,
       };
+    }
+    case "APPEND_LIVE_MESSAGES": {
+      // Live stream append (ChangeWatcher → EventBus). Dedupe by ROWID AND
+      // guid: the post-send confirm poll and lazy loads race the stream, and
+      // either side can land the same row first.
+      const existingIds = new Set(state.messages.map((m) => m.id));
+      const existingGuids = new Set(state.messages.map((m) => m.guid));
+      const fresh = action.data.filter((m) => !existingIds.has(m.id) && !existingGuids.has(m.guid));
+      if (fresh.length === 0) return state;
+      // Follow the tail only when the cursor already sits on it — ThreadPane
+      // windows around selectedMsgIdx, so a user scrolled up keeps their
+      // anchor and the view must not jump when messages arrive.
+      const atTail =
+        state.messages.length === 0 || state.selectedMsgIdx >= state.messages.length - 1;
+      const merged = [...state.messages, ...fresh];
+      const cursor = atTail ? merged.length - 1 : state.selectedMsgIdx;
+      // Same bounded-memory policy as every other growth path.
+      const bounded = boundMessagesIfNeeded(merged, cursor, state.gapMarkers);
+      // A from-me row arriving on the stream resolves its optimistic pending
+      // bubble (same containment match as the send confirm-poll) so the two
+      // never render together.
+      const pending = state.pending.filter(
+        (p) => !fresh.some((m) => m.isFromMe && m.text?.includes(p.text)),
+      );
+      return {
+        ...state,
+        messages: bounded.messages,
+        selectedMsgIdx: bounded.selectedMsgIdx,
+        gapMarkers: bounded.gapMarkers,
+        threadScroll: atTail ? bounded.messages.length : state.threadScroll,
+        pending,
+        // A thread that was empty before the stream fed it needs an oldest-id
+        // cursor for the lazy "load older" path; -1 (exhausted) stays put.
+        messageOldestLoadedId: state.messageOldestLoadedId ?? minMessageId(bounded.messages),
+      };
+    }
+    case "APPLY_LIVE_REACTIONS": {
+      const next = applyLiveReactions(state.messages, action.reactions);
+      return next === state.messages ? state : { ...state, messages: next };
+    }
+    case "TOUCH_CONVERSATIONS": {
+      // Sidebar freshness from the live stream: patch snippet / date / unread
+      // IN PLACE — no reorder. Resorting under the user's cursor would yank
+      // rows mid-navigation; the manual `r` refresh still re-sorts.
+      if (action.touches.length === 0) return state;
+      const bySlug = new Map(action.touches.map((t) => [t.threadSlug, t]));
+      let changed = false;
+      const conversations = state.conversations.map((c) => {
+        const t = bySlug.get(c.threadSlug);
+        if (!t) return c;
+        changed = true;
+        return {
+          ...c,
+          lastMessageSnippet: t.snippet ?? c.lastMessageSnippet,
+          lastMessageDate: t.lastMessageDate,
+          unreadCount: Math.max(0, c.unreadCount + t.unreadDelta),
+        };
+      });
+      return changed ? { ...state, conversations } : state;
     }
     case "SET_LOADING_OLDER":
       return { ...state, messageLoadingOlder: action.loading };

@@ -110,6 +110,25 @@ export function prependCached(chatIdentifier: string, olderMessages: Message[]):
   entry.bytesEstimate = estimateBytes(merged);
 }
 
+/**
+ * Append live-stream messages to an existing entry (dedupe by id).
+ *
+ * Deliberately does NOT bump `loadedAt`: the stream keeps the VIEW fresh,
+ * but mutations it doesn't mirror into the cache (reaction folds, edits)
+ * still need the read-through staleness window to trigger a real DB
+ * re-query on re-entry.
+ */
+export function appendCached(chatIdentifier: string, newMessages: Message[]): void {
+  const entry = cache.get(chatIdentifier);
+  if (!entry) return;
+  const existingIds = new Set(entry.messages.map((m) => m.id));
+  const fresh = newMessages.filter((m) => !existingIds.has(m.id));
+  if (fresh.length === 0) return;
+  entry.messages = [...entry.messages, ...fresh];
+  entry.lastAccess = Date.now();
+  entry.bytesEstimate = estimateBytes(entry.messages);
+}
+
 /** Clear all cached entries — used on shutdown / explicit refresh. */
 export function clearCache(): void {
   cache.clear();
