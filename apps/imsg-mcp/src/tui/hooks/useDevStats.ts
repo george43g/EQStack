@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hasNativeModule } from "../../native-bridge.js";
 import { onMemorySample, readWatchdogState } from "../../watchdog.js";
+import { cacheStats } from "../messageCache.js";
 
 export interface DevStatsData {
   engine: "Rust parser + TS DB" | "TS";
@@ -11,6 +12,8 @@ export interface DevStatsData {
   lastQueryMs: number | null;
   eventLoopP99Ms: number;
   lastActivityAgo: string;
+  cacheHitPct: number; // 0 until the first cache lookup
+  cacheEntries: number;
 }
 
 function formatUptime(seconds: number): string {
@@ -46,6 +49,8 @@ export function useDevStats(visible: boolean): {
     lastQueryMs: null,
     eventLoopP99Ms: 0,
     lastActivityAgo: "now",
+    cacheHitPct: 0,
+    cacheEntries: 0,
   });
 
   const lastCpuRef = useRef(process.cpuUsage());
@@ -72,6 +77,8 @@ export function useDevStats(visible: boolean): {
       const memMB = Math.round((rss / 1024 / 1024) * 10) / 10;
 
       const wd = readWatchdogState();
+      const cs = cacheStats();
+      const lookups = cs.hits + cs.misses;
       setStats({
         engine: engineLabel(),
         cpuPercent: Math.round(cpuPercent * 10) / 10,
@@ -81,6 +88,8 @@ export function useDevStats(visible: boolean): {
         lastQueryMs: lastQueryMsRef.current,
         eventLoopP99Ms: Math.round(wd.eventLoopP99Ms * 10) / 10,
         lastActivityAgo: formatAgo(Date.now() - wd.lastActivityTs),
+        cacheHitPct: lookups === 0 ? 0 : Math.round((cs.hits / lookups) * 100),
+        cacheEntries: cs.entries,
       });
     };
 

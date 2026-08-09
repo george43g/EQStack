@@ -80,6 +80,13 @@ export function DevStats({ stats, width }: Props) {
           <Text color={theme.info.label}>Active</Text>
           <Text color={theme.info.value}>{stats.lastActivityAgo}</Text>
         </Box>
+        {/* Message-cache hit rate + entry count, e.g. "87% · 12". */}
+        <Box justifyContent="space-between">
+          <Text color={theme.info.label}>Cache</Text>
+          <Text color={theme.info.value}>
+            {stats.cacheHitPct}% · {stats.cacheEntries}
+          </Text>
+        </Box>
       </Box>
     </Box>
   );

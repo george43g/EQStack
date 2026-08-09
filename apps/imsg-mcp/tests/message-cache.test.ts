@@ -169,4 +169,66 @@ describe("cacheStats", () => {
     expect(cacheStats().entries).toBe(2);
     expect(cacheStats().bytes).toBeGreaterThan(0);
   });
+
+  it("exposes cumulative hit/miss/eviction counters", () => {
+    const s = cacheStats();
+    expect(typeof s.hits).toBe("number");
+    expect(typeof s.misses).toBe("number");
+    expect(typeof s.evictions).toBe("number");
+  });
+});
+
+// Counters are cumulative for the process lifetime (clearCache does not reset
+// them), so every assertion here is a delta against a before-snapshot.
+describe("hit-rate counters", () => {
+  it("counts a miss on first read, a hit on warm read within STALE_MS", () => {
+    const before = cacheStats();
+    expect(getCached("counter-chat")).toBeUndefined(); // absent → miss
+    expect(cacheStats().misses).toBe(before.misses + 1);
+    expect(cacheStats().hits).toBe(before.hits);
+
+    setCached("counter-chat", [fakeMsg(1, "a")], 1);
+    expect(getCached("counter-chat")).toBeDefined(); // fresh → hit
+    expect(cacheStats().hits).toBe(before.hits + 1);
+    expect(cacheStats().misses).toBe(before.misses + 1);
+  });
+
+  it("counts a stale entry as a miss", () => {
+    setCached("stale-chat", [fakeMsg(1, "a")], 1);
+    const e = getCached("stale-chat")!; // fresh → hit (not asserted here)
+    e.loadedAt = Date.now() - 24 * 60 * 60 * 1000; // way past any stale window
+    const before = cacheStats();
+    expect(getCached("stale-chat")).toBeDefined(); // stale → miss
+    expect(cacheStats().misses).toBe(before.misses + 1);
+    expect(cacheStats().hits).toBe(before.hits);
+  });
+
+  it("counts entries dropped by the TTL sweep as evictions", () => {
+    setCached("t1", [fakeMsg(1, "a")], 1);
+    setCached("t2", [fakeMsg(2, "b")], 2);
+    for (const k of ["t1", "t2"]) {
+      getCached(k)!.loadedAt = Date.now() - 11 * 60 * 1000;
+    }
+    const before = cacheStats();
+    expect(ttlSweep()).toBe(2);
+    expect(cacheStats().evictions).toBe(before.evictions + 2);
+  });
+
+  it("counts entries dropped under memory pressure as evictions", () => {
+    setCached("p1", [fakeMsg(1, "a")], 1);
+    setCached("p2", [fakeMsg(2, "b")], 2);
+    const before = cacheStats();
+    const evicted = evictUnderPressure(500); // way above threshold
+    expect(evicted).toBeGreaterThan(0);
+    expect(cacheStats().evictions).toBe(before.evictions + evicted);
+  });
+
+  it("clearCache does NOT count as evictions", () => {
+    setCached("c1", [fakeMsg(1, "a")], 1);
+    setCached("c2", [fakeMsg(2, "b")], 2);
+    const before = cacheStats();
+    clearCache();
+    expect(cacheStats().entries).toBe(0);
+    expect(cacheStats().evictions).toBe(before.evictions);
+  });
 });
