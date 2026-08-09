@@ -56,4 +56,5 @@ release/
 
 # Stress harness output (uploaded as a CI artefact, not committed)
 stress-tui-report.json
+stress-mcp-report.json
 .claude/scheduled_tasks.lock
