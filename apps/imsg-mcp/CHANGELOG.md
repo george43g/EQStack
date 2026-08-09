@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.19.3](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.19.2...imsg-mcp-v1.19.3) (2026-08-09)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** scrub real-message fragments from native parser comments and fixtures ([40f99b4](https://github.com/george43g/EQStack/commit/40f99b47e8337c552073f77943312ad3e50d8586))
+
 ## [1.19.2](https://github.com/george43g/imsg-mcp/compare/v1.19.1...v1.19.2) (2026-08-02)
 
 

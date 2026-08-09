@@ -1,7 +1,7 @@
 {
   "name": "imsg-mcp",
-  "version": "1.19.2",
-  "description": "MCP server, CLI, and TUI for reading and sending iMessage / SMS on macOS \u2014 lets AI agents text humans, fetch conversation history, and stream-export entire chats. Includes a self-healing watchdog and an optional Rust acceleration module.",
+  "version": "1.19.3",
+  "description": "MCP server, CLI, and TUI for reading and sending iMessage / SMS on macOS — lets AI agents text humans, fetch conversation history, and stream-export entire chats. Includes a self-healing watchdog and an optional Rust acceleration module.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -23,7 +23,7 @@
     "build:ts": "vite build",
     "build:native": "cd native && napi build --platform --release",
     "build:native:debug": "cd native && napi build --platform",
-    "build:native:optional": "cd native && (napi build --platform --release || (echo '\u26a0\ufe0f  Rust native build skipped (rustc not installed). TS fallback will be used.' && exit 0))",
+    "build:native:optional": "cd native && (napi build --platform --release || (echo '⚠️  Rust native build skipped (rustc not installed). TS fallback will be used.' && exit 0))",
     "dev": "vite build --watch",
     "mcp": "node --env-file=.env --env-file-if-exists=.env.local dist/cli.js mcp",
     "mcp:ai": "node --env-file=.env --env-file-if-exists=.env.ai dist/cli.js mcp",
@@ -55,7 +55,7 @@
     "stress:tui": "tsx scripts/stress-tui.ts",
     "screenshots": "fc-list | grep -qi 'jetbrains mono' || { echo 'Install: brew install --cask font-jetbrains-mono'; exit 1; }; for f in scripts/screenshots/*.tape; do vhs \"$f\"; done",
     "screenshots:check": "pnpm screenshots && git diff --exit-code docs/screenshots/",
-    "screenshots:native": "for f in scripts/screenshots/native/*.sh; do echo \"\u2192 $f\"; bash \"$f\" || echo \"  (script failed; continuing)\"; done",
+    "screenshots:native": "for f in scripts/screenshots/native/*.sh; do echo \"→ $f\"; bash \"$f\" || echo \"  (script failed; continuing)\"; done",
     "prepare": "pnpm build && pnpm fixtures:if-missing",
     "pack:mcpb": "pnpm build && rm -rf release && mkdir -p release/mcpb-stage/native && cp -R dist release/mcpb-stage/ && cp manifest.json package.json icon.png release/mcpb-stage/ && node scripts/strip-dev-deps.mjs release/mcpb-stage && cp native/index.js native/index.d.ts release/mcpb-stage/native/ && (ls native/imsg-native.*.node 2>/dev/null | xargs -I{} cp {} release/mcpb-stage/native/ || true) && (cd release/mcpb-stage && npm install --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund --no-package-lock) && node scripts/stage-native-deps.mjs && mcpb pack release/mcpb-stage release/imsg-mcp.mcpb && cp release/imsg-mcp.mcpb release/imsg-mcp.dxt",
     "fixtures:if-missing": "node -e \"if(!require('fs').existsSync('fixtures/chat.db')){require('child_process').execSync('pnpm fixtures', {stdio:'inherit'})}\"",
