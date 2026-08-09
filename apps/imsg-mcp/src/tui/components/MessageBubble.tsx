@@ -1,3 +1,4 @@
+import { truncateToWidth } from "@george43g/tui-kit";
 import { Box, Text } from "ink";
 import { formatReplyPreview } from "../../reply-preview.js";
 import type { Message, Reaction } from "../../types.js";
@@ -177,7 +178,7 @@ export function MessageBubble({
                 )}
                 {sender && (
                   <Text color={isSent ? theme.sent.bg : theme.senderName} bold>
-                    {sender.length > 12 ? `${sender.slice(0, 11)}…` : sender}
+                    {truncateToWidth(sender, 12)}
                     {": "}
                   </Text>
                 )}
@@ -239,8 +240,10 @@ export function MessageBubble({
             fallback = lookupReplyText(m.replyTo.replyToGuid);
           }
           const preview = formatReplyPreview(m.replyTo, fallback);
+          // Grapheme-aware: a raw slice() splits surrogate pairs (emoji in
+          // reply previews render as broken glyphs) and ignores 2-cell widths.
           const display = preview
-            ? preview.slice(0, maxWidth - 12)
+            ? truncateToWidth(preview, Math.max(0, maxWidth - 12))
             : "(replied to earlier message)";
           return (
             <Box>
