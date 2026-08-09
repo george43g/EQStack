@@ -15,6 +15,7 @@ Companion skill for agents using or developing the `imsg-mcp` iMessage MCP serve
 2. Use `list_conversations` to identify the correct thread (returns `threadSlug`).
 3. Use `send_message` with `threadSlug` for existing threads, especially groups.
 4. Use `wait_for_reply` after sending when the workflow depends on a human answer.
+5. Use `wait_for_changes` to watch for new messages/reactions as typed events — across all conversations or one thread (`threadSlug`/`chatIdentifier`) — without polling.
 
 ## Local machine requirements
 
@@ -106,7 +107,7 @@ All thresholds are env-overridable (`IMSG_EVENT_LOOP_KILL_MS`, `IMSG_MAX_RSS_MB`
 
 ## MCP cancellation
 
-The server honors `notifications/cancelled`. Long-running handlers (`wait_for_reply`) abort cleanly when the host cancels.
+The server honors `notifications/cancelled`. Long-running handlers (`wait_for_reply`, `wait_for_changes`) abort cleanly when the host cancels.
 
 ## MCP pagination & export
 

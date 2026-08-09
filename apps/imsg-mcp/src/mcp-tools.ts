@@ -24,6 +24,7 @@ import {
   SearchMessagesOutputSchema,
   SendMessageOutputSchema,
   type ToolName,
+  WaitForChangesOutputSchema,
   WaitForReplyOutputSchema,
 } from "./mcp-schemas.js";
 
@@ -82,6 +83,7 @@ const annotations = {
 
 export const TOOL_TIMEOUTS_MS: Record<string, number> = {
   wait_for_reply: 0,
+  wait_for_changes: 0, // long-poll — bounded by its own timeoutSeconds arg
   init_human: 120_000, // top-N path runs a year-window analytic
 
   run_build: 120_000,
@@ -229,6 +231,42 @@ export const TOOLS: Tool[] = [
       },
     },
     outputSchema: toOutputSchema(WaitForReplyOutputSchema),
+  },
+  {
+    name: "wait_for_changes",
+    description:
+      "Long-poll for typed change events (message.new | reaction) across ALL conversations, or one conversation via threadSlug/chatIdentifier. Push-fed by the chat.db WAL watcher, so events surface within ~1s of the write (slow-poll fallback where fs.watch is unavailable). Without maxEvents, returns as soon as the first matching batch of events arrives; with maxEvents, keeps collecting until that many events were seen (a timeout then returns the partial set). A quiet timeout is a clean non-error result. Unlike wait_for_reply this streams raw events — from-me rows and the agent's own sends included, no echo suppression — so prefer wait_for_reply when awaiting a human answer in one thread.",
+    annotations: annotations.read,
+    inputSchema: {
+      type: "object",
+      properties: {
+        chatIdentifier: {
+          type: "string",
+          description:
+            "Only return events for this conversation (phone, email, or chat ID). Merged-identity aware: other legs of the same contact match too.",
+        },
+        threadSlug: {
+          type: "string",
+          description: "Only return events for this conversation (slug from list_conversations).",
+        },
+        types: {
+          type: "array",
+          items: { type: "string", enum: ["message.new", "reaction"] },
+          description: "Event types to return. Default: every emitted type.",
+        },
+        timeoutSeconds: {
+          type: "number",
+          default: 60,
+          description: "Give up after this many seconds (1-3600) with a clean empty result.",
+        },
+        maxEvents: {
+          type: "number",
+          description:
+            "Collect until this many events arrived, then return early. Omit to return on the first matching batch.",
+        },
+      },
+    },
+    outputSchema: toOutputSchema(WaitForChangesOutputSchema),
   },
   {
     name: "list_conversations",

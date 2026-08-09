@@ -74,7 +74,7 @@ Full walkthrough with screenshots: [**docs/WORKFLOWS.md**](docs/WORKFLOWS.md).
 ## MCP tools
 
 <details>
-<summary><b>17 tools shipped (click to expand)</b></summary>
+<summary><b>18 tools shipped (click to expand)</b></summary>
 
 | Tool | Purpose |
 |------|---------|
@@ -84,6 +84,7 @@ Full walkthrough with screenshots: [**docs/WORKFLOWS.md**](docs/WORKFLOWS.md).
 | `search_messages` | Fuzzy + literal search across history. |
 | `send_message` | Send via Messages.app (text + attachments). |
 | `wait_for_reply` | Poll for the next reply — includes the user's own interjections from other devices. |
+| `wait_for_changes` | Long-poll typed change events (`message.new` / `reaction`) across all conversations or one thread — push-fed by the chat.db WAL watcher. |
 | `export_messages` | Stream a chat to file (md/csv/json/ndjson). |
 | `search_attachments` | Find attachments by mime/date/chat. |
 | `get_attachment` | Fetch an attachment (image block / poster / audio) + optional AI interpretation (`interpret`). |

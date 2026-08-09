@@ -73,7 +73,7 @@ Output is pretty text with color by default; pass `--json` or `--yaml` for machi
 
 ## MCP tools
 
-16 production tools. 5 additional dev-only tools (`health_check`, `get_logs`, `get_last_send_error`, `run_build`, `request_restart`) are gated by `IMSG_DEV=1` — see `src/mcp-tools.ts`.
+17 production tools. 5 additional dev-only tools (`health_check`, `get_logs`, `get_last_send_error`, `run_build`, `request_restart`) are gated by `IMSG_DEV=1` — see `src/mcp-tools.ts`.
 
 ### Reading
 
@@ -83,6 +83,7 @@ Output is pretty text with color by default; pass `--json` or `--yaml` for machi
 | `get_unread_messages` | — | `limit` (default 100, `0`=unlimited capped at 2000 — paginate via repeated reads after marking read) |
 | `list_conversations` | — | `limit` (default 20, `0`=unlimited capped at 500 — paginate via slug-keyed offsets) |
 | `search_messages` | `query` | `limit` (default 20). Fuzzy + literal hybrid. |
+| `wait_for_changes` | — | Long-poll typed change events (`message.new` \| `reaction`) push-fed by the chat.db WAL watcher (slow-poll fallback if `fs.watch` is unavailable). Optional `chatIdentifier` / `threadSlug` scope (merged-identity aware), `types` filter, `timeoutSeconds` (default 60), `maxEvents` (collect until N, else return on first batch). Quiet timeout = clean non-error result. Raw feed: no echo suppression — prefer `wait_for_reply` when awaiting a human answer in one thread. Honors `notifications/cancelled`. |
 
 `get_messages` response footer includes `oldestMessageId` + `hasMore`. To page deeper, pass `oldestMessageId` as `beforeMessageId` in the next call. Hard cap of 5000 messages per call to prevent OOM — use `export_messages` for larger ranges.
 
@@ -323,6 +324,6 @@ Resolution order: CLI flag → `IMSG_TUI_*` env → config file → defaults.
 
 ## Tool timeouts
 
-In `src/mcp-tools.ts:TOOL_TIMEOUTS_MS`. Default 30s per tool. `wait_for_reply` has its own `timeoutSeconds` arg (no wrapper). `health_check` capped at 5s.
+In `src/mcp-tools.ts:TOOL_TIMEOUTS_MS`. Default 30s per tool. `wait_for_reply` and `wait_for_changes` have their own `timeoutSeconds` arg (no wrapper). `health_check` capped at 5s.
 
 On timeout the server returns `isError: true` so the host unblocks immediately, even if the underlying SQL keeps running.
