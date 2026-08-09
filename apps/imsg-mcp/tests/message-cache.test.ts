@@ -232,3 +232,45 @@ describe("hit-rate counters", () => {
     expect(cacheStats().evictions).toBe(before.evictions);
   });
 });
+
+describe("write-time byte budget (IMSG_TUI_CACHE_MAX_BYTES, default 24MB estimate)", () => {
+  afterEach(() => clearCache());
+
+  // ~7MB of estimateBytes per entry: 100 messages × 35k chars × 2 bytes.
+  const bigEntry = (idBase: number) =>
+    Array.from({ length: 100 }, (_, i) => fakeMsg(idBase + i, "x".repeat(35_000)));
+
+  it("evicts LRU entries on write once the total estimate exceeds the budget", () => {
+    const before = cacheStats().evictions;
+    setCached("chat-a", bigEntry(1_000), 1_000);
+    setCached("chat-b", bigEntry(2_000), 2_000);
+    setCached("chat-c", bigEntry(3_000), 3_000);
+    // 3 × ~7MB fits inside 24MB — nothing evicted yet.
+    expect(cacheStats().entries).toBe(3);
+    setCached("chat-d", bigEntry(4_000), 4_000);
+    // 4th write crosses the budget: the LRU entry (chat-a) goes.
+    expect(cacheStats().entries).toBeLessThan(4);
+    expect(getCached("chat-a")).toBeUndefined();
+    expect(cacheStats().evictions).toBeGreaterThan(before);
+  });
+
+  it("never evicts the entry just written, even if it alone exceeds the budget", () => {
+    const huge = Array.from({ length: 100 }, (_, i) => fakeMsg(9_000 + i, "y".repeat(150_000)));
+    setCached("chat-huge", huge, 9_000);
+    expect(getCached("chat-huge")).toBeDefined();
+    expect(cacheStats().entries).toBe(1);
+  });
+
+  it("prependCached also enforces the budget (the pagination-spree path)", () => {
+    setCached("chat-active", bigEntry(1_000), 1_000);
+    setCached("chat-idle", bigEntry(2_000), 2_000);
+    // Grow the active entry past the budget via repeated prepends — the
+    // wheel-held-at-top scenario. The idle entry must be evicted; the
+    // active (protected) one must survive.
+    for (let page = 0; page < 3; page++) {
+      prependCached("chat-active", bigEntry(10_000 + page * 200));
+    }
+    expect(getCached("chat-active")).toBeDefined();
+    expect(getCached("chat-idle")).toBeUndefined();
+  });
+});
