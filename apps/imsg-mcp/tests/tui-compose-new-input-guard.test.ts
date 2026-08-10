@@ -43,4 +43,19 @@ describe("App.tsx compose-new input guard", () => {
       expect(idx, `mode "${mode}" guard must precede the q-quit`).toBeLessThan(quitIdx);
     }
   });
+
+  it("select mode whitelists movement keys and returns before the q-quit (A3-2)", () => {
+    // Select mode used to FALL THROUGH to the browse handlers for any
+    // non-handled key, so `q` inside a visual selection quit the whole app.
+    // The block must now bail on anything that isn't a movement key.
+    const selectIdx = SRC.search(/if \(state\.mode === "select"\)/);
+    const quitIdx = SRC.search(/if \(input === "q"\)\s*\{\s*await imsg\.close\(\)/);
+    expect(selectIdx, "select-mode block not found").toBeGreaterThan(-1);
+    // The movement whitelist + its non-movement early return live inside the block.
+    expect(SRC).toMatch(/const selectMovement =/);
+    expect(SRC).toMatch(/if \(!selectMovement\) return;/);
+    const whitelistIdx = SRC.search(/if \(!selectMovement\) return;/);
+    expect(whitelistIdx, "select whitelist must precede the q-quit").toBeLessThan(quitIdx);
+    expect(whitelistIdx).toBeGreaterThan(selectIdx);
+  });
 });

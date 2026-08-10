@@ -5,6 +5,7 @@ import {
   type ConversationAttachment,
   type Message,
   minMessageId,
+  oldestMessageCursor,
   type Reaction,
 } from "../types.js";
 import { filterMatchIndices } from "./filter.js";
@@ -122,6 +123,7 @@ export type Action =
     }
   | { type: "SELECT"; index: number; visibleCount?: number }
   | { type: "SELECT_MSG"; index: number }
+  | { type: "SELECT_MSG_BY_DATE"; date: Date }
   | { type: "MOVE_MSG"; delta: number }
   | { type: "FOCUS"; pane: FocusPane }
   | { type: "SCROLL_SIDEBAR"; delta: number }
@@ -451,7 +453,7 @@ export function reducer(state: AppState, action: Action): AppState {
       const lastIdx = Math.max(0, msgs.length - 1);
       // Set threadScroll high so the view shows the bottom
       const scrollToEnd = Math.max(0, msgs.length);
-      const oldestId = minMessageId(msgs);
+      const oldestId = oldestMessageCursor(msgs);
       return {
         ...state,
         messages: msgs,
@@ -530,7 +532,7 @@ export function reducer(state: AppState, action: Action): AppState {
         pending,
         // A thread that was empty before the stream fed it needs an oldest-id
         // cursor for the lazy "load older" path; -1 (exhausted) stays put.
-        messageOldestLoadedId: state.messageOldestLoadedId ?? minMessageId(bounded.messages),
+        messageOldestLoadedId: state.messageOldestLoadedId ?? oldestMessageCursor(bounded.messages),
       };
     }
     case "APPLY_LIVE_REACTIONS": {
@@ -602,6 +604,16 @@ export function reducer(state: AppState, action: Action): AppState {
         : state.sidebarScroll;
       // Selecting a real conversation always clears module focus.
       return { ...state, selectedIdx: idx, sidebarScroll, selectedModuleIdx: null };
+    }
+    case "SELECT_MSG_BY_DATE": {
+      // Find the first message at or after the target date in the LIVE list.
+      // Used by date-jump so selection runs against the reducer's current
+      // messages, not a stale closure snapshot.
+      const t = action.date.getTime();
+      let idx = state.messages.findIndex((m) => m.date.getTime() >= t);
+      if (idx < 0) idx = state.messages.length - 1; // all older than target → last
+      if (idx < 0) return state;
+      return { ...state, ...clampMsg(state, idx) };
     }
     case "SELECT_MSG": {
       const c = clampMsg(state, action.index);
