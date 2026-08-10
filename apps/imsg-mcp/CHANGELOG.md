@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.2](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.1...imsg-mcp-v1.21.2) (2026-08-10)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** eliminate TUI heap leak (dev React) + 4 stress-drive bugs ([2e2447e](https://github.com/george43g/EQStack/commit/2e2447e3dcd9429d6bd0e18b46b672174ceaf628))
+
 ## imsg-mcp [1.21.1](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.0...imsg-mcp-v1.21.1) (2026-08-09)
 
 
