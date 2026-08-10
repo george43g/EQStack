@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import {
   type SendService,
   sendMessageReliable,
@@ -208,20 +208,42 @@ export function useImsg() {
     }
   }, []);
 
-  return {
-    loadConversations,
-    loadMessages,
-    loadOlderMessages,
-    loadMessagesInWindow,
-    resolveNames,
-    getChatStats,
-    listConversationAttachments,
-    send,
-    sendToRecipient,
-    resolveRecipientInput,
-    startChangeWatcher,
-    getThreadSlugForLeg,
-    refresh,
-    close,
-  };
+  // The container itself must be referentially stable: consumers put `imsg`
+  // in effect deps (analytics Pane, live-stream wiring), and a fresh object
+  // per render turns those effects into render-loop re-fetchers — the
+  // analytics pane re-ran getMessagesInWindow ~8x/sec and OOM'd the TUI.
+  return useMemo(
+    () => ({
+      loadConversations,
+      loadMessages,
+      loadOlderMessages,
+      loadMessagesInWindow,
+      resolveNames,
+      getChatStats,
+      listConversationAttachments,
+      send,
+      sendToRecipient,
+      resolveRecipientInput,
+      startChangeWatcher,
+      getThreadSlugForLeg,
+      refresh,
+      close,
+    }),
+    [
+      loadConversations,
+      loadMessages,
+      loadOlderMessages,
+      loadMessagesInWindow,
+      resolveNames,
+      getChatStats,
+      listConversationAttachments,
+      send,
+      sendToRecipient,
+      resolveRecipientInput,
+      startChangeWatcher,
+      getThreadSlugForLeg,
+      refresh,
+      close,
+    ],
+  );
 }

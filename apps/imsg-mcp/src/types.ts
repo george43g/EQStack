@@ -270,3 +270,26 @@ export function minMessageId(messages: Pick<Message, "id">[]): number | null {
   }
   return lo;
 }
+
+/**
+ * The id of the message with the minimum `(date, ROWID)` — the correct
+ * "load older" pagination cursor.
+ *
+ * The DB paginates by the composite `(m.date < ? OR (m.date = ? AND m.ROWID < ?))`
+ * (imessage-db `fetchMessagesForChatRowId`), so the cursor MUST be the id of
+ * the oldest message by that same composite. `minMessageId` (min ROWID) is
+ * wrong for MERGED threads, where a message's ROWID order diverges from its
+ * date order: passing the min-ROWID id made the next page overlap and tripped
+ * the no-advance guard, permanently stalling load with ~tens of thousands of
+ * messages still unreachable.
+ */
+export function oldestMessageCursor(messages: Pick<Message, "id" | "date">[]): number | null {
+  if (messages.length === 0) return null;
+  let best = messages[0];
+  for (let i = 1; i < messages.length; i++) {
+    const m = messages[i];
+    const dt = m.date.getTime() - best.date.getTime();
+    if (dt < 0 || (dt === 0 && m.id < best.id)) best = m;
+  }
+  return best.id;
+}

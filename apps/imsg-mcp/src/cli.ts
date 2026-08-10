@@ -11,6 +11,29 @@ import { APP_VERSION } from "./meta.js";
 import { installShutdownHandlers, registerCleanup } from "./shutdown.js";
 import { looksLikeThreadSlug } from "./thread-slug.js";
 
+/**
+ * Select React's PRODUCTION reconciler before the TUI's first Ink import.
+ *
+ * React/Ink are externalized, so `react-reconciler`'s entry picks its build
+ * from `process.env.NODE_ENV` at require time. Unset (the default when running
+ * the `imsg` bin) → the DEVELOPMENT reconciler, which calls
+ * `performance.measure()` on every commit. Those PerformanceMeasure entries
+ * accumulate UNBOUNDED in Node's user-timing buffer and are never GC'd —
+ * measured at ~77k objects retaining ~660k strings after a few idle minutes,
+ * the heap ramp that tripped the RSS watchdog and killed the TUI (the watchdog
+ * was correct — this was a real leak, reproduced via heap-snapshot diffs).
+ * The production reconciler emits none and renders faster.
+ *
+ * MUST run before the dynamic `import("./tui/index.js")` on EVERY tui path
+ * (commander action AND the manual switch dispatch) — by the time `runTui`
+ * executes, Ink and its reconciler are already required and the choice is
+ * locked. Defaults only; an explicit `NODE_ENV` (e.g. for React debugging)
+ * is respected.
+ */
+function ensureProductionReactForTui(): void {
+  if (!process.env.NODE_ENV) process.env.NODE_ENV = "production";
+}
+
 // ── Colour helpers ─────────────────────────────────────────────────────
 
 const color = {
@@ -318,6 +341,7 @@ export async function runConsoleCommand(
       }
       return;
     case "tui": {
+      ensureProductionReactForTui();
       const { runTui } = await import("./tui/index.js");
       await runTui();
       return;
@@ -890,6 +914,7 @@ program
   .option("--theme <theme>", 'TUI theme: "safe" or "powerline"')
   .option("--accent <hex>", "TUI accent color as #RRGGBB")
   .action(async () => {
+    ensureProductionReactForTui();
     const { runTui } = await import("./tui/index.js");
     await runTui();
   });

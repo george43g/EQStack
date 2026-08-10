@@ -16,7 +16,7 @@ import {
   primaryMediaRef,
 } from "../media-intel-runtime.js";
 import { registerCleanup } from "../shutdown.js";
-import { type Conversation, type Message, minMessageId, type Reaction } from "../types.js";
+import { type Conversation, type Message, oldestMessageCursor, type Reaction } from "../types.js";
 import { getInstalledChatApps } from "../url-schemes.js";
 import {
   nudgeAttachmentDownload,
@@ -416,18 +416,20 @@ export function App({ changeBus }: AppProps = {}) {
       selected.chatIdentifier,
       state.messageOldestLoadedId,
     );
-    const newOldestId = minMessageId(olderMsgs) ?? -1;
-    // Exhausted when the batch is empty OR it fails to reach further back than
-    // the cursor we asked before (a non-empty batch that fully dedups, or a
-    // beforeMessageId that didn't advance). Without the second guard the -1
-    // sentinel never trips, the near-top effect keeps re-firing, and the whole
-    // message list re-renders in a tight loop — a runaway-heap footgun.
-    if (olderMsgs.length === 0 || newOldestId < 0 || newOldestId >= state.messageOldestLoadedId) {
+    // Progress is measured by whether the batch contains any message we don't
+    // already have — NOT by comparing ROWIDs (which diverge from date order in
+    // merged threads and falsely declared exhaustion mid-thread, stranding
+    // tens of thousands of messages). The cursor advances to the oldest
+    // message by (date, ROWID) among the truly-new rows.
+    const loadedIds = new Set(state.messages.map((m) => m.id));
+    const trulyNew = olderMsgs.filter((m) => !loadedIds.has(m.id));
+    if (trulyNew.length === 0) {
       dispatch({ type: "PREPEND_MESSAGES", data: [], oldestId: -1 });
       return;
     }
-    dispatch({ type: "PREPEND_MESSAGES", data: olderMsgs, oldestId: newOldestId });
-  }, [imsg, selected, state.messageLoadingOlder, state.messageOldestLoadedId]);
+    const newOldestId = oldestMessageCursor(trulyNew) ?? -1;
+    dispatch({ type: "PREPEND_MESSAGES", data: trulyNew, oldestId: newOldestId });
+  }, [imsg, selected, state.messageLoadingOlder, state.messageOldestLoadedId, state.messages]);
 
   // Trigger when cursor approaches the start of the message list
   useEffect(() => {
@@ -914,7 +916,22 @@ export function App({ changeBus }: AppProps = {}) {
         setTimeout(() => dispatch({ type: "SET_STATUS", status: "" }), 2000);
         return;
       }
-      // j/k/G/gg/Ctrl-d/Ctrl-u — fall through to browse-mode movement (anchor stays)
+      // j/k/G/gg/{}/Ctrl-d/Ctrl-u/digits — fall through to browse-mode
+      // movement (anchor stays). EVERYTHING ELSE stops here: the fall-through
+      // used to reach every browse handler, so pressing q inside a selection
+      // quit the whole app (input-guard-law violation, swarm finding A3-2).
+      const selectMovement =
+        input === "j" ||
+        input === "k" ||
+        input === "g" ||
+        input === "G" ||
+        input === "{" ||
+        input === "}" ||
+        key.upArrow ||
+        key.downArrow ||
+        (key.ctrl && (input === "d" || input === "u")) ||
+        /^[0-9]$/.test(input);
+      if (!selectMovement) return;
     }
 
     // Browse mode
@@ -1195,27 +1212,32 @@ export function App({ changeBus }: AppProps = {}) {
         return;
       }
       let batches = 0;
-      // Loop: load older messages until oldest <= target, or exhausted
-      while (batches < MAX_JUMP_BATCHES) {
-        const oldest = state.messages.length > 0 ? state.messages[0].date : new Date();
-        if (oldest <= target) break;
-        if (state.messageOldestLoadedId == null || state.messageOldestLoadedId === -1) break;
-        const older = await imsg.loadOlderMessages(
-          selected.chatIdentifier,
-          state.messageOldestLoadedId,
-        );
+      // Drive the loop off LOCAL cursor + each fetch's return value — never the
+      // captured `state`, which is a frozen closure snapshot here: reading
+      // state.messages/state.messageOldestLoadedId inside the loop made it
+      // blind to its own dispatched prepends, so it either spun re-fetching the
+      // same page or broke before the first fetch (older history unreachable).
+      let cursor = state.messageOldestLoadedId;
+      let oldestDate = state.messages.length > 0 ? state.messages[0].date : new Date();
+      // Loop: load older messages until oldest <= target, or exhausted.
+      while (batches < MAX_JUMP_BATCHES && cursor != null && cursor !== -1 && oldestDate > target) {
+        const older = await imsg.loadOlderMessages(selected.chatIdentifier, cursor);
         if (older.length === 0) break;
-        const newOldestId = minMessageId(older) ?? -1;
-        dispatch({ type: "PREPEND_MESSAGES", data: older, oldestId: newOldestId });
+        const next = oldestMessageCursor(older) ?? -1;
+        let batchOldest = older[0].date;
+        for (const m of older) if (m.date < batchOldest) batchOldest = m.date;
+        // No-progress guard: the batch reached no further back than the cursor.
+        if (next === cursor || next === -1 || batchOldest >= oldestDate) break;
+        dispatch({ type: "PREPEND_MESSAGES", data: older, oldestId: next });
+        cursor = next;
+        oldestDate = batchOldest;
         batches++;
         // Yield to render between batches
         await new Promise((r) => setTimeout(r, 10));
       }
-      // Find first message at or after target
-      const idx = state.messages.findIndex((m) => m.date >= target);
-      if (idx >= 0) {
-        dispatch({ type: "SELECT_MSG", index: idx });
-      }
+      // Select the first message at/after target against the LIVE state (the
+      // reducer sees the just-prepended messages; this closure does not).
+      dispatch({ type: "SELECT_MSG_BY_DATE", date: target });
       dispatch({ type: "EXIT_DATE_JUMP" });
       dispatch({
         type: "SET_STATUS",
