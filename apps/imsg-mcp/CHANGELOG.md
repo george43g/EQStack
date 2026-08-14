@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.3](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.2...imsg-mcp-v1.21.3) (2026-08-14)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** de-flake the WAL-append watcher test that blocked a release ([341a3c6](https://github.com/george43g/EQStack/commit/341a3c64105028f535e28dd1e45bad2c88fe4421))
+* **imsg-mcp:** fan out chunked keystrokes — fast j/k scrolling dropped input ([8b8af0a](https://github.com/george43g/EQStack/commit/8b8af0a7c827219c9a665325d4b08dbc204bc8e2))
+
 ## imsg-mcp [1.21.2](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.1...imsg-mcp-v1.21.2) (2026-08-10)
 
 
