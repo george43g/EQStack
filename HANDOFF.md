@@ -407,6 +407,45 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   with `CI=false` tape prefixes, fail-fast loop, honest job gating; first job-level-green runs
   recorded. PRs #70/#72/#68 were implemented by subagents in isolated worktrees, reviewed line-by-line
   here before merge.
+- 2026-08-10 · Claude · **ITER 14: the reliability loop — v1.21.1 + v1.21.2 shipped, TUI heap leak
+  killed.** George's directive after live crashes: *"run the tui in your own terminal, stress it,
+  play with it, discover your own list of bugs, fix them all, push through CI, merge, rinse and
+  repeat"* — bar = **more reliable, robust and memory-efficient than the native Messages app**; he
+  is explicitly no longer the test rig. **Method** (repeatable, use it again): a tmux session
+  `drive` that George can watch read-only, plus a **5-agent swarm** — each agent opens its own
+  window, runs its own TUI instance against the real DB, owns one feature subset, and files a
+  written report (`scratchpad/swarm-A{1..5}-*.md`): A1 nav/scroll, A2 drawers/rendering, A3
+  modals/input, A4 live/perf/endurance, A5 lifecycle/engines. Agent briefs MUST forbid sending
+  messages (never Enter in a compose bar), the `o`/`f`/`s`/`a` side-effect keys, and touching other
+  agents' processes. Memory work needs `node --heapsnapshot-signal=SIGUSR2` plus the snapshot
+  analyzers (constructor histogram + diff) — **RSS readings lie in both directions; only a post-GC
+  heap snapshot proves retention.**
+  **v1.21.1** (#78, #79, #81): wheel-event coalescing + a write-time message-cache byte budget +
+  pagination cooldown (a real session had RSS-killed itself in 181s); the change-watcher now also
+  kqueue-watches `chat.db-wal` itself with a 10s safety poll — **the directory watch is silently
+  never delivered on the TCC-protected `~/Library/Messages`**, so live streaming had been blind on
+  every real Mac while passing every temp-dir test; and tui-kit 0.4.0 adoption (our `visualWidth` /
+  `detectNerdFont` lifted upstream, local copies deleted, our tests re-pointed at the kit as the
+  consumer-side pin).
+  **v1.21.2** (#82) — five fixes, headlined by the leak that had been killing every session:
+  **react-reconciler's DEVELOPMENT build was loading because the bin runs with `NODE_ENV` unset**,
+  and it calls `performance.measure()` on every commit; those entries accumulate unbounded in
+  Node's user-timing buffer (11,447 → 86,114 objects and ~660k strings in 5 idle minutes) until the
+  RSS watchdog fires. Fix: force the production reconciler before the TUI's first Ink import **on
+  both `tui` dispatch paths** (the commander action *and* the manual switch — patching only one
+  does nothing, which is how the first attempt silently failed). Verified 11,447 → **1**, heap flat
+  at 46MB under load. **The RSS watchdog was correct all along — a real leak, so no robustness-kit
+  change was needed.** Also: the analytics pane re-ran `getMessagesInWindow` ~8×/sec (heap
+  332→1517MB in 20s) because `useImsg()` returned a fresh object each render; `q` in visual-select
+  quit the whole app; merged threads falsely reported "no older messages" mid-scroll (cursor used
+  min ROWID while the DB paginates by `(date, ROWID)`) stranding tens of thousands of messages; and
+  `:` date-jump never loaded older history (its loop read a frozen closure snapshot).
+  **PR #83 (open, cuts 1.21.3)**: Ink delivers a keystroke burst or paste as ONE `useInput` call, so
+  `"jj" !== "j"` dropped most keystrokes during fast scrolling, and the vim count guard
+  `input >= "0" && input <= "9"` is a *lexicographic* range that `"5j"` satisfies — a chunked count
+  replayed on the next key. Chunks are now fanned out per character **only when the whole chunk is
+  keys we own**, so a paste can never drive motion or reach `o`/`f`/`s`/`q` or a compose-send.
+  Suite grew 995 → **1012**. Remaining swarm findings are backlog §10 below.
 
 ---
 

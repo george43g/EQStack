@@ -120,6 +120,21 @@ One human conversation is often split across multiple `chat` rows (phone vs emai
 
 Full-screen terminal UI built with Ink (React for terminal). Vim-style keybindings: `j/k` move, `#j/k` numbered jump, `gg/G` top/bottom, `Ctrl-d/u` half-page, `{/}` group-jump (next/previous sender), `Enter` message details drawer, `i` per-thread info + attachment drawer (metadata + browse/open/save/export ALL attachments across merged legs; drawer keys `j/k` select, `o` open, `s` save to `~/Downloads`, `f` reveal in Finder, `y` copy path, `a` export all to `~/Downloads/imsg-<slug>/`, `Esc/q` close), `o` open attachment (images → system viewer, videos → mpv; nudges a download first if not on disk), `f` reveal in Finder, `R` run/retry media interpretation, `y` copy thread slug to clipboard, `,` settings panel (media-interpretation config; `settings-model.ts` builds the rows, keys never entered here), `d` toggle dev stats panel, `Tab` switch sidebar/messages, `/` filter, `c` compose, `q` quit. **Input-guard law**: one top-level `useInput`; every modal Mode (incl. `settings`) has a dedicated early-return guard so browse-mode keys (esp. `q`=quit) can't leak in.
 
+**Two more TUI invariants (learned the hard way, 2026-08-10 — don't undo them):**
+1. **`NODE_ENV` must be `production` before the first Ink import**, set on **both** `tui` dispatch
+   paths in `src/cli.ts` (the commander action AND the manual switch) via
+   `ensureProductionReactForTui()`. React/Ink are externalized, so `react-reconciler` picks its
+   build at require time; the development build calls `performance.measure()` on every commit and
+   those entries accumulate unbounded in Node's user-timing buffer until the RSS watchdog kills the
+   process (measured 11,447 → 86,114 objects in 5 idle minutes). Patching only one path does
+   nothing.
+2. **Chunked-keystroke law**: Ink delivers a fast burst or a paste as ONE `useInput` call with the
+   whole string, so never compare `input` to a single character without handling the chunk case.
+   The router fans a chunk out per character **only when every character is a key we own**
+   (`[0-9gGjk{}]`); anything else passes through whole so a paste can't drive motion or reach
+   `o`/`f`/`s`/`q` or a compose-send. Vim count guards must use `/^[0-9]$/`, never the
+   lexicographic `input >= "0" && input <= "9"` (which `"5j"` satisfies).
+
 ## Native Rust Module (optional acceleration)
 
 `native/` contains a Rust napi-rs module for accelerated SQLite queries and blob parsing (`rusqlite` + `rayon`). Build with `pnpm native:build`. The TUI/MCP falls back to TypeScript automatically if the native module is not built. The dev stats panel (`d` key) shows which engine is active.

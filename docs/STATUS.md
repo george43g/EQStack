@@ -4,7 +4,7 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-08-10 · current release **v1.21.0** (npm; 1.21.1 in flight — wheel/memory + WAL-watch fixes)._
+_Last updated 2026-08-10 · current release **v1.21.2** (npm; 1.21.3 in flight — chunked-keystroke fan-out)._
 
 > **🖥️ Claude Desktop / distribution / online-MCP:** the `.mcpb type:node` extension crashes in
 > Desktop (Electron has no in-process SQLite); iMessage works there today via a **manual `mcpServers`
@@ -48,7 +48,15 @@ high-water ROWID delta) + typed `EventBus`, **live TUI updates** via `useSyncExt
 manual `r`), a `wait_for_changes` MCP long-poll tool, and `wait_for_reply` waking on bus events
 instead of pure polling. Stress-mcp now runs in CI (macOS + a linux TS-fallback job) with pack-size
 and README-drift guards, and the screenshots workflow is honest for the first time (ink CI-mode +
-two masking layers — see the 2026-08-10 HANDOFF entry).
+two masking layers — see the 2026-08-10 HANDOFF entry). The **reliability cycle (v1.21.1 → v1.21.3)** then
+took the TUI from "less reliable than Messages.app" to stable under abuse: a 5-agent swarm drove
+every feature against the real DB while heap snapshots hunted the memory class. It killed the
+session-ending heap leak (React's *development* reconciler emitting `performance.measure()` forever
+because the bin ran with `NODE_ENV` unset), an analytics re-fetch loop, `q`-quits-the-app in
+visual-select, merged-thread pagination that stranded tens of thousands of messages, a dead date
+jump, wheel-scroll render storms, dropped keystrokes on fast scrolling, and — the one that made
+live streaming look broken on every real Mac — a directory watch that macOS silently never delivers
+on the TCC-protected `~/Library/Messages`.
 
 ### Shipped in the finalise cycle (v1.6.0 → v1.8.0)
 
@@ -210,6 +218,31 @@ Cycle shipped v1.9.0 → v1.15.0; these are the deliberately-out-of-scope tails.
   [`docs/plans/media-intel/spike-sip-findings.md`](../apps/imsg-mcp/docs/plans/media-intel/spike-sip-findings.md). Revisit
   only if Apple ships a public download API or prior art adds a battle-tested re-download hook.
 
+### 8b. TUI reliability — open findings from the swarm stress-drive (P1/P2)
+Method + shipped fixes: 2026-08-10 HANDOFF entry. Reports: session scratchpad
+`swarm-A{1..5}-*.md`. Everything below was OBSERVED against the real DB, not theorised.
+
+- **~3s blank boot with no indicator (P1 — most user-visible item left).** `listConversations`
+  takes 1.4–1.6s over 5,517 chats and the first frame only paints after it resolves, so the TUI
+  shows nothing at all on launch. Render an immediate frame + spinner, and/or paginate the enrich
+  work so the first screen doesn't wait for the full set.
+- **Drawer polish (P2).** Edit-history header row breaks the drawer's right border; reaction
+  attribution shows a raw handle instead of the resolved contact name; group participants are never
+  itemised anywhere (info drawer shows a count only) and unnamed groups display raw `chat9262…`
+  identifiers; `y` copies to the clipboard with no visual confirmation.
+- **Filter-Esc leaves a stale thread pane (P2).** `/` → type → `Esc` resets the sidebar cursor but
+  keeps the previous thread's messages and count under the new selection's name for >1.5s until
+  `j`/`k` recovers — the filter-exit path doesn't trigger the message load a normal selection does.
+- **Observability gaps found by A5 (P3).** The native-engine choice (Rust vs TS fallback) is
+  invisible in logs — only the dev panel shows it; SIGTERM exits log `reason: "normal"` so a
+  supervisor can't distinguish a signal from a user quit; watchdog state reports `rssMb`/`heapMb`
+  as 0 for the first ~60s (5s snapshot cadence vs the 60s memory sampler).
+- **Eviction path unverified (P2).** The 5000-message hard cap's "N older messages evicted"
+  placeholder was never reached through any real UI path during the drive — worth a targeted test
+  now that the pagination and leak bugs that blocked reaching it are fixed.
+- **Date picker only accepts arrow keys (P3)** — `hjkl` does nothing there, and an unparseable
+  free-text date is silently refused with no error shown.
+
 ### 9. Real-time streaming, memory scroll & Messages API-surface (P1–P3)
 Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](../apps/imsg-mcp/docs/plans/realtime-streaming-and-api-surface.md).
 - ~~Cache-hit metrics~~ **done 2026-08-09 (PR #65, v1.20.0)** — `hits/misses/evictions` in
@@ -217,13 +250,19 @@ Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](../apps/ims
   `messagesByGuid` in ThreadPane. Remaining P2 tail: the rendered Ink tree itself is windowed but
   not formally virtualized (render visible+overscan only).
 - ~~Core `ChangeWatcher` → EventBus + all three frontends~~ **done 2026-08-09/10 (PRs #66/#70/#72,
-  v1.21.0)** — WAL-dir fs.watch (debounced, poll fallback, high-water ROWID, paged drain) →
+  v1.21.0; hardened in v1.21.1 — see below)** — WAL-dir fs.watch (debounced, poll fallback, high-water ROWID, paged drain) →
   typed `EventBus` (`message.new` | `reaction`; edited/unsent/group.* variants reserved); TUI
   streams live via `useSyncExternalStore` (active-chat append + sidebar patch, `r` kept as
   fallback), console gained a bounded `watch` verb, MCP gained long-poll `wait_for_changes`,
   and `wait_for_reply` now wakes on bus events (authoritative read + echo suppression unchanged;
   `pollIntervalSeconds` is the fallback cadence). Remaining: live latency verify on a real
   incoming text (George), and emitting the reserved event variants (below).
+- **WAL-watch lesson (2026-08-10, v1.21.1):** an `fs.watch` on the DIRECTORY containing
+  `chat.db` arms cleanly but macOS **never delivers events** for the TCC-protected
+  `~/Library/Messages` — live streaming was blind on every real Mac while passing every temp-dir
+  integration test. The watcher now also kqueue-watches `chat.db-wal` itself (re-armed via
+  directory entry events across checkpoints) plus an always-on 10s safety poll. Any future
+  detection work must keep a primitive that doesn't depend on directory-event delivery.
 - **Group joins / leaves / renames (P2) — real GAP.** `isHiddenSystemItem(item_type!=0)` filters all
   group-action rows out everywhere. Decode into a typed `ConversationEvent` (member_added/removed,
   renamed) via a dedicated path (keeps default `item_type=0` message queries + analytics unaffected).
