@@ -59,3 +59,24 @@ describe("App.tsx compose-new input guard", () => {
     expect(whitelistIdx).toBeGreaterThan(selectIdx);
   });
 });
+
+describe("chunked-input fan-out (Ink delivers bursts/pastes as ONE call)", () => {
+  it("splits multi-key chunks made entirely of motion keys", () => {
+    // "jj" never equalled "j", so fast scrolling dropped most keystrokes.
+    expect(SRC).toMatch(/const CHUNKABLE_KEYS = \/\^\[0-9gGjk\{\}\]\+\$\//);
+    expect(SRC).toMatch(/for \(const ch of input\) await handleKeyRef\.current\(ch, key\)/);
+  });
+
+  it("passes non-motion chunks through WHOLE (a paste must not drive motion)", () => {
+    // The fan-out is gated on the whole chunk matching owned keys.
+    const gate = SRC.search(/CHUNKABLE_KEYS\.test\(input\)/);
+    expect(gate, "fan-out must be gated on CHUNKABLE_KEYS").toBeGreaterThan(-1);
+  });
+
+  it("the vim count guard matches a SINGLE digit, not a lexicographic range", () => {
+    // `input >= "0" && input <= "9"` is a string range that "5j" satisfies —
+    // a chunked count entered the buffer whole and replayed on the next key.
+    expect(SRC).not.toMatch(/input >= "0" && input <= "9"/);
+    expect(SRC).toMatch(/\/\^\[0-9\]\$\/\.test\(input\)/);
+  });
+});

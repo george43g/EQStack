@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { useMouse } from "@george43g/tui-kit";
 import { useScreenSize } from "fullscreen-ink";
-import { Box, useApp, useInput } from "ink";
+import { Box, type Key as KeyState, useApp, useInput } from "ink";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useSyncExternalStore } from "react";
 import { loadTuiConfig, resolveInterpretConfig, writeTuiConfig } from "../app-config.js";
 import { formatJumpTarget, parseUserDate } from "../date-parse.js";
@@ -585,7 +585,37 @@ export function App({ changeBus }: AppProps = {}) {
 
   // ── Keyboard ───────────────────────────────────────────────────────
 
+  // Keys whose handlers compare `input` to a SINGLE character. Ink delivers a
+  // fast keystroke burst (or a paste) as ONE call with the whole string, so
+  // "jj" never equalled "j" and rapid scrolling silently dropped most of the
+  // input. Worse, the vim count guard used a lexicographic range, which "5j"
+  // satisfies — a chunked count entered the buffer whole and replayed on the
+  // NEXT key (a lone `j` jumping 5 rows for no visible reason). Same class the
+  // tui-kit `useVimKeys` fix addresses upstream; imsg has its own router, so it
+  // needs its own fan-out. Only chunks made ENTIRELY of these keys are split —
+  // anything else (a pasted recipient name, an escape sequence) is passed
+  // through whole so it can never drive motion or reach a destructive key.
+  const CHUNKABLE_KEYS = /^[0-9gGjk{}]+$/;
+
+  const handleKeyRef = useRef<((input: string, key: KeyState) => Promise<void>) | null>(null);
+
   useInput(async (input, key) => {
+    // Fan out a multi-key chunk into single-key dispatches, in order.
+    if (
+      input.length > 1 &&
+      !key.ctrl &&
+      !key.meta &&
+      !key.escape &&
+      CHUNKABLE_KEYS.test(input) &&
+      handleKeyRef.current
+    ) {
+      for (const ch of input) await handleKeyRef.current(ch, key);
+      return;
+    }
+    await handleKeyRef.current?.(input, key);
+  });
+
+  const handleKey = async (input: string, key: KeyState) => {
     // Ctrl-C always exits
     if (key.ctrl && input === "c") {
       await imsg.close();
@@ -1034,7 +1064,7 @@ export function App({ changeBus }: AppProps = {}) {
     if (state.loading) return;
 
     // Number buffer for vim-style counts (e.g. "12j" to jump 12 lines)
-    if (input && input >= "0" && input <= "9" && !key.ctrl && !key.meta) {
+    if (/^[0-9]$/.test(input) && !key.ctrl && !key.meta) {
       // Don't buffer leading zeros unless building a number
       if (input === "0" && !state.numBuffer) {
         // '0' alone: go to first item (like vim)
@@ -1191,7 +1221,10 @@ export function App({ changeBus }: AppProps = {}) {
         void interpretMessage(msg, true);
       }
     }
-  });
+  };
+  // Ink re-registers on every render; the ref keeps the fan-out wrapper
+  // pointing at the CURRENT closure (same freshness the inline handler had).
+  handleKeyRef.current = handleKey;
 
   // ── Date jump ──────────────────────────────────────────────────────
 
