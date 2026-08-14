@@ -270,6 +270,13 @@ with per-package tags. Key facts:
   `@anolilab/semantic-release-pnpm`) and it joins the release automatically — its tags follow the
   global `--tag-format`. Keep `private: true` to stay unpublished.
 - **Merge PRs (not squash)** so `semantic-release` sees conventional-commit types.
+- **Never merge two PRs back-to-back within a minute.** Each merge starts a Release run; the
+  earlier run checks out the older SHA, and by the time it reaches the release step the branch has
+  moved, so semantic-release logs *"The local branch main is behind the remote one, therefore a new
+  version won't be published"* and releases **0 of 1 packages** — silently. If the later run then
+  fails for any reason (a flaky test, say), the `fix:`/`feat:` in the earlier PR is stranded
+  unreleased with two green-looking merges. Merge, wait for the Release run to finish, then merge
+  the next. (Hit on 2026-08-14: #83 + #84 four seconds apart cost the 1.21.3 publish.)
 
 ## MCP servers (project scope)
 

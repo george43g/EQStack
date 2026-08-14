@@ -238,14 +238,31 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
     const w = new ChangeWatcher({ dbPath, db, bus, debounceMs: 40, safetyPollMs: 0 });
     w.start();
     push(msg(1));
-    appendFileSync(join(dir, "chat.db-wal"), "-more"); // pure append, no entry change
 
-    await vi.waitFor(
-      () => {
-        expect(batches).toHaveLength(1);
-      },
-      { timeout: 3_000 },
-    );
+    // Append REPEATEDLY until the drain lands. A single append is a race on
+    // CI: kqueue arms asynchronously, so an append issued microseconds after
+    // start() can land before the watch is live and be missed forever with
+    // the safety poll disabled (this test was flaky on macOS runners and
+    // blocked a release). Production writes are continuous, so retrying is
+    // faithful to the real case — and the assertion still fails if the file
+    // watch never fires at all.
+    const appender = setInterval(() => {
+      try {
+        appendFileSync(join(dir, "chat.db-wal"), "-more");
+      } catch {
+        // dir torn down between ticks — the waitFor below is the real gate
+      }
+    }, 100);
+    try {
+      await vi.waitFor(
+        () => {
+          expect(batches.length).toBeGreaterThanOrEqual(1);
+        },
+        { timeout: 5_000 },
+      );
+    } finally {
+      clearInterval(appender);
+    }
     expect(batches[0]).toHaveLength(1);
     w.stop();
   });
