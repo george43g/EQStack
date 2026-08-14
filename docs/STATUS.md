@@ -219,8 +219,11 @@ Cycle shipped v1.9.0 → v1.15.0; these are the deliberately-out-of-scope tails.
   only if Apple ships a public download API or prior art adds a battle-tested re-download hook.
 
 ### 8b. TUI reliability — open findings from the swarm stress-drive (P1/P2)
-Method + shipped fixes: 2026-08-10 HANDOFF entry. Reports: session scratchpad
-`swarm-A{1..5}-*.md`. Everything below was OBSERVED against the real DB, not theorised.
+Method + shipped fixes: 2026-08-10 HANDOFF entry. Full consolidated record (method, all eight
+shipped fixes with evidence, clean verdicts, process lessons):
+[`../docs/agent-handoff/ITER14-SWARM-FINDINGS.md`](../docs/agent-handoff/ITER14-SWARM-FINDINGS.md)
+— untracked, since it cites real thread slugs. Everything below was OBSERVED against the real DB,
+not theorised.
 
 - **~3s blank boot with no indicator (P1 — most user-visible item left).** `listConversations`
   takes 1.4–1.6s over 5,517 chats and the first frame only paints after it resolves, so the TUI
