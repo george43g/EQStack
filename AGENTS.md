@@ -204,6 +204,13 @@ Written to `$TMPDIR/imsg-mcp/imsg-mcp-{PID}-{date}.ndjson`. Contains:
 
 **Crash detection**: A log file with no `"shutdown"` entry means the process crashed or hung.
 
+**Memory investigations**: `RSS lies in both directions` — it hides real retention behind a flat
+number and shows phantom growth after a GC. Settle it with heap snapshots:
+`node --heapsnapshot-signal=SIGUSR2 dist/cli.js tui`, then `kill -USR2 <pid>` writes
+`Heap.*.heapsnapshot` in the process CWD. `node scripts/heap-histo.mjs <snap>` shows what holds the
+heap; `node scripts/heap-diff.mjs <early> <later>` shows what GREW between two snapshots of the same
+process — that diff is what identified the `PerformanceMeasure` leak (see § TUI invariant 1).
+
 **Log knobs** (robustness kit, `IMSG` env prefix): `IMSG_LOG_LEVEL` (`debug`|`info`|`warn`|`error`|`silent`, default `debug` = emit everything), `IMSG_LOG_DIR`, `IMSG_LOG_TO_FILE`. File logging still needs `IMSG_DEV=1` (or the TUI, which forces it).
 
 ### MCP response metadata
