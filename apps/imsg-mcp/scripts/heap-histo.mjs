@@ -55,6 +55,10 @@ for (let o = 0; o < nodes.length; o += stride) {
 console.log(
   `total self-size: ${(total / 1024 / 1024).toFixed(1)}MB, nodes: ${nodes.length / stride}`,
 );
-for (const [key, [count, bytes]] of [...by.entries()].sort((a, b) => b[1][1] - a[1][1]).slice(0, top)) {
-  console.log(`${(bytes / 1024 / 1024).toFixed(2).padStart(9)}MB ${String(count).padStart(9)}  ${key}`);
+for (const [key, [count, bytes]] of [...by.entries()]
+  .sort((a, b) => b[1][1] - a[1][1])
+  .slice(0, top)) {
+  console.log(
+    `${(bytes / 1024 / 1024).toFixed(2).padStart(9)}MB ${String(count).padStart(9)}  ${key}`,
+  );
 }

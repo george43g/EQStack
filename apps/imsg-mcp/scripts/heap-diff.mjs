@@ -33,7 +33,8 @@ function load(path) {
     let key;
     if (t === "object") key = `obj:${name}`;
     else if (t === "closure") key = `closure:${name || "(anon)"}`;
-    else if (t === "string" || t === "concatenated string" || t === "sliced string") key = "(string)";
+    else if (t === "string" || t === "concatenated string" || t === "sliced string")
+      key = "(string)";
     else key = `(${t})`;
     const cur = by.get(key) ?? [0, 0];
     cur[0] += 1;
@@ -45,7 +46,9 @@ function load(path) {
 
 const [, , beforePath, afterPath, topArg] = process.argv;
 if (!beforePath || !afterPath) {
-  console.error("usage: node scripts/heap-diff.mjs <before.heapsnapshot> <after.heapsnapshot> [topN]");
+  console.error(
+    "usage: node scripts/heap-diff.mjs <before.heapsnapshot> <after.heapsnapshot> [topN]",
+  );
   process.exit(2);
 }
 const top = Number(topArg ?? 18);
