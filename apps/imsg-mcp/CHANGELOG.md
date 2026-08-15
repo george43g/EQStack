@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+# imsg-mcp [1.22.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.17...imsg-mcp-v1.22.0) (2026-08-15)
+
+
+### Features
+
+* **imsg-mcp:** surface group renames, joins and leaves (STATUS §9 gap) ([6b558db](https://github.com/george43g/EQStack/commit/6b558dbdca2e8e64a90200498f61d1037d7230b2))
+
 ## imsg-mcp [1.21.17](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.16...imsg-mcp-v1.21.17) (2026-08-15)
 
 
