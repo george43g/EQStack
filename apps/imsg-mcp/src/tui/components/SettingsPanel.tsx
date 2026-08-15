@@ -9,7 +9,7 @@
  * key value — editing keys stays in the wizard/file.
  */
 import { Box, Text } from "ink";
-import type { SettingsRow } from "../settings-model.js";
+import { computeSettingsWindow, type SettingsRow } from "../settings-model.js";
 import { useTheme } from "../themes/ThemeContext.js";
 
 interface Props {
@@ -27,11 +27,12 @@ export function SettingsPanel({ rows, cursor, configPath, warnings, width, heigh
   // Windowed list — keep the cursor on screen even with many chain/provider rows.
   const chromeH = 6; // header + footer hints + config path + borders
   const bodyH = Math.max(4, height - chromeH);
-  const start = Math.max(
-    0,
-    Math.min(cursor - Math.floor(bodyH / 2), Math.max(0, rows.length - bodyH)),
-  );
-  const end = Math.min(rows.length, start + bodyH);
+  // Window by rendered LINES, not row count: a row costs up to 3 lines
+  // (section header with its blank margin + row + selected-row hint).
+  // Slicing by row count overflowed the fixed-height box and yoga
+  // flex-shrink collapsed rows to height 0, overlaying their text onto
+  // the next row (see computeSettingsWindow's doc comment).
+  const { start, end } = computeSettingsWindow(rows, cursor, bodyH);
   const visible = rows.slice(start, end);
 
   const labelW = Math.max(24, Math.floor(width * 0.5));
@@ -69,7 +70,9 @@ export function SettingsPanel({ rows, cursor, configPath, warnings, width, heigh
           const showHeader = !prev || prev.section !== row.section;
           const key = `${row.section}-${row.kind}-${row.chain ?? ""}-${row.index ?? realIdx}`;
           return (
-            <Box key={key} flexDirection="column">
+            // flexShrink=0: a row must clip, never collapse — a height-0 box
+            // still paints its text, overlaying the next row.
+            <Box key={key} flexDirection="column" flexShrink={0}>
               {showHeader && (
                 <Box marginTop={realIdx === 0 ? 0 : 1}>
                   <Text color={theme.help.desc} dimColor>
