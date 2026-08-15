@@ -334,8 +334,10 @@ These uncommitted changes belong to life-stack and must **not** migrate:
   `api.twilio.com` and `api.au1.twilio.com`. No dedicated API Key (`SK…`) pair
   exists; the smoke test aliased account SID + auth token as
   `TWILIO_API_KEY`/`TWILIO_API_SECRET` (Twilio REST accepts that basic-auth
-  pair). opkeep's dotfiles templates still map `TWILIO_*` to the stale AU1
-  item — repoint or rotate.
+  pair). RESOLVED 2026-08-16 (life-stack session): dotfiles templates now
+  point `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` at `twilio-us1-live`; the
+  stale `twilio-au1-{live,test}` items are archived (recoverable), not
+  deleted. Minting a real US1 `SK…` key remains the proper fix.
 - **Voice-string decimals.** Twilio error `64101` (`Invalid values
   (block_elevenlabs/…) for tts settings`) is a **format** bug, not an account
   block: a settings value rendered as a bare integer (`…-1_0.7_0.8`).
