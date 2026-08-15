@@ -204,7 +204,9 @@ export const initialState: AppState = {
   filterCursor: 0,
   pending: [],
   loading: true,
-  status: "Loading...",
+  // Shown on the very first frame, before any DB work runs (App defers the
+  // initial load by a macrotask so this actually reaches the screen).
+  status: "Loading conversations…",
   numBuffer: "",
   showDevStats: false,
   drawerAttachmentIdx: 0,
