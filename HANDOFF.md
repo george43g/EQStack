@@ -500,3 +500,26 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   diff the published tarball, which is how the 1.21.5 failure was caught. Still open: drawer polish
   remainder (edit-history border, reaction attribution, unnamed-group ids, `y`-copy toast), the
   unverified 5000-message eviction placeholder, date-picker key handling.
+- 2026-08-16 · Claude · **Cycle tail + compact handoff.** After the #91 entry above: **#92** (docs,
+  merged, no release) recorded the cycle in STATUS §8b/§8c. **#93 (v1.21.9, LIVE on npm)** — message
+  drawer printed the raw handle for who reacted; App now resolves reactors via a memoized
+  `reactionNames` map, verified live ("❤️ Isabella"). Same PR recorded two honest negatives: the
+  "y-copy has no confirmation" backlog item is WRONG (all four copy paths already toast), and the
+  "edit-history breaks the drawer border" item does NOT reproduce (probed widths 24–60, 12 versions,
+  retracted parts, 140-char token, CJK, emoji — no line ever exceeded pane width; left open, marked
+  unreproducible). **#94 (OPEN — merge when green)** `fix/eviction-load-older-cursor`: went to verify
+  the never-reached eviction placeholder and found real data loss — `PREPEND_MESSAGES` set
+  `messageOldestLoadedId` to the FETCHED batch's oldest unconditionally, so when bounding evicted
+  the head of that batch, the next load-older paged from BELOW the evicted rows: false "start of
+  thread", silent permanent hole, the documented lazy-reload promise broken in exactly the case
+  eviction exists for. Fix recomputes the cursor from SURVIVORS only when eviction dropped rows
+  (`-1` exhaustion sentinel preserved, tested). Also first-ever render coverage for the gap
+  placeholder (thread-pane-gap-marker.test.tsx) + reducer tests in bounded-memory-window.test.ts.
+  Follow-up commit on the same PR: my phase-2 WAL assertion was too strict on CI (2 drains where a
+  laptop shows 1 — dir watch + wal watch are independent legs; invariant is no duplicate EMISSIONS);
+  bound is now per-leg. **Next after #94 merges:** date-picker keys (hjkl dead; unparseable dates
+  silently refused), unnamed groups showing raw `chat9262…` ids in the sidebar/drawer title, then
+  re-swarm. Env note: voice-mcp gateway config (`~/.config/voice-mcp/config.json`) was updated this
+  session — new quick-tunnel URL + port 8890 (8790 taken by browser-tab-mcp), recipient `aisha`
+  added, `direct` profile added; Twilio AU1 auth token in 1Password is DEAD (401), gateway runs on
+  the US1 credential via env (`twilio-us1-live` item); the gateway process may not survive reboot.
