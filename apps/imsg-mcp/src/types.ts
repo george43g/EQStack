@@ -254,34 +254,30 @@ export interface ConversationThread {
 }
 
 /**
- * Lowest message id in an array — safe for arbitrarily large inputs.
- *
- * `Math.min(...messages.map(m => m.id))` throws
- * "RangeError: Maximum call stack size exceeded" past ~125k spread args.
- * Callers shouldn't have to remember that — this helper does the loop.
- * Returns `null` for empty input so the caller can decide on the
- * fallback id explicitly.
- */
-export function minMessageId(messages: Pick<Message, "id">[]): number | null {
-  if (messages.length === 0) return null;
-  let lo = messages[0].id;
-  for (let i = 1; i < messages.length; i++) {
-    if (messages[i].id < lo) lo = messages[i].id;
-  }
-  return lo;
-}
-
-/**
  * The id of the message with the minimum `(date, ROWID)` — the correct
- * "load older" pagination cursor.
+ * "load older" pagination cursor, and the ONLY correct one. There is
+ * deliberately no min-ROWID helper: one existed, and every place that reached
+ * for it was a bug.
  *
  * The DB paginates by the composite `(m.date < ? OR (m.date = ? AND m.ROWID < ?))`
  * (imessage-db `fetchMessagesForChatRowId`), so the cursor MUST be the id of
- * the oldest message by that same composite. `minMessageId` (min ROWID) is
- * wrong for MERGED threads, where a message's ROWID order diverges from its
- * date order: passing the min-ROWID id made the next page overlap and tripped
- * the no-advance guard, permanently stalling load with ~tens of thousands of
- * messages still unreachable.
+ * the oldest message by that same composite. Min ROWID is wrong for MERGED
+ * threads, where a message's ROWID order diverges from its date order:
+ *
+ *  - TUI (fixed in #253): the next page overlapped and tripped the no-advance
+ *    guard, permanently stalling load with ~tens of thousands of messages
+ *    still unreachable.
+ *  - MCP `get_messages` (fixed in #257): the advertised `oldestMessageId` was
+ *    NEWER than the page's true oldest, so an agent feeding it back as
+ *    `beforeMessageId` skipped everything in between — silently, every turn.
+ *    Measured on a real DB: 6 of 35 full-page threads diverged, worst case
+ *    193 messages lost in one page turn with the cursor date jumping forward
+ *    by two years.
+ *
+ * Safe for arbitrarily large inputs: a single loop, because
+ * `Math.min(...messages.map(m => m.id))` throws "RangeError: Maximum call
+ * stack size exceeded" past ~125k spread args. Returns `null` for empty input
+ * so the caller decides on the fallback id explicitly.
  */
 export function oldestMessageCursor(messages: Pick<Message, "id" | "date">[]): number | null {
   if (messages.length === 0) return null;

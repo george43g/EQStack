@@ -132,7 +132,7 @@ import {
   registerCleanup,
   shutdown,
 } from "./shutdown.js";
-import { type Message, minMessageId } from "./types.js";
+import { type Message, oldestMessageCursor } from "./types.js";
 import { installWatchdog, noteActivity, readWatchdogState } from "./watchdog.js";
 
 const execFileAsync = promisify(execFile);
@@ -644,7 +644,14 @@ export class IMessageMCPServer {
     applyInlineInterpretations(messages);
 
     const formatted = messages.map((m) => formatMessage(m)).join("\n");
-    const oldestId = minMessageId(messages) ?? 0;
+    // MUST be the min by (date, ROWID), not the min ROWID: getMessagesForChat
+    // resolves `beforeMessageId` to that message's DATE and pages on the
+    // composite. In merged threads (phone + email, SMS + iMessage) ROWID order
+    // diverges from date order, so a min-ROWID cursor points at a NEWER message
+    // and every message older than it but newer than the true oldest is skipped
+    // — silently, on every page turn. Measured on a real DB: 6 of 35 full-page
+    // threads diverged, worst case 193 messages lost in a single turn.
+    const oldestId = oldestMessageCursor(messages) ?? 0;
     const hasMore = messages.length === limit; // heuristic — full page suggests more
     const paginationLine =
       chatIdentifier || threadSlug

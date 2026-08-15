@@ -13,7 +13,7 @@
  */
 
 import { info } from "../logger.js";
-import type { Message } from "../types.js";
+import { type Message, oldestMessageCursor } from "../types.js";
 import { onMemorySample } from "../watchdog.js";
 
 interface CacheEntry {
@@ -105,15 +105,13 @@ export function prependCached(chatIdentifier: string, olderMessages: Message[]):
   if (fresh.length === 0) return;
   const merged = [...fresh, ...entry.messages].sort((a, b) => a.date.getTime() - b.date.getTime());
   entry.messages = merged;
-  // Reduce instead of `Math.min(entry.oldestId, ...fresh.map(...))`. The
-  // spread form throws `RangeError: Maximum call stack size exceeded`
-  // somewhere above ~125k arguments — reachable via batched older-load
-  // on threads with huge history.
-  let minFresh = fresh[0].id;
-  for (let i = 1; i < fresh.length; i++) {
-    if (fresh[i].id < minFresh) minFresh = fresh[i].id;
-  }
-  entry.oldestId = Math.min(entry.oldestId, minFresh);
+  // Oldest by (date, ROWID) — NOT by min ROWID. `merged` is already sorted
+  // ascending by date, but ties need the ROWID tiebreak, and in merged threads
+  // a newer-dated message can carry a lower ROWID (see oldestMessageCursor).
+  // A single scan, so no spread — `Math.min(...ids)` throws
+  // `RangeError: Maximum call stack size exceeded` above ~125k arguments,
+  // reachable via batched older-load on threads with huge history.
+  entry.oldestId = oldestMessageCursor(merged) ?? entry.oldestId;
   entry.lastAccess = Date.now();
   entry.bytesEstimate = estimateBytes(merged);
   enforceByteBudget(chatIdentifier);

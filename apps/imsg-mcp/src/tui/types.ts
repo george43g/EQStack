@@ -4,7 +4,6 @@ import {
   type Conversation,
   type ConversationAttachment,
   type Message,
-  minMessageId,
   oldestMessageCursor,
   type Reaction,
 } from "../types.js";
