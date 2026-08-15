@@ -195,7 +195,7 @@ export function getLastSendError(): LastSendErrorDetails | null {
 // ── Lifecycle markers ──────────────────────────────────────────────────
 
 /** Log a startup marker — call at process start. */
-export function logStartup(entrypoint: string): void {
+export function logStartup(entrypoint: string, extra: Record<string, unknown> = {}): void {
   info("startup", {
     version: APP_VERSION,
     pid: process.pid,
@@ -204,6 +204,11 @@ export function logStartup(entrypoint: string): void {
     node: process.version,
     arch: process.arch,
     abi: process.versions.modules,
+    // Callers add `engine` here. Which engine won (Rust native vs the TS
+    // fallback) was previously visible ONLY in the TUI's dev-stats panel, so a
+    // perf report from a log file could not be read without also knowing
+    // whether the native module had been built on that machine.
+    ...extra,
   });
 }
 
