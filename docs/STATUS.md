@@ -4,8 +4,9 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-08-16 · current release **v1.21.9** (npm; #94 eviction-cursor fix in flight —
-merge when green)._
+_Last updated 2026-08-16 · current release **v1.21.13** (npm; tarball-verified through the
+#94–#99 merge queue: eviction cursor, voice-mcp keychain re-key, date picker, unnamed-group
+titles, help-bar overflow)._
 
 > **🖥️ Claude Desktop / distribution / online-MCP:** the `.mcpb type:node` extension crashes in
 > Desktop (Electron has no in-process SQLite); iMessage works there today via a **manual `mcpServers`
@@ -262,9 +263,25 @@ not theorised.
   NOT bugs (2026-08-16, see PR #93): the `y`-copy-has-no-confirmation claim is wrong — all four
   copy paths already toast a status; and the edit-history-breaks-the-border claim does not
   reproduce (probed widths 24–60, 12 versions, retracted parts, unbroken 140-char token, CJK,
-  emoji — no rendered line ever exceeded the pane width). Still open: unnamed groups display raw
-  `chat9262…` identifiers.
-- **Eviction made older history permanently unreachable (found 2026-08-16, PR #94 in flight).**
+  emoji — no rendered line ever exceeded the pane width). ~~Still open: unnamed groups display raw
+  `chat9262…` identifiers~~ **done 2026-08-16 (PR #98, v1.21.12)** — core-side `group-name.ts`
+  synthesizes member-based titles (first names, `+N` capping) in `listConversations` +
+  `findChatByHandle`; slugs untouched (slug path reads the raw chat row); ThreadPane header shows
+  `N people` instead of the raw id for groups. 163 unnamed groups in the real DB now titled;
+  verified live on all four surfaces (sidebar, header, status bar, info drawer).
+- **Date-jump modal was nearly untypeable (fixed 2026-08-16, PR #97, v1.21.11).** The picker's
+  shift-and-clamp digit entry made most values untypeable (year `1999` oscillated 1900↔2100;
+  month `3` gave 12); `hjkl` were dead; letters were silently swallowed in the default picker
+  mode — the real shape of the "free-text silently refused" probe note. New pure
+  `date-picker-model.ts` (replace-then-append + clamp-on-submit, auto-advance), `h/l`/`k/j`
+  vim keys, and letters/pastes flip the modal to text mode seeded with what was typed.
+  Live-verified end-to-end (`:` → `y` → "esterday" → Enter lands on the Yesterday divider).
+- **Help bar wrapped mid-hint at ≤100 cols (fixed 2026-08-16, PR #99, v1.21.13).** The 14-hint
+  browse bar overflowed the terminal; the hard wrap ate a content row AND desynced Ink's frame
+  bookkeeping, leaving stale status-bar cells visible in the next mode's help row (hexdump-
+  diagnosed: junk chars matched status-bar columns). `overflow="hidden"` on the bar row enforces
+  what the component's comments always claimed; date-jump labels ASCII-fied.
+- **Eviction made older history permanently unreachable (found 2026-08-16, PR #94, v1.21.10).**
   Verifying the never-reached eviction placeholder exposed real data loss: `PREPEND_MESSAGES` kept
   the FETCHED batch's oldest id as the load-older cursor even when bounding evicted the head of
   that batch, so the next page fetched from BELOW the evicted rows — false exhaustion, silent

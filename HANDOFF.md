@@ -523,3 +523,26 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   session — new quick-tunnel URL + port 8890 (8790 taken by browser-tab-mcp), recipient `aisha`
   added, `direct` profile added; Twilio AU1 auth token in 1Password is DEAD (401), gateway runs on
   the US1 credential via env (`twilio-us1-live` item); the gateway process may not survive reboot.
+- 2026-08-16 · Claude · **Post-compact leg: #94–#99 merged, v1.21.10 → v1.21.13 all
+  tarball-verified.** **#94 (v1.21.10)** eviction-cursor data-loss fix landed. **#95** (docs)
+  voice-mcp HANDOFF/plan updated after the life-stack session archived the dead `twilio-au1-*`
+  1Password items and repointed opkeep's templates to `twilio-us1-live`. **#96** cross-session
+  find: opkeep re-keyed its keychain cache service `dotfiles` → `opkeep` on 2026-08-06 and
+  voice-mcp's `EnvKeychainSecretProvider` default was stranded on the old name — every
+  keychain-path launch read a two-week-stale `TWILIO_AUTH_TOKEN` (diagnosed cross-session via
+  keychain mdat timestamps + value hashes; the demo calls were unaffected only because creds were
+  explicit env). Default flipped to `opkeep`; `VOICE_MCP_KEYCHAIN_SERVICE` stays as rollback.
+  **#97 (v1.21.11)** date-jump redesign: new pure `date-picker-model.ts` — the old shift-and-clamp
+  made most values untypeable (year 1999 oscillated 1900↔2100; month 3 → 12); replace-then-append
+  + clamp-on-submit + auto-advance; `h/l`/`k/j` added; letters/pastes flip picker → text mode
+  seeded with what was typed. **#98 (v1.21.12)** unnamed groups (163 in the real DB) titled from
+  members via core `group-name.ts` (slug derivation untouched); ThreadPane header shows `N people`
+  for groups instead of the raw `chat…` id. **#99 (v1.21.13)** help bar overflowed ≤100-col
+  terminals → hard-wrapped mid-hint, ate a content row, and desynced Ink's frame bookkeeping so
+  stale status-bar cells bled into the next mode's help row (hexdump-diagnosed);
+  `overflow="hidden"` on the bar row. Re-swarm probes that came back CLEAN: deep date jump
+  ("1 year ago" → 3075 msgs loaded ~6s, correct landing on first msg ≥ target, RSS ~107MB,
+  `G`/`gg` instant). **Next:** continue the re-swarm (compose/send-via/export/settings paths not
+  yet re-probed this leg; palette; wait_for_changes live behavior), and watch for the
+  mcp-cli-toolkit reply to the robustness upstream brief (delete downstream shutdown-cause/0MB
+  copies if lifted).
