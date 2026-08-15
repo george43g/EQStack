@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.15](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.14...imsg-mcp-v1.21.15) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** analytics printed phone numbers where people belong ([6ac5e31](https://github.com/george43g/EQStack/commit/6ac5e31151870855fa15d48555cfe2387df20181)), closes [#93](https://github.com/george43g/EQStack/issues/93) [#98](https://github.com/george43g/EQStack/issues/98)
+
 ## imsg-mcp [1.21.14](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.13...imsg-mcp-v1.21.14) (2026-08-15)
 
 
