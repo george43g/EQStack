@@ -319,3 +319,73 @@ export function loadSettingsState(): OpenSettingsPayload {
 export function openSettings(dispatch: Dispatch<Action>): void {
   dispatch({ type: "OPEN_SETTINGS", ...loadSettingsState() });
 }
+
+// ── Windowing ──────────────────────────────────────────────────────────
+
+/**
+ * Physical terminal lines row `i` consumes when rendered: +1 for the row
+ * itself, +1/+2 for its section header when it starts a section (the header
+ * carries a marginTop blank line except at the very top), +1 for the hint
+ * line under the selected row. Header visibility depends on the REAL
+ * previous row (the panel compares against `rows[i-1]`, not the previous
+ * visible row), so the cost is window-independent.
+ */
+export function settingsRowLineCost(rows: SettingsRow[], i: number, cursor: number): number {
+  const row = rows[i];
+  const prev = i > 0 ? rows[i - 1] : undefined;
+  const showHeader = !prev || prev.section !== row.section;
+  const headerLines = showHeader ? (i === 0 ? 1 : 2) : 0;
+  const hintLines = i === cursor && row.hint ? 1 : 0;
+  return headerLines + 1 + hintLines;
+}
+
+/**
+ * Choose the visible row slice so the RENDERED LINES fit `bodyLines`.
+ *
+ * The panel previously sliced by row count (`height - chrome` rows), but a
+ * rendered row costs up to 3 lines (section header + row + hint). The
+ * overflow collapsed row boxes to height 0 under yoga flex-shrink and their
+ * text overlaid the next row — reproduced deterministically: "Apple
+ * transcript (instant, free)" collapsed onto "Local tools (hear/yap/
+ * whisper)" leaving a stray "e)" where the longer label peeked past the
+ * shorter one.
+ *
+ * Greedy expansion around the cursor, alternating down/up, so the cursor
+ * stays roughly centered and the window fills the budget exactly.
+ */
+export function computeSettingsWindow(
+  rows: SettingsRow[],
+  cursor: number,
+  bodyLines: number,
+): { start: number; end: number } {
+  if (rows.length === 0) return { start: 0, end: 0 };
+  const c = Math.max(0, Math.min(cursor, rows.length - 1));
+  let start = c;
+  let end = c + 1;
+  let lines = settingsRowLineCost(rows, c, cursor);
+  let canUp = start > 0;
+  let canDown = end < rows.length;
+  while (canUp || canDown) {
+    if (canDown) {
+      const cost = settingsRowLineCost(rows, end, cursor);
+      if (lines + cost <= bodyLines) {
+        lines += cost;
+        end++;
+        canDown = end < rows.length;
+      } else {
+        canDown = false;
+      }
+    }
+    if (canUp) {
+      const cost = settingsRowLineCost(rows, start - 1, cursor);
+      if (lines + cost <= bodyLines) {
+        lines += cost;
+        start--;
+        canUp = start > 0;
+      } else {
+        canUp = false;
+      }
+    }
+  }
+  return { start, end };
+}
