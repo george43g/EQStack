@@ -470,3 +470,33 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
 - Template: `/Users/george/repos/mcp-cli-starter-template`.
 - Analytics research (untracked scratch, George's): `docs/research/RELATIONSHIP_ANALYSIS_RESEARCH_BRIEF.md`,
   `docs/research/deep-research-report.md`, `docs/research/*eval*.md`.
+- 2026-08-16 · Claude · **Correctness + boot cycle (v1.21.4 → v1.21.7), solo continuation of the
+  ITER 14 reliability loop.** Method unchanged and still working: drive the real TUI in tmux against
+  the real DB, measure before claiming, verify the published artifact. Five PRs, all merged:
+  **#87 (v1.21.4)** — MCP `get_messages` advertised `oldestMessageId` as min ROWID while the DB pages
+  on `(date, ROWID)`; in merged threads the cursor pointed at a NEWER message and everything between
+  was skipped, silently, with `hasMore` still true. 6 of 35 full-page threads diverged; worst case
+  193 messages lost in one page turn. Same defect class as #253, which had introduced
+  `oldestMessageCursor()` but migrated only its own call site — `minMessageId` is now **deleted** so
+  it can't be half-applied again. **#88 (v1.21.5)** — TUI painted nothing for ~1.9s on launch
+  (synchronous better-sqlite3 in the mount effect starving Ink's first flush); load deferred one
+  macrotask, which exposed that the boot frame said "No conversations"/"No messages" on an account
+  with thousands of both. **#89** — Escape after filtering hijacked the selection (`UPDATE_FILTER`
+  snaps `selectedIdx` to 0 and `EXIT_FILTER` left it there); info drawer rendered "People: Shara,
+  Shara" (merged legs) and never named group participants. **#90 (v1.21.7)** —
+  `getLastMessageByChat` was `ROW_NUMBER() OVER (PARTITION BY …)` numbering all 408k messages to
+  keep one per chat; replaced with a `MAX(date)` aggregate (SQLite bare-column rule), **1213ms →
+  342ms**, `listConversations` 1808ms → 714ms, verified equivalent on the real DB first. Same PR
+  properly de-flaked the WAL-watcher test that had now broken TWO releases (1.21.3 and the 1.21.5
+  run) — it conflated "is the watch armed?" with "does the debounce coalesce?", so it raced on the
+  first and never tested the second. **#91** — shutdown marker reported a hardcoded `"normal"` for
+  every exit (user quit, SIGTERM, watchdog kill, uncaught exception all identical); startup line
+  never recorded which engine won; watchdog reported 0MB for its first 60s.
+  Boot end-to-end: blank until 3.9s → labelled frame at **2.1s**, data at **3.2s**.
+  **Lessons worth keeping:** (a) a fix that adds a correct helper and leaves the broken one exported
+  will be half-applied — delete it; (b) benchmark before changing — a second candidate optimisation
+  (`getAllChatsWithLastDate`'s correlated subquery → grouped LEFT JOIN) measured 328ms vs 356ms and
+  was dropped; (c) `gh pr checks` can report success while a release run went red — pull tags and
+  diff the published tarball, which is how the 1.21.5 failure was caught. Still open: drawer polish
+  remainder (edit-history border, reaction attribution, unnamed-group ids, `y`-copy toast), the
+  unverified 5000-message eviction placeholder, date-picker key handling.

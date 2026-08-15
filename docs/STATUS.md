@@ -4,7 +4,7 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-08-10 · current release **v1.21.2** (npm; 1.21.3 in flight — chunked-keystroke fan-out)._
+_Last updated 2026-08-16 · current release **v1.21.7** (npm; #91 observability markers in flight)._
 
 > **🖥️ Claude Desktop / distribution / online-MCP:** the `.mcpb type:node` extension crashes in
 > Desktop (Electron has no in-process SQLite); iMessage works there today via a **manual `mcpServers`
@@ -57,6 +57,16 @@ visual-select, merged-thread pagination that stranded tens of thousands of messa
 jump, wheel-scroll render storms, dropped keystrokes on fast scrolling, and — the one that made
 live streaming look broken on every real Mac — a directory watch that macOS silently never delivers
 on the TCC-protected `~/Library/Messages`.
+
+The **correctness + boot cycle (v1.21.4 → v1.21.7, 2026-08-16)** continued the same loop solo,
+driving the TUI in tmux against the real DB. It found that MCP `get_messages` had been handing
+agents a pagination cursor that silently skipped history (§8c — up to 193 messages per page turn),
+that the TUI painted nothing for ~2s on launch and then *lied* with "No conversations", that
+cancelling a filter hijacked the user's selection, that the info drawer listed one person twice
+while never naming a group, and that the single query behind boot was numbering all 408k messages
+in the database to keep one per chat (§8b). Every fix was measured before and after on real data;
+one candidate optimisation was benchmarked, found to be noise, and deliberately dropped. Boot went
+from a blank screen until 3.9s to a labelled frame at 2.1s with data at 3.2s.
 
 ### Shipped in the finalise cycle (v1.6.0 → v1.8.0)
 
@@ -225,26 +235,64 @@ shipped fixes with evidence, clean verdicts, process lessons):
 — untracked, since it cites real thread slugs. Everything below was OBSERVED against the real DB,
 not theorised.
 
-- **~3s blank boot with no indicator (P1 — most user-visible item left).** `listConversations`
-  takes 1.4–1.6s over 5,517 chats and the first frame only paints after it resolves, so the TUI
-  shows nothing at all on launch. Render an immediate frame + spinner, and/or paginate the enrich
-  work so the first screen doesn't wait for the full set.
-- **Drawer polish (P2).** Edit-history header row breaks the drawer's right border; reaction
-  attribution shows a raw handle instead of the resolved contact name; group participants are never
-  itemised anywhere (info drawer shows a count only) and unnamed groups display raw `chat9262…`
+- ~~**~3s blank boot with no indicator (P1)**~~ **done 2026-08-16 (PRs #88 + #90, v1.21.5/1.21.7).**
+  Two separate causes, both measured by capturing the tmux pane every 100ms (A/B/A against the same
+  build to rule out page-cache warmth):
+  1. *Nothing painted.* `better-sqlite3` is synchronous, so the mount effect's DB work blocked the
+     event loop and starved Ink's first flush — **blank 1867–3938ms, first paint 4074ms**. The
+     initial load is now deferred one macrotask so frame one reaches the terminal first. That
+     exposed something worse than blank: the boot frame said *"No conversations"* / *"No messages"*
+     on an account with thousands of both, so `Sidebar`/`ThreadPane` gained a `loading` prop and
+     `StatusBar` now prefers the caller's specific status over its hardcoded `"loading..."`.
+  2. *It was genuinely slow.* `getLastMessageByChat` was `ROW_NUMBER() OVER (PARTITION BY chat_id
+     ORDER BY date DESC)` — it numbered **every message in the database** (408k) to keep one per
+     chat; plan was a full `SCAN m` plus `USE TEMP B-TREE FOR ORDER BY`. Replaced with a `MAX(date)`
+     aggregate (SQLite's bare-column rule returns the whole extreme row in one indexed pass):
+     **1213ms → 342ms**, verified equivalent on the real DB first (0 date mismatches, 0 ties
+     resolved differently). `listConversations` 1808ms → 714ms.
+  Net, end-to-end on a real account: **indicator at 2.1s, data at 3.2s** (was blank until 3.9s,
+  data ~4.3s). Also benchmarked and deliberately NOT changed: `getAllChatsWithLastDate`'s correlated
+  subquery measured 328ms vs 356ms for a grouped LEFT JOIN — inside the noise.
+- **Drawer polish (P2, partially done).** ~~Group participants never itemised; a 1-on-1 thread
+  rendered "People: Shara, Shara"~~ **done 2026-08-16 (PR #89)** — names are deduped by identity
+  (merged legs repeat the same person) and groups now name people instead of showing a bare count.
+  Still open: edit-history header row breaks the drawer's right border; reaction attribution shows a
+  raw handle instead of the resolved contact name; unnamed groups display raw `chat9262…`
   identifiers; `y` copies to the clipboard with no visual confirmation.
-- **Filter-Esc leaves a stale thread pane (P2).** `/` → type → `Esc` resets the sidebar cursor but
-  keeps the previous thread's messages and count under the new selection's name for >1.5s until
-  `j`/`k` recovers — the filter-exit path doesn't trigger the message load a normal selection does.
-- **Observability gaps found by A5 (P3).** The native-engine choice (Rust vs TS fallback) is
-  invisible in logs — only the dev panel shows it; SIGTERM exits log `reason: "normal"` so a
-  supervisor can't distinguish a signal from a user quit; watchdog state reports `rssMb`/`heapMb`
-  as 0 for the first ~60s (5s snapshot cadence vs the 60s memory sampler).
+- ~~**Filter-Esc leaves a stale thread pane (P2)**~~ **done 2026-08-16 (PR #89).** `UPDATE_FILTER`
+  snaps `selectedIdx` to 0 on every keystroke, and `EXIT_FILTER` left that behind and loaded
+  nothing — so cancelling a filter landed on conversation #0 with the previous thread's messages
+  under its name. Escape now restores the pre-filter index and scroll; Enter keeps its committed
+  selection, distinguished by an explicit `restoreSelection` flag rather than by accident.
+- ~~**Observability gaps found by A5 (P3)**~~ **done 2026-08-16 (PR #91).** The startup line now
+  carries `engine`; the shutdown marker reports the recorded cause (`signal:SIGTERM`,
+  `watchdog:rss_exceeded`, `stdin_eof`, …) instead of a hardcoded `"normal"` for every exit; and
+  `readWatchdogState()` fills `rssMb`/`heapMb` from a live reading until the 60s sampler first
+  fires, so a just-started process no longer reports 0MB.
 - **Eviction path unverified (P2).** The 5000-message hard cap's "N older messages evicted"
   placeholder was never reached through any real UI path during the drive — worth a targeted test
   now that the pagination and leak bugs that blocked reaching it are fixed.
 - **Date picker only accepts arrow keys (P3)** — `hjkl` does nothing there, and an unparseable
   free-text date is silently refused with no error shown.
+
+### 8c. MCP correctness — `get_messages` pagination silently skipped history
+**Found + fixed 2026-08-16 (PR #87, v1.21.4).** Not a swarm finding: spotted while reading
+`useImsg.ts` for the boot work, from a stale `minMessageId` import.
+
+`get_messages` advertises `oldestMessageId` and the docs tell agents to feed it back as
+`beforeMessageId`. It was the **minimum ROWID**, but `getMessagesForChat` resolves that id to the
+message's **date** and pages on the composite `(date, ROWID)`. In merged threads (phone + email,
+SMS + iMessage) those orders diverge, so the advertised cursor pointed at a message *newer* than the
+page's true oldest and everything between was skipped — silently, every page turn, with `hasMore`
+still true.
+
+Measured on the real DB: **6 of 35 full-page threads diverged**, worst cases skipping 193 / 147 / 87
+messages in a SINGLE page turn with the cursor date jumping forward two to three years.
+
+**The lesson worth keeping:** this was the same defect as the TUI false-exhaustion fix (#253), which
+introduced `oldestMessageCursor()` but migrated only its own call site and left `minMessageId`
+exported for three others. `minMessageId` is now **deleted** — a fix that adds a correct helper and
+leaves the broken one available is a fix that will be half-applied.
 
 ### 9. Real-time streaming, memory scroll & Messages API-surface (P1–P3)
 Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](../apps/imsg-mcp/docs/plans/realtime-streaming-and-api-surface.md).
