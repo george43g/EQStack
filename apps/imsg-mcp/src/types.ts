@@ -193,6 +193,36 @@ export interface Conversation {
 }
 
 /**
+ * A decoded group-chat system event. chat.db stores these as `message` rows
+ * with `item_type != 0`, which every message query filters out
+ * (`isHiddenSystemItem`) — so renames and membership changes were invisible
+ * everywhere. Decoded via a DEDICATED accessor (`getConversationEvents`) so
+ * default message queries and analytics stay untouched.
+ *
+ * Row shape (verified on the real DB, 2026-08-16): item_type 1 = member
+ * change (`group_action_type` 0 added / 1 removed, affected member in
+ * `other_handle`), 2 = rename (`group_title` holds the new name), 3 = the
+ * actor left the group. item_type 4/5/6 (location sharing, kept audio, …)
+ * are deliberately not decoded here.
+ */
+export interface ConversationEvent {
+  /** message ROWID. */
+  id: number;
+  date: Date;
+  kind: "member_added" | "member_removed" | "renamed" | "left";
+  /** Handle of who performed the action; null when it was the user. */
+  actor: string | null;
+  /** Actor resolved to a contact name (falls back to the handle). */
+  actorName: string | null;
+  /** Affected member's handle (member_added / member_removed only). */
+  target: string | null;
+  /** Target resolved to a contact name (falls back to the handle). */
+  targetName: string | null;
+  /** New group name (renamed only). */
+  newName: string | null;
+}
+
+/**
  * A ranked match for a free-form conversation query (resolve_conversation).
  * Lets an agent turn "check Selena's messages" into a concrete thread in one
  * call, instead of chaining search_contacts → get_contact.

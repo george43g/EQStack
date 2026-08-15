@@ -371,9 +371,14 @@ Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](../apps/ims
   integration test. The watcher now also kqueue-watches `chat.db-wal` itself (re-armed via
   directory entry events across checkpoints) plus an always-on 10s safety poll. Any future
   detection work must keep a primitive that doesn't depend on directory-event delivery.
-- **Group joins / leaves / renames (P2) — real GAP.** `isHiddenSystemItem(item_type!=0)` filters all
-  group-action rows out everywhere. Decode into a typed `ConversationEvent` (member_added/removed,
-  renamed) via a dedicated path (keeps default `item_type=0` message queries + analytics unaffected).
+- **Group joins / leaves / renames (P2) — CORE + DRAWER DONE 2026-08-16.** Typed
+  `ConversationEvent` decode via dedicated `IMessageDB.getConversationEvents` (item_type 1 =
+  member add/remove via `group_action_type` + `other_handle`, 2 = rename via `group_title`,
+  3 = left; names resolved in core; default message queries + analytics untouched — asserted).
+  Surfaced in the TUI info drawer ("Group changes", groups only), real-DB verified. Remaining:
+  inline system rows in the thread pane (touches windowing/cursor math — deliberate follow-up)
+  and an MCP accessor (tool additions ripple through README drift guard — batch with the next
+  tool-surface change).
 - **Rust parser hygiene (P2 privacy / P3 unify).** `native/src/attributed_body.rs` is the persisted
   "simplified initial implementation" (comment: *"A full typedstream binary parser will be added in a
   later phase"*) while TS has a structured `TypedStreamParser` — two strategies for one job.

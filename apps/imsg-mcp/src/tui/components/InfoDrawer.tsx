@@ -1,5 +1,10 @@
 import { Box, Text } from "ink";
-import type { ChatStats, Conversation, ConversationAttachment } from "../../types.js";
+import type {
+  ChatStats,
+  Conversation,
+  ConversationAttachment,
+  ConversationEvent,
+} from "../../types.js";
 import { useTheme } from "../themes/ThemeContext.js";
 
 interface Props {
@@ -7,11 +12,37 @@ interface Props {
   /** Participant handles resolved to contact display names (App.tsx). */
   resolvedNames: string[];
   stats: ChatStats | null;
+  /** Recent group renames/joins/leaves (groups only; empty for DMs). */
+  events?: ConversationEvent[];
   attachments: ConversationAttachment[];
   /** Cursor within `attachments` (j/k). */
   selectedAttachmentIdx: number;
   width: number;
   height: number;
+}
+
+/**
+ * One-line human rendering of a group-system event. First names keep the
+ * narrow drawer readable; the actor falls back to the raw handle, and a
+ * null actor is the user. Exported for tests.
+ */
+export function formatConversationEvent(ev: ConversationEvent): string {
+  const first = (name: string | null, handle: string | null): string => {
+    const label = name ?? handle;
+    if (!label) return "You";
+    return label === handle ? label : (label.trim().split(/\s+/)[0] ?? label);
+  };
+  const actor = ev.actor === null ? "You" : first(ev.actorName, ev.actor);
+  switch (ev.kind) {
+    case "renamed":
+      return `${actor} renamed to “${ev.newName ?? "?"}”`;
+    case "left":
+      return `${actor} left`;
+    case "member_added":
+      return `${actor} added ${first(ev.targetName, ev.target)}`;
+    case "member_removed":
+      return `${actor} removed ${first(ev.targetName, ev.target)}`;
+  }
 }
 
 /**
@@ -69,6 +100,7 @@ export function InfoDrawer({
   conversation,
   resolvedNames,
   stats,
+  events = [],
   attachments,
   selectedAttachmentIdx,
   width,
@@ -159,6 +191,22 @@ export function InfoDrawer({
           </Text>
         </Box>
       </Box>
+
+      {/* Group changes — renames / joins / leaves, newest first. These rows
+          are item_type != 0 system messages that every message view filters
+          out, so this is the ONE place the TUI shows them. */}
+      {events.length > 0 && (
+        <Box flexDirection="column" paddingX={1} marginTop={1} flexShrink={0}>
+          <Text color={theme.info.label} bold>
+            Group changes
+          </Text>
+          {events.map((ev) => (
+            <Text key={ev.id} color={theme.drawer.value} wrap="truncate">
+              {`${shortDate(ev.date)}  ${formatConversationEvent(ev)}`}
+            </Text>
+          ))}
+        </Box>
+      )}
 
       {/* Attachments */}
       <Box flexDirection="column" paddingX={1} marginTop={1} flexGrow={1}>

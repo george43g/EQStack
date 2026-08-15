@@ -1377,7 +1377,11 @@ export function App({ changeBus }: AppProps = {}) {
     try {
       const stats = imsg.getChatStats(selected.chatIdentifier);
       const attachments = imsg.listConversationAttachments(selected.chatIdentifier);
-      dispatch({ type: "OPEN_INFO_DRAWER", stats, attachments });
+      // Group-system events (renames, joins/leaves) exist only for groups.
+      const events = selected.isGroupChat
+        ? imsg.getConversationEvents(selected.chatIdentifier, 6)
+        : [];
+      dispatch({ type: "OPEN_INFO_DRAWER", stats, attachments, events });
     } catch (e) {
       dispatch({
         type: "SET_STATUS",
@@ -1549,6 +1553,7 @@ export function App({ changeBus }: AppProps = {}) {
                 conversation={selected}
                 resolvedNames={resolvedNames}
                 stats={state.infoStats}
+                events={state.infoEvents}
                 attachments={state.infoAttachments}
                 selectedAttachmentIdx={state.infoAttachmentIdx}
                 width={drawerWidth}

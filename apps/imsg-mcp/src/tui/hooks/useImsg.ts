@@ -99,6 +99,12 @@ export function useImsg() {
     [getDb],
   );
 
+  /** Decoded group-system events (renames, joins/leaves) for the info drawer. */
+  const getConversationEvents = useCallback(
+    (chatIdentifier: string, limit = 20) => getDb().getConversationEvents(chatIdentifier, limit),
+    [getDb],
+  );
+
   /** All attachments across every merged leg of a conversation, newest first. */
   const listConversationAttachments = useCallback(
     (chatIdentifier: string) => getDb().listConversationAttachments(chatIdentifier),
@@ -227,6 +233,7 @@ export function useImsg() {
       resolveNames,
       resolveChatLabel,
       getChatStats,
+      getConversationEvents,
       listConversationAttachments,
       send,
       sendToRecipient,
@@ -244,6 +251,7 @@ export function useImsg() {
       resolveNames,
       resolveChatLabel,
       getChatStats,
+      getConversationEvents,
       listConversationAttachments,
       send,
       sendToRecipient,
