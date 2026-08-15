@@ -79,6 +79,7 @@ import type {
   Attachment,
   Conversation,
   ConversationAttachment,
+  ConversationEvent,
   Message,
   Reaction,
   ReplyContext,
@@ -895,6 +896,71 @@ export class IMessageDB {
       first: row.first != null ? macTimestampToDate(row.first) : null,
       last: row.last != null ? macTimestampToDate(row.last) : null,
     };
+  }
+
+  /**
+   * Decoded group-system events (renames, member adds/removes, leaves) for a
+   * conversation, newest first. These live in `message` rows with
+   * `item_type != 0`, which every message query filters out — this is the
+   * dedicated path so default queries and analytics stay untouched.
+   * See `ConversationEvent` in types.ts for the verified row shape.
+   */
+  getConversationEvents(chatIdentifier: string, limit = 20): ConversationEvent[] {
+    const chats = this.resolveChatsForConversation(chatIdentifier);
+    if (chats.length === 0) return [];
+    const placeholders = chats.map(() => "?").join(",");
+    const rows = this.raw
+      .prepare(
+        // GROUP BY m.ROWID: a message can be joined into more than one leg
+        // of a merged identity (same reason getChatStats counts DISTINCT).
+        `SELECT m.ROWID as id, m.date, m.item_type, m.group_action_type,
+                m.group_title, m.is_from_me,
+                ah.id as actor_handle, th.id as target_handle
+         FROM ${Tables.MESSAGE} m
+         JOIN ${Tables.CHAT_MESSAGE_JOIN} j ON j.message_id = m.ROWID
+         LEFT JOIN ${Tables.HANDLE} ah ON ah.ROWID = m.handle_id
+         LEFT JOIN ${Tables.HANDLE} th ON th.ROWID = m.other_handle
+         WHERE j.chat_id IN (${placeholders}) AND m.item_type IN (1, 2, 3)
+         GROUP BY m.ROWID
+         ORDER BY m.date DESC
+         LIMIT ?`,
+      )
+      .all(...chats.map((c) => c.ROWID), limit) as Array<{
+      id: number;
+      date: number;
+      item_type: number;
+      group_action_type: number | null;
+      group_title: string | null;
+      is_from_me: number;
+      actor_handle: string | null;
+      target_handle: string | null;
+    }>;
+
+    const resolve = (h: string | null): string | null => (h ? this.contacts.lookupHandle(h) : null);
+
+    return rows.map((r) => {
+      const kind: ConversationEvent["kind"] =
+        r.item_type === 2
+          ? "renamed"
+          : r.item_type === 3
+            ? "left"
+            : r.group_action_type === 1
+              ? "member_removed"
+              : "member_added";
+      const actor = r.is_from_me ? null : r.actor_handle;
+      const target = r.item_type === 1 ? r.target_handle : null;
+      return {
+        id: r.id,
+        // date is always set on real system rows; epoch fallback keeps the type honest.
+        date: macTimestampToDate(r.date) ?? new Date(0),
+        kind,
+        actor,
+        actorName: resolve(actor),
+        target,
+        targetName: resolve(target),
+        newName: r.item_type === 2 ? r.group_title : null,
+      };
+    });
   }
 
   /**

@@ -237,7 +237,8 @@ export const CORE_COMMANDS: Command[] = [
       if (!conv) return;
       const stats = imsg.getChatStats(conv.chatIdentifier);
       const attachments = imsg.listConversationAttachments(conv.chatIdentifier);
-      dispatch({ type: "OPEN_INFO_DRAWER", stats, attachments });
+      const events = conv.isGroupChat ? imsg.getConversationEvents(conv.chatIdentifier, 6) : [];
+      dispatch({ type: "OPEN_INFO_DRAWER", stats, attachments, events });
     },
   },
   {

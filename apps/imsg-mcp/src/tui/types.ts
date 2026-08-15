@@ -3,6 +3,7 @@ import {
   type ChatStats,
   type Conversation,
   type ConversationAttachment,
+  type ConversationEvent,
   type Message,
   oldestMessageCursor,
   type Reaction,
@@ -73,6 +74,7 @@ export interface AppState {
 
   // Per-thread info/attachment drawer (mode: "info")
   infoStats: ChatStats | null; // message count + date range for the open thread
+  infoEvents: ConversationEvent[]; // recent group renames/joins/leaves (groups only)
   infoAttachments: ConversationAttachment[]; // ALL attachments in the thread (merged legs)
   infoAttachmentIdx: number; // cursor within infoAttachments
 
@@ -150,7 +152,12 @@ export type Action =
   | { type: "OPEN_DRAWER" }
   | { type: "CLOSE_DRAWER" }
   | { type: "SET_DRAWER_ATTACHMENT"; index: number }
-  | { type: "OPEN_INFO_DRAWER"; stats: ChatStats; attachments: ConversationAttachment[] }
+  | {
+      type: "OPEN_INFO_DRAWER";
+      stats: ChatStats;
+      attachments: ConversationAttachment[];
+      events: ConversationEvent[];
+    }
   | { type: "CLOSE_INFO_DRAWER" }
   | { type: "SET_INFO_ATTACHMENT"; index: number }
   | { type: "SET_NUM_BUFFER"; value: string }
@@ -219,6 +226,7 @@ export const initialState: AppState = {
   showDevStats: false,
   drawerAttachmentIdx: 0,
   infoStats: null,
+  infoEvents: [],
   infoAttachments: [],
   infoAttachmentIdx: 0,
   conversationLoadedCount: 0,
@@ -754,6 +762,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         mode: "info",
         infoStats: action.stats,
+        infoEvents: action.events,
         infoAttachments: action.attachments,
         infoAttachmentIdx: 0,
       };
