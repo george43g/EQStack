@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.9](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.8...imsg-mcp-v1.21.9) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** message drawer showed a phone number for who reacted ([7adc634](https://github.com/george43g/EQStack/commit/7adc634e213a25b0bac32c3c1de9c56184fa1ef3))
+
 ## imsg-mcp [1.21.8](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.7...imsg-mcp-v1.21.8) (2026-08-15)
 
 
