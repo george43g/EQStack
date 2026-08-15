@@ -1,6 +1,6 @@
 {
   "name": "imsg-mcp",
-  "version": "1.21.10",
+  "version": "1.21.11",
   "description": "MCP server, CLI, and TUI for reading and sending iMessage / SMS on macOS — lets AI agents text humans, fetch conversation history, and stream-export entire chats. Includes a self-healing watchdog and an optional Rust acceleration module.",
   "type": "module",
   "main": "dist/index.js",

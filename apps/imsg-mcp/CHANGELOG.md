@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.11](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.10...imsg-mcp-v1.21.11) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** date picker was nearly untypeable; letters now reach free-text mode ([c002502](https://github.com/george43g/EQStack/commit/c002502e88c64aa281d127becaf4c95ea2f4feb6))
+
 ## imsg-mcp [1.21.10](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.9...imsg-mcp-v1.21.10) (2026-08-15)
 
 
