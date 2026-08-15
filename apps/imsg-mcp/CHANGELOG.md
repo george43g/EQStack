@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.5](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.4...imsg-mcp-v1.21.5) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** TUI booted to a blank screen for ~2s with no indicator ([18c4ffc](https://github.com/george43g/EQStack/commit/18c4ffcc3a6d3cfc52c91a60c10a8318e51d6e95))
+
 ## imsg-mcp [1.21.4](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.3...imsg-mcp-v1.21.4) (2026-08-15)
 
 
