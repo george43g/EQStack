@@ -31,6 +31,41 @@ import { appendLog } from "./logger.js";
 
 type CleanupFn = () => void | Promise<void>;
 
+/**
+ * Why this process is going down, as learned from the controller's diagnostics.
+ *
+ * Both entry points used to log a hardcoded `logShutdown("normal")`, so every
+ * exit — a user pressing `q`, a SIGTERM from a supervisor, a watchdog self-kill,
+ * an uncaught exception — produced the same final NDJSON marker. Postmortems
+ * could see THAT the process stopped cleanly but never WHY, which is exactly
+ * the question a crash trail exists to answer.
+ */
+let shutdownCause: string | null = null;
+
+/**
+ * The recorded cause, or `"normal"` when nothing signalled one (a clean quit).
+ * Entry points pass this to `logShutdown` instead of a literal.
+ */
+export function getShutdownCause(): string {
+  return shutdownCause ?? "normal";
+}
+
+/**
+ * Record an explicit cause. Used by the watchdog, whose kill reason
+ * (`rss_exceeded`, `event_loop_blocked`, `memory_leak_suspected`,
+ * `idle_restart`) is known to it and not derivable from a signal.
+ * First writer wins: the initiating cause is more informative than any
+ * follow-on event it triggers.
+ */
+export function noteShutdownCause(cause: string): void {
+  if (shutdownCause === null) shutdownCause = cause;
+}
+
+/** @internal test seam */
+export function _resetShutdownCause(): void {
+  shutdownCause = null;
+}
+
 const controller = createShutdownController({
   // imsg policy: log unhandled rejections but DO NOT exit. Pre-fix, a single
   // unhandled rejection in a background task (heartbeat / cache sweeper /
@@ -49,6 +84,21 @@ const controller = createShutdownController({
     // throws mid-shutdown (writeToFile/writeStderrLine swallow), so no
     // try/catch is needed here.
     appendLog(d.level, d.event, d.data);
+
+    // Capture WHY we're going down, for the final `shutdown` marker. The
+    // signal name lives in the diagnostic payload under a couple of possible
+    // keys depending on kit version, so probe rather than assume.
+    if (d.event === "signal_received") {
+      const data = (d.data ?? {}) as Record<string, unknown>;
+      const sig = data.signal ?? data.name ?? data.reason;
+      noteShutdownCause(typeof sig === "string" ? `signal:${sig}` : "signal");
+    } else if (d.event === "uncaught_exception") {
+      noteShutdownCause("uncaught_exception");
+    } else if (d.event === "stdin_eof") {
+      noteShutdownCause("stdin_eof");
+    } else if (d.event === "orphaned") {
+      noteShutdownCause("orphaned");
+    }
   },
 });
 

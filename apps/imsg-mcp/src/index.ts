@@ -128,6 +128,7 @@ import { normalizeForEcho, type SentEcho, SentEchoRegistry } from "./sent-echo-r
 import {
   enableOrphanWatchdog,
   enableStdinEofDetection,
+  getShutdownCause,
   installShutdownHandlers,
   registerCleanup,
   shutdown,
@@ -2174,13 +2175,16 @@ export class IMessageMCPServer {
   async run(): Promise<void> {
     // Install process lifecycle handlers
     installShutdownHandlers();
-    registerCleanup(() => logShutdown("normal"));
+    // Not a literal "normal": the cause is whatever the shutdown controller or
+    // watchdog recorded (signal:SIGTERM, watchdog:rss_exceeded, stdin_eof, …),
+    // falling back to "normal" for a genuine clean exit.
+    registerCleanup(() => logShutdown(getShutdownCause()));
     registerCleanup(() => stopHeapMonitor());
     registerCleanup(() => this.db.close());
     enableStdinEofDetection();
     enableOrphanWatchdog();
     installWatchdog();
-    logStartup("mcp-server");
+    logStartup("mcp-server", { engine: engineLabel() });
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);

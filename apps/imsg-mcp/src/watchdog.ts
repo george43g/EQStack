@@ -27,7 +27,7 @@
 
 import { createWatchdog, isMonotonicallyGrowing } from "@george43g/robustness";
 import { error, info, warn } from "./logger.js";
-import { _controller } from "./shutdown.js";
+import { _controller, noteShutdownCause } from "./shutdown.js";
 
 const controller = createWatchdog({
   envPrefix: "IMSG",
@@ -43,6 +43,19 @@ const controller = createWatchdog({
     if (d.level === "error") error(d.event, d.data);
     else if (d.level === "warn") warn(d.event, d.data);
     else info(d.event, d.data);
+
+    // A watchdog kill is the most informative shutdown cause there is — carry
+    // it into the final `shutdown` marker so a postmortem sees
+    // "shutdown reason=rss_exceeded", not "reason=normal" after a self-kill.
+    if (d.event.startsWith("watchdog_kill")) {
+      const data = (d.data ?? {}) as Record<string, unknown>;
+      const reason = data.reason;
+      noteShutdownCause(
+        typeof reason === "string"
+          ? `watchdog:${reason}`
+          : d.event.replace(/^watchdog_kill:?\s*/, "watchdog:") || "watchdog",
+      );
+    }
   },
 });
 
@@ -55,7 +68,25 @@ export function noteActivity(): void {
 
 /** Read current watchdog state — used by health_check and TUI dev stats. */
 export function readWatchdogState() {
-  return controller.readState();
+  const state = controller.readState();
+  // The memory sampler runs every 60s, but callers poll far faster — the TUI
+  // dev-stats panel every 5s, health_check on demand. Until the first sample
+  // lands the kit reports 0, so a freshly-started process appeared to be using
+  // no memory at all for its first minute: the exact window in which someone
+  // debugging a startup problem is looking. Fill the gap from a live reading;
+  // it costs a `process.memoryUsage()` call and is the same measurement the
+  // sampler takes. (health_check had its own local fallback for this — now
+  // redundant, but harmless, and every other caller gets it too.)
+  if (!state.rssMb || !state.heapMb) {
+    const mem = process.memoryUsage();
+    const round1 = (n: number) => Math.round(n * 10) / 10;
+    return {
+      ...state,
+      rssMb: state.rssMb || round1(mem.rss / 1024 / 1024),
+      heapMb: state.heapMb || round1(mem.heapUsed / 1024 / 1024),
+    };
+  }
+  return state;
 }
 
 /**

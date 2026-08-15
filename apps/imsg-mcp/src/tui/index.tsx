@@ -10,7 +10,8 @@ import {
   startHeapMonitor,
   stopHeapMonitor,
 } from "../logger.js";
-import { installShutdownHandlers, registerCleanup } from "../shutdown.js";
+import { engineLabel } from "../mcp-format.js";
+import { getShutdownCause, installShutdownHandlers, registerCleanup } from "../shutdown.js";
 import { resolveTuiConfig } from "../tui-config.js";
 import { installWatchdog } from "../watchdog.js";
 import { App } from "./App.js";
@@ -113,13 +114,14 @@ export async function runTui(): Promise<void> {
   installWatchdog({ idleRestart: false });
   installCacheSweepers();
   startHeapMonitor();
-  logStartup("tui");
+  logStartup("tui", { engine: engineLabel() });
 
   registerCleanup(() => {
     stopCacheSweepers();
     clearCache();
     stopHeapMonitor();
-    logShutdown("normal");
+    // See the MCP entry point: report the recorded cause, not a literal.
+    logShutdown(getShutdownCause());
   });
 
   // Live change stream: the bus is constructed here (one per TUI process);
