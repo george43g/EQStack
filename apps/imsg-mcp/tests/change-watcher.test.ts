@@ -182,31 +182,47 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
     const batches: (readonly ChangeEvent[])[] = [];
     bus.subscribe((e) => batches.push(e));
 
+    const walPath = join(dir, "chat.db-wal");
     const w = new ChangeWatcher({ dbPath, db, bus, debounceMs: 40, safetyPollMs: 0 });
     w.start();
     expect(w.isPolling()).toBe(false);
 
     push(msg(1), msg(2));
-    // Three rapid WAL touches must coalesce into ONE emitted batch via the
-    // debounce. With the dir watch AND the wal file watch both live, a
-    // straggling event may schedule one extra EMPTY drain after the first —
-    // harmless (no rows past the cursor). The invariant is no duplicate
-    // EMISSIONS, not a single read.
-    writeFileSync(join(dir, "chat.db-wal"), "a");
-    writeFileSync(join(dir, "chat.db-wal"), "ab");
-    writeFileSync(join(dir, "chat.db-wal"), "abc");
 
-    await vi.waitFor(
-      () => {
-        expect(batches).toHaveLength(1);
-      },
-      { timeout: 3_000 },
-    );
+    // ── Phase 1: get the watch demonstrably armed ────────────────────────────
+    // fs.watch arms ASYNCHRONOUSLY (kqueue on macOS, inotify on Linux). A single
+    // burst fired in the same tick as start() can land entirely before the watch
+    // is live, and with the safety poll disabled (safetyPollMs: 0) nothing would
+    // ever drain — the test then fails with "expected [] to have a length of 1".
+    // That race cost two releases (1.21.3, and again on the 1.21.5 run), so the
+    // trigger retries instead of firing once. Later rounds are harmless: the
+    // first drain consumes both rows, and subsequent drains find nothing past
+    // the cursor, so they read but never emit.
+    let n = 0;
+    const deadline = Date.now() + 10_000;
+    while (batches.length === 0 && Date.now() < deadline) {
+      writeFileSync(walPath, "a".repeat(++n));
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    expect(batches).toHaveLength(1);
     expect(batches[0]).toHaveLength(2);
-    expect(reads()).toBeLessThanOrEqual(2);
+
     await new Promise((r) => setTimeout(r, 150)); // let any straggler drain settle
-    const settledReads = reads();
+    let settledReads = reads();
     expect(batches).toHaveLength(1); // still exactly one emission
+
+    // ── Phase 2: NOW test debounce coalescing ───────────────────────────────
+    // The watch is provably live (phase 1 observed an event through it), so a
+    // rapid burst here is a real test of the debounce rather than a race with
+    // arming: three touches inside one 40ms window must collapse to at most one
+    // drain, and must not emit again (no rows past the cursor).
+    writeFileSync(walPath, "coalesce-1");
+    writeFileSync(walPath, "coalesce-2");
+    writeFileSync(walPath, "coalesce-3");
+    await new Promise((r) => setTimeout(r, 250));
+    expect(reads() - settledReads).toBeLessThanOrEqual(1);
+    expect(batches).toHaveLength(1);
+    settledReads = reads();
 
     // Unrelated files in the directory do not trigger drains.
     writeFileSync(join(dir, "unrelated.txt"), "x");

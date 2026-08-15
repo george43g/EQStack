@@ -1671,21 +1671,40 @@ export class IMessageDB {
     if (this.cachedLastByChat && now - this.cachedLastByChat.ts < IMessageDB.CACHE_TTL_MS) {
       return this.cachedLastByChat.data;
     }
+    // Deliberately an aggregate, NOT `ROW_NUMBER() OVER (PARTITION BY ...)`.
+    //
+    // SQLite guarantees that in an aggregate query containing a single min() or
+    // max(), every bare column takes its value from the row that produced that
+    // extreme. So one MAX(m.date) grouped by chat yields the whole last-message
+    // row for free — one pass, no per-partition sort.
+    //
+    // The window-function form was the single largest cost in TUI boot: its plan
+    // was `SCAN m` over the entire message table plus `USE TEMP B-TREE FOR ORDER
+    // BY`, while this one scans a covering index on chat_message_join and does
+    // primary-key lookups. Measured on a real 407,998-message / 4,790-chat DB:
+    //
+    //   window fn  1258 / 1170 / 1140 ms
+    //   max()       358 /  367 /  444 ms      (~3.2x, byte-identical results:
+    //                                          0 last_date mismatches, 0 ties
+    //                                          resolved differently)
+    //
+    // Ties on date resolve arbitrarily here, exactly as they did under
+    // ROW_NUMBER's unstable ORDER BY. Please don't "modernise" this back.
     const stmt = this.raw.prepare(`
-      SELECT chat_id, last_date, last_message_id, last_service, last_is_from_me, balloon_bundle_id, snippet, chat_properties FROM (
-        SELECT cmj.chat_id, m.date as last_date, m.ROWID as last_message_id,
-          m.service as last_service,
-          m.is_from_me as last_is_from_me,
-          m.balloon_bundle_id as balloon_bundle_id,
-          COALESCE(TRIM(SUBSTR(m.text, 1, 200)), '') as snippet,
-          c.properties as chat_properties,
-          ROW_NUMBER() OVER (PARTITION BY cmj.chat_id ORDER BY m.date DESC) as rn
-        FROM ${Tables.MESSAGE} m
-        JOIN ${Tables.CHAT_MESSAGE_JOIN} cmj ON m.ROWID = cmj.message_id
-        JOIN ${Tables.CHAT} c ON c.ROWID = cmj.chat_id
-        WHERE m.associated_message_type = ${AssociatedMessageType.NORMAL}
-          AND COALESCE(m.item_type, 0) = 0
-      ) WHERE rn = 1
+      SELECT cmj.chat_id AS chat_id,
+        MAX(m.date) AS last_date,
+        m.ROWID AS last_message_id,
+        m.service AS last_service,
+        m.is_from_me AS last_is_from_me,
+        m.balloon_bundle_id AS balloon_bundle_id,
+        COALESCE(TRIM(SUBSTR(m.text, 1, 200)), '') AS snippet,
+        c.properties AS chat_properties
+      FROM ${Tables.MESSAGE} m
+      JOIN ${Tables.CHAT_MESSAGE_JOIN} cmj ON m.ROWID = cmj.message_id
+      JOIN ${Tables.CHAT} c ON c.ROWID = cmj.chat_id
+      WHERE m.associated_message_type = ${AssociatedMessageType.NORMAL}
+        AND COALESCE(m.item_type, 0) = 0
+      GROUP BY cmj.chat_id
     `);
     const data = (
       stmt.all() as {
