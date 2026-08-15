@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.6](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.5...imsg-mcp-v1.21.6) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** Escape after filtering hijacked the selection; drawer duplicated people ([fb5c895](https://github.com/george43g/EQStack/commit/fb5c895870d2343b2c6d0f9fb628f11144a5330d)), closes [#0](https://github.com/george43g/EQStack/issues/0)
+
 ## imsg-mcp [1.21.5](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.4...imsg-mcp-v1.21.5) (2026-08-15)
 
 
