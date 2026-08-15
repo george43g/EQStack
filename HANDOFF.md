@@ -546,3 +546,22 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   yet re-probed this leg; palette; wait_for_changes live behavior), and watch for the
   mcp-cli-toolkit reply to the robustness upstream brief (delete downstream shutdown-cause/0MB
   copies if lifted).
+- 2026-08-16 · Claude · **Re-swarm leg 2: #100–#104 merged, v1.21.14 → v1.21.17 verified.** The
+  probe wave after v1.21.13 surfaced a whole bug FAMILY: a yoga-shrunk Ink Box collapses to height
+  0 but still paints its text over the next row. Three members fixed: **#101 (v1.21.14)** settings
+  panel windowed by row count while rows cost up to 3 rendered lines → rows collapsed and overlaid
+  (pure `computeSettingsWindow` slices by lines; flexShrink=0 on rows); **#103 (v1.21.16)**
+  StatusBar collapsed when modals made the root column taller than the terminal, bleeding its text
+  into the help row's gaps (hexdump-diagnosed as IN Ink's emitted line — a clear-on-resize
+  experiment was tried and REVERTED once it proved the stale-cell theory wrong; StatusBar pins its
+  root, HelpBar's pin is a wrapper at the App usage site because a pin on the bar's own root acts
+  on the parent's axis and would undo #99's width clipping); plus **#102 (v1.21.15)** analytics
+  printed raw phone numbers/chat-ids across all four frontends — dispatchAnalytic now takes a
+  resolver (db.resolveChatLabel, memoized; groups via #98's synthesis) attaching `contactName`
+  while keeping the raw key for agents; and **#104 (v1.21.17)** palette titles truncated mid-word
+  next to long descriptions (title pinned, description absorbs). Clean probes: deep date jump
+  (3075 msgs ~6s), compose guard, send-via, export-to-custom-path, settings under live resize;
+  palette nav entries are documented no-ops; transient 422MB RSS spike logged (flat on repetition,
+  heap 0.2% — not chased). Suite 1093 → 1117. Ops note: one CI flake family remains — voice-mcp's
+  gateway.integration.test.ts WS-timing ("call has no live session" + afterAll hook timeout), hit
+  once on #102 build-test, rerun-green; de-flake if it recurs.

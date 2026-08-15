@@ -281,6 +281,34 @@ not theorised.
   bookkeeping, leaving stale status-bar cells visible in the next mode's help row (hexdump-
   diagnosed: junk chars matched status-bar columns). `overflow="hidden"` on the bar row enforces
   what the component's comments always claimed; date-jump labels ASCII-fied.
+- **The "height-0 box still paints" family (fixed 2026-08-16, PRs #101 + #103, v1.21.14/16).**
+  A yoga-shrunk Ink Box collapses to height 0 but STILL PAINTS its text, overlaying the next row.
+  Bitten three times in one day: (1) #99's help-bar wrap, (2) **#101** the settings panel windowed
+  by ROW COUNT while rows cost up to 3 rendered LINES (section header + row + selected-row hint) —
+  rows collapsed and overlaid ("…whisper)e)" was the collapsed label's tail peeking past the next
+  row's shorter label); pure `computeSettingsWindow` now slices by rendered lines; (3) **#103** the
+  1-line StatusBar collapsed when modals made the root column taller than the terminal, bleeding
+  "Ai**s**ha"/"iM**e**ssage" fragments into the help row's gap cells at some geometries — StatusBar
+  pins its own root; the HelpBar's vertical pin is a wrapper at the App usage site (a pin on the
+  bar's OWN root acts on the parent's axis and would block horizontal shrink, undoing #99).
+  Rule of thumb now encoded in tests: every 1-line bar and every modal root carries `flexShrink={0}`;
+  only the body absorbs modal-induced squeeze.
+- **Analytics printed phone numbers where people belong (fixed 2026-08-16, PR #102, v1.21.15).**
+  Same class as #93's reaction attribution, one layer down: every contact-listing analytic printed
+  the raw bucket key across TUI/CLI/console/MCP. `dispatchAnalytic` takes an optional resolver
+  (`IMessageDB.resolveChatLabel`, memoized: handles via contacts DB, group ids via #98's synthesis)
+  and attaches `contactName`; the raw key stays for agents. `relationship_leaderboard` untouched
+  (already name-keyed to merge phone+email legs). Live: "Shara / Dad / Aisha / Vegas Kittens…".
+- **Palette titles truncated mid-word next to long descriptions (fixed 2026-08-16, PR #104,
+  v1.21.17).** Title and description were flex-shrink siblings; the title is now pinned and the
+  description alone absorbs the squeeze ("Copy thread s" → "Copy thread slug").
+- **Probes that came back clean (2026-08-16 re-swarm):** deep date jump (3075 msgs in ~6s, correct
+  landing, `G`/`gg` instant after the prepend), compose input guard (nav chars type as text),
+  send-via modal, export end-to-end to a custom path, settings resize (74×18 → clean), palette
+  navigation entries are DOCUMENTED no-ops (keymap.ts — the palette doubles as a keybinding
+  reference; not a bug). One observation, not chased: a transient RSS spike to ~422MB during
+  export+palette use that stays flat on repetition with heap at 0.2% — the "RSS lies in both
+  directions" pattern; revisit only if it grows per-iteration.
 - **Eviction made older history permanently unreachable (found 2026-08-16, PR #94, v1.21.10).**
   Verifying the never-reached eviction placeholder exposed real data loss: `PREPEND_MESSAGES` kept
   the FETCHED batch's oldest id as the load-older cursor even when bounding evicted the head of
