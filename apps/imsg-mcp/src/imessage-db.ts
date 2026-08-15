@@ -70,6 +70,7 @@ import {
 } from "./db-schema.js";
 import { extractEditHistory } from "./edit-history.js";
 import { fuzzyScore } from "./fuzzy.js";
+import { synthesizeGroupName } from "./group-name.js";
 import { perf } from "./logger.js";
 import { extractChatSummaryText, isUnsentMessage } from "./plist-text.js";
 import { type SlugRecord, SlugStore } from "./slug-store.js";
@@ -1029,6 +1030,11 @@ export class IMessageDB {
       }
 
       const participants = isGroup ? this.fetchChatParticipants(chat.ROWID) : [rawIdentifier];
+      // Unnamed group: title it from its members like Messages.app does,
+      // instead of letting every frontend fall back to "chat926244..".
+      if (!displayName && isGroup) {
+        displayName = synthesizeGroupName(participants, (h) => this.contacts.lookupHandle(h));
+      }
       const mergeKey = this.getConversationMergeKey(rawIdentifier, chat.guid, isGroup);
       // Cold start: single-shot CLI runs exit before the background slug sync
       // persists, so the store lookup misses. Compute + persist the canonical
@@ -1109,6 +1115,11 @@ export class IMessageDB {
       const resolved = this.contacts.lookupHandle(rawIdentifier);
       displayName = resolved !== rawIdentifier ? resolved : null;
     }
+    const participants = isGroup ? this.fetchChatParticipants(found.ROWID) : [rawIdentifier];
+    // Unnamed group: synthesize a member-based title (same as listConversations).
+    if (!displayName && isGroup) {
+      displayName = synthesizeGroupName(participants, (h) => this.contacts.lookupHandle(h));
+    }
 
     const slug = this.getSlugForChatGuid(found.guid) ?? this.syncSlugForChat(found);
     // Identity-canonical service (prefer iMessage) — matches the slug + send route.
@@ -1119,7 +1130,7 @@ export class IMessageDB {
       chatIdentifier: rawIdentifier,
       displayName: displayName || null,
       rawIdentifier,
-      participants: isGroup ? this.fetchChatParticipants(found.ROWID) : [rawIdentifier],
+      participants,
       lastMessageDate: null,
       lastMessageSnippet: null,
       unreadCount: 0,
