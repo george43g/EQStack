@@ -10,6 +10,13 @@ interface Props {
   height: number;
   /** Which attachment j/k has selected (only meaningful when >1). */
   selectedAttachmentIdx?: number;
+  /**
+   * handle → contact name, for reaction attribution. The drawer used to print
+   * the raw `fromHandle`, so "who reacted" read as `+61423793080` — the one
+   * place in the UI that still showed a phone number instead of a person.
+   * Resolved in App (memoized per message) because name lookup needs the DB.
+   */
+  reactionNames?: Record<string, string>;
 }
 
 function formatFullDate(date: Date): string {
@@ -41,7 +48,13 @@ function Label({ children }: { children: string }) {
   );
 }
 
-export function MessageDrawer({ message: m, width, height, selectedAttachmentIdx = 0 }: Props) {
+export function MessageDrawer({
+  message: m,
+  width,
+  height,
+  selectedAttachmentIdx = 0,
+  reactionNames = {},
+}: Props) {
   const theme = useTheme();
   const hasAttachments = m.attachments && m.attachments.length > 0;
   const multiAttachment = (m.attachments?.length ?? 0) > 1;
@@ -157,7 +170,10 @@ export function MessageDrawer({ message: m, width, height, selectedAttachmentIdx
                   paddingLeft={1}
                 >
                   <Text color={theme.drawer.value}>
-                    {r.emoji ?? TAPBACK_EMOJI[r.type] ?? r.type} {r.fromHandle ?? "unknown"}
+                    {r.emoji ?? TAPBACK_EMOJI[r.type] ?? r.type}{" "}
+                    {(r.fromHandle ? reactionNames[r.fromHandle] : undefined) ??
+                      r.fromHandle ??
+                      "unknown"}
                   </Text>
                 </Box>
               ))}
