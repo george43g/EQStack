@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.13](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.12...imsg-mcp-v1.21.13) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** help bar wrapped mid-hint at narrow widths, corrupting the frame ([2101c2c](https://github.com/george43g/EQStack/commit/2101c2c8528c58890a83b0e52a548bcf7da02595))
+
 ## imsg-mcp [1.21.12](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.11...imsg-mcp-v1.21.12) (2026-08-15)
 
 
