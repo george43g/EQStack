@@ -4,7 +4,8 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-08-16 · current release **v1.21.7** (npm; #91 observability markers in flight)._
+_Last updated 2026-08-16 · current release **v1.21.9** (npm; #94 eviction-cursor fix in flight —
+merge when green)._
 
 > **🖥️ Claude Desktop / distribution / online-MCP:** the `.mcpb type:node` extension crashes in
 > Desktop (Electron has no in-process SQLite); iMessage works there today via a **manual `mcpServers`
@@ -253,12 +254,23 @@ not theorised.
   Net, end-to-end on a real account: **indicator at 2.1s, data at 3.2s** (was blank until 3.9s,
   data ~4.3s). Also benchmarked and deliberately NOT changed: `getAllChatsWithLastDate`'s correlated
   subquery measured 328ms vs 356ms for a grouped LEFT JOIN — inside the noise.
-- **Drawer polish (P2, partially done).** ~~Group participants never itemised; a 1-on-1 thread
+- **Drawer polish (P2, mostly done).** ~~Group participants never itemised; a 1-on-1 thread
   rendered "People: Shara, Shara"~~ **done 2026-08-16 (PR #89)** — names are deduped by identity
   (merged legs repeat the same person) and groups now name people instead of showing a bare count.
-  Still open: edit-history header row breaks the drawer's right border; reaction attribution shows a
-  raw handle instead of the resolved contact name; unnamed groups display raw `chat9262…`
-  identifiers; `y` copies to the clipboard with no visual confirmation.
+  ~~Reaction attribution shows a raw handle~~ **done 2026-08-16 (PR #93, v1.21.9)** — App resolves
+  reactors via a memoized `reactionNames` map ("❤️ Isabella", verified live). Two items closed as
+  NOT bugs (2026-08-16, see PR #93): the `y`-copy-has-no-confirmation claim is wrong — all four
+  copy paths already toast a status; and the edit-history-breaks-the-border claim does not
+  reproduce (probed widths 24–60, 12 versions, retracted parts, unbroken 140-char token, CJK,
+  emoji — no rendered line ever exceeded the pane width). Still open: unnamed groups display raw
+  `chat9262…` identifiers.
+- **Eviction made older history permanently unreachable (found 2026-08-16, PR #94 in flight).**
+  Verifying the never-reached eviction placeholder exposed real data loss: `PREPEND_MESSAGES` kept
+  the FETCHED batch's oldest id as the load-older cursor even when bounding evicted the head of
+  that batch, so the next page fetched from BELOW the evicted rows — false exhaustion, silent
+  permanent hole, the documented lazy-reload promise broken exactly where eviction applies. Fixed by
+  recomputing the cursor from survivors (only when eviction dropped rows; `-1` sentinel preserved).
+  Plus first-ever render coverage for the gap placeholder.
 - ~~**Filter-Esc leaves a stale thread pane (P2)**~~ **done 2026-08-16 (PR #89).** `UPDATE_FILTER`
   snaps `selectedIdx` to 0 on every keystroke, and `EXIT_FILTER` left that behind and loaded
   nothing — so cancelling a filter landed on conversation #0 with the previous thread's messages

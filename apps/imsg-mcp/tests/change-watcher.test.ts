@@ -214,13 +214,16 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
     // ── Phase 2: NOW test debounce coalescing ───────────────────────────────
     // The watch is provably live (phase 1 observed an event through it), so a
     // rapid burst here is a real test of the debounce rather than a race with
-    // arming: three touches inside one 40ms window must collapse to at most one
-    // drain, and must not emit again (no rows past the cursor).
+    // arming. The invariant is no duplicate EMISSIONS, not a single read: the
+    // directory watch and the wal-file watch are independent legs, and each may
+    // schedule one (empty) drain for the burst — CI showed 2 where a laptop
+    // shows 1. Three touches in one 40ms window must therefore cost at most one
+    // drain PER LEG, and must not emit (no rows past the cursor).
     writeFileSync(walPath, "coalesce-1");
     writeFileSync(walPath, "coalesce-2");
     writeFileSync(walPath, "coalesce-3");
     await new Promise((r) => setTimeout(r, 250));
-    expect(reads() - settledReads).toBeLessThanOrEqual(1);
+    expect(reads() - settledReads).toBeLessThanOrEqual(2);
     expect(batches).toHaveLength(1);
     settledReads = reads();
 
