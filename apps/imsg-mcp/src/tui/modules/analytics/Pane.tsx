@@ -108,7 +108,7 @@ export function AnalyticsPane({
     const handle = setTimeout(() => {
       if (cancelled) return;
       try {
-        const { data } = dispatchAnalytic(state.type, messages);
+        const { data } = dispatchAnalytic(state.type, messages, imsg.resolveChatLabel);
         setResult({ data });
         setError(null);
       } catch (e) {
@@ -121,7 +121,7 @@ export function AnalyticsPane({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [messages, state.type]);
+  }, [messages, state.type, imsg.resolveChatLabel]);
 
   // Keyboard: Tab cycles analytic type, [/] cycles range, Esc closes.
   useInput(
@@ -293,7 +293,7 @@ function StreaksView({ rows, height }: { rows: StreakResult[]; height: number })
       </Box>
       {visible.map((r) => (
         <Box key={r.contact}>
-          <Text wrap="truncate">{trunc(r.contact, 27).padEnd(28)}</Text>
+          <Text wrap="truncate">{trunc(r.contactName ?? r.contact, 27).padEnd(28)}</Text>
           <Text color={theme.status.accent}>{`${r.longestStreakDays}d`.padStart(10)}</Text>
           <Text>{`${r.currentStreakDays}d`.padStart(10)}</Text>
           <Text color={theme.help.desc}>
@@ -319,7 +319,7 @@ function DoubleTextsView({ rows, height }: { rows: DoubleTextResult[]; height: n
       </Box>
       {visible.map((r) => (
         <Box key={r.contact}>
-          <Text wrap="truncate">{trunc(r.contact, 27).padEnd(28)}</Text>
+          <Text wrap="truncate">{trunc(r.contactName ?? r.contact, 27).padEnd(28)}</Text>
           <Text color={theme.status.accent}>{String(r.doubleTextsFromMe).padStart(10)}</Text>
           <Text>{String(r.doubleTextsFromThem).padStart(12)}</Text>
         </Box>
@@ -343,7 +343,7 @@ function ResponseTimesView({ rows, height }: { rows: ResponseTimeStats[]; height
       </Box>
       {visible.map((r) => (
         <Box key={r.contact}>
-          <Text wrap="truncate">{trunc(r.contact, 27).padEnd(28)}</Text>
+          <Text wrap="truncate">{trunc(r.contactName ?? r.contact, 27).padEnd(28)}</Text>
           <Text>{String(r.count).padStart(8)}</Text>
           <Text color={theme.status.accent}>{formatDuration(r.medianMs).padStart(12)}</Text>
           <Text>{formatDuration(r.p95Ms).padStart(12)}</Text>
@@ -432,7 +432,7 @@ function TapbacksView({ rows, height }: { rows: TapbackResult[]; height: number 
       </Box>
       {visible.map((r) => (
         <Box key={r.contact}>
-          <Text wrap="truncate">{trunc(r.contact, 27).padEnd(28)}</Text>
+          <Text wrap="truncate">{trunc(r.contactName ?? r.contact, 27).padEnd(28)}</Text>
           <Text>{String(r.heart).padStart(4)}</Text>
           <Text>{String(r.thumbsUp).padStart(4)}</Text>
           <Text>{String(r.thumbsDown).padStart(4)}</Text>

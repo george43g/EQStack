@@ -2108,6 +2108,36 @@ export class IMessageDB {
     return handles.map((h) => this.contacts.lookupHandle(h));
   }
 
+  private chatLabelCache = new Map<string, string>();
+
+  /**
+   * Human label for an analytics bucket key: a bare handle (DM) resolves via
+   * the contacts DB; a `chat…` group id resolves to the group's display_name
+   * or a synthesized member-based title (same rules as listConversations).
+   * Falls back to the key itself. Memoized per instance — analytics call this
+   * once per distinct conversation, but across all seven analytic types.
+   */
+  resolveChatLabel(key: string): string {
+    const cached = this.chatLabelCache.get(key);
+    if (cached !== undefined) return cached;
+    let label = key;
+    if (isGroupChatIdentifier(key)) {
+      const chat = this.getAllChatsWithLastDate().find((c) => c.chat_identifier === key);
+      if (chat) {
+        label =
+          chat.display_name ||
+          synthesizeGroupName(this.fetchChatParticipants(chat.ROWID), (h) =>
+            this.contacts.lookupHandle(h),
+          ) ||
+          key;
+      }
+    } else {
+      label = this.contacts.lookupHandle(key);
+    }
+    this.chatLabelCache.set(key, label);
+    return label;
+  }
+
   /**
    * Close database connections
    */

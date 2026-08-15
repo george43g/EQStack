@@ -40,6 +40,8 @@ function byDate(a: Message, b: Message): number {
 
 export interface StreakResult {
   contact: string;
+  /** Resolved human label (contact/group name); present only when it differs from `contact`. */
+  contactName?: string;
   longestStreakDays: number;
   longestStreakStart: string | null;
   longestStreakEnd: string | null;
@@ -109,6 +111,7 @@ export function computeStreaks(messages: Message[]): StreakResult[] {
 
 export interface DoubleTextResult {
   contact: string;
+  contactName?: string;
   doubleTextsFromMe: number;
   doubleTextsFromThem: number;
 }
@@ -157,6 +160,7 @@ export function computeDoubleTexts(messages: Message[]): DoubleTextResult[] {
 
 export interface ResponseTimeStats {
   contact: string;
+  contactName?: string;
   count: number;
   medianMs: number;
   p95Ms: number;
@@ -232,6 +236,7 @@ export function computeHeatmap(messages: Message[]): HeatmapResult {
 
 export interface TapbackResult {
   contact: string;
+  contactName?: string;
   heart: number;
   thumbsUp: number;
   thumbsDown: number;
@@ -298,10 +303,17 @@ export interface WrappedResult {
   totalSent: number;
   totalReceived: number;
   totalReactions: number;
-  topContacts: Array<{ contact: string; sent: number; received: number; total: number }>;
+  topContacts: Array<{
+    contact: string;
+    contactName?: string;
+    sent: number;
+    received: number;
+    total: number;
+  }>;
   peakDay: { date: string; count: number } | null;
   longestStreakDays: number;
   longestStreakContact: string | null;
+  longestStreakContactName?: string;
 }
 
 export function computeWrapped(messages: Message[]): WrappedResult {
@@ -563,26 +575,60 @@ export const ANALYTIC_INFO: Record<
   },
 };
 
+/**
+ * Resolves a `contact` bucket key (bare handle for DMs, `chat…` id for
+ * groups) to a human label. Supplied by the DB layer; analytics stays pure.
+ */
+export type ContactResolver = (chatKey: string) => string;
+
+/** Attach `contactName` where the resolver produced something better than the raw key. */
+function withNames<T extends { contact: string }>(rows: T[], resolve?: ContactResolver): T[] {
+  if (!resolve) return rows;
+  return rows.map((r) => {
+    const name = resolve(r.contact);
+    return name && name !== r.contact ? { ...r, contactName: name } : r;
+  });
+}
+
 export function dispatchAnalytic(
   type: AnalyticType,
   messages: Message[],
+  resolve?: ContactResolver,
 ): {
   type: AnalyticType;
   data: unknown;
 } {
+  // Every contact-listing analytic printed the raw bucket key (phone number
+  // or `chat…` id) in TUI/CLI/MCP output — the same "handle where a person
+  // belongs" bug class as the drawer reaction fix. The optional resolver
+  // adds `contactName` so renderers can show people; the raw key stays for
+  // agents that need the identifier. `relationship_leaderboard` already
+  // self-resolves (it keys by display name to merge phone+email legs).
   switch (type) {
     case "messaging_streaks":
-      return { type, data: computeStreaks(messages) };
+      return { type, data: withNames(computeStreaks(messages), resolve) };
     case "double_texts":
-      return { type, data: computeDoubleTexts(messages) };
+      return { type, data: withNames(computeDoubleTexts(messages), resolve) };
     case "response_time_stats":
-      return { type, data: computeResponseTimes(messages) };
+      return { type, data: withNames(computeResponseTimes(messages), resolve) };
     case "daily_heatmap":
       return { type, data: computeHeatmap(messages) };
     case "tapback_summary":
-      return { type, data: computeTapbacks(messages) };
-    case "year_in_review_wrapped":
-      return { type, data: computeWrapped(messages) };
+      return { type, data: withNames(computeTapbacks(messages), resolve) };
+    case "year_in_review_wrapped": {
+      const w = computeWrapped(messages);
+      if (!resolve) return { type, data: w };
+      const streakName = w.longestStreakContact ? resolve(w.longestStreakContact) : null;
+      return {
+        type,
+        data: {
+          ...w,
+          topContacts: withNames(w.topContacts, resolve),
+          longestStreakContactName:
+            streakName && streakName !== w.longestStreakContact ? streakName : undefined,
+        },
+      };
+    }
     case "relationship_leaderboard":
       return { type, data: computeRelationshipLeaderboard(messages) };
   }

@@ -2156,7 +2156,7 @@ export class IMessageMCPServer {
     }
 
     const messages = await this.db.getMessagesInWindow(cutoffMs);
-    const result = dispatchAnalytic(type, messages);
+    const result = dispatchAnalytic(type, messages, (key) => this.db.resolveChatLabel(key));
     const computedAtIso = new Date().toISOString();
     storeCache(type, cacheArgs, maxRowId, result.data);
 
