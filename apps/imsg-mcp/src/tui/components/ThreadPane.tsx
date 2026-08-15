@@ -206,11 +206,19 @@ export function ThreadPane({
         </Box>
         {conversation && (
           <Box gap={1} flexShrink={0}>
-            {conversation.displayName && (
-              <Text color={theme.info.label} wrap="truncate">
-                {conversation.rawIdentifier}
-              </Text>
-            )}
+            {conversation.displayName &&
+              (conversation.isGroupChat ? (
+                // A group's raw identifier is an opaque "chat926244.." id —
+                // noise where a 1:1 thread's phone/email is information.
+                // Show the member count instead.
+                <Text color={theme.info.label} wrap="truncate">
+                  {`${conversation.participants.length} people`}
+                </Text>
+              ) : (
+                <Text color={theme.info.label} wrap="truncate">
+                  {conversation.rawIdentifier}
+                </Text>
+              ))}
             <Text color={conversation.serviceType === "SMS" ? theme.sms : theme.info.label}>
               {conversation.serviceType}
             </Text>
