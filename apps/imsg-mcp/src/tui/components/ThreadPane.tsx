@@ -31,6 +31,9 @@ interface Props {
   mode: Mode;
   onChangeCompose: (text: string) => void;
   onSubmitCompose: (text: string) => void;
+  /** True while the initial load is in flight — distinguishes "still fetching"
+   *  from a genuinely empty thread on the boot frame. */
+  loading?: boolean;
 }
 
 export function ThreadPane({
@@ -48,6 +51,7 @@ export function ThreadPane({
   mode,
   onChangeCompose,
   onSubmitCompose,
+  loading,
 }: Props) {
   const theme = useTheme();
   const isGroup = conversation?.isGroupChat ?? false;
@@ -219,7 +223,9 @@ export function ThreadPane({
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         {messages.length === 0 && pending.length === 0 ? (
           <Box paddingX={1}>
-            <Text color={theme.sidebar.snippet}>No messages</Text>
+            <Text color={theme.sidebar.snippet}>
+              {loading && !conversation ? "Loading…" : "No messages"}
+            </Text>
           </Box>
         ) : (
           <>

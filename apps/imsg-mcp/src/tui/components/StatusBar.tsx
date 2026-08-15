@@ -38,7 +38,11 @@ export function StatusBar({ totalUnread, selected, status, loading, children }: 
       <Box gap={2} flexShrink={1} overflow="hidden">
         {children}
         <Text color={theme.status.fg} wrap="truncate">
-          {loading ? "loading..." : status}
+          {/* Prefer the specific status ("Loading conversations…", "Refreshing…")
+              over the generic word — the caller went to the trouble of saying
+              what it was doing, and on boot that line is the only thing on
+              screen worth reading. */}
+          {loading ? status || "loading..." : status}
         </Text>
       </Box>
     </Box>

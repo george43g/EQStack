@@ -21,6 +21,10 @@ interface Props {
   focused: boolean;
   width: number;
   height: number;
+  /** True while the initial conversation load is still in flight. Without it
+   *  the boot frame claims "No conversations" — a confident lie on an account
+   *  with thousands of them (see App's deferred initial load). */
+  loading?: boolean;
 }
 
 export function Sidebar({
@@ -34,6 +38,7 @@ export function Sidebar({
   focused,
   width,
   height,
+  loading,
 }: Props) {
   const theme = useTheme();
   const filtered = useMemo(() => {
@@ -92,7 +97,11 @@ export function Sidebar({
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         {visible.length === 0 ? (
           <Box paddingX={1}>
-            <Text color={theme.sidebar.snippet}>No conversations</Text>
+            <Text color={theme.sidebar.snippet}>
+              {loading && conversations.length === 0
+                ? "Loading conversations…"
+                : "No conversations"}
+            </Text>
           </Box>
         ) : (
           visible.map((row, i) => {

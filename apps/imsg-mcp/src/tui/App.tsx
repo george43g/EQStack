@@ -476,11 +476,21 @@ export function App({ changeBus }: AppProps = {}) {
     loadMoreConversations,
   ]);
 
-  // Initial load + register cleanup
+  // Initial load + register cleanup.
+  //
+  // The load is deferred by one macrotask ON PURPOSE — do not inline it back.
+  // `better-sqlite3` is SYNCHRONOUS: `await imsg.loadConversations()` never
+  // yields, so opening the DB (~95ms) plus `listConversations` (~1.8s on a
+  // 5.5k-chat account) blocks the event loop solid. Running that straight from
+  // the mount effect starves Ink's first flush, so the user sits in front of a
+  // freshly-cleared alt-screen with NOTHING on it — measured at ~2.2s blank,
+  // ~4.6s to first paint. Yielding first lets Ink write frame one (which
+  // already says "Loading conversations…" via initialState) before we block.
   // biome-ignore lint/correctness/useExhaustiveDependencies: we intentionally run this only on mount to prevent a render-loop
   useEffect(() => {
     registerCleanup(() => imsg.close());
-    refreshAll();
+    const t = setTimeout(() => void refreshAll(), 0);
+    return () => clearTimeout(t);
   }, [imsg.close]);
 
   // ── Send logic ─────────────────────────────────────────────────────
@@ -1466,6 +1476,7 @@ export function App({ changeBus }: AppProps = {}) {
               focused={state.focus === "sidebar"}
               width={sidebarWidth}
               height={bodyHeight}
+              loading={state.loading}
             />
             {selectedModule && ModulePane ? (
               <ModulePane
@@ -1505,6 +1516,7 @@ export function App({ changeBus }: AppProps = {}) {
                 mode={state.mode}
                 onChangeCompose={(text) => dispatch({ type: "UPDATE_COMPOSE", text })}
                 onSubmitCompose={(text) => text.trim() && dispatch({ type: "CONFIRM_SEND" })}
+                loading={state.loading}
               />
             )}
             {state.mode === "drawer" && selectedMsg && (
