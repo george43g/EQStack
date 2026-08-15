@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.4](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.3...imsg-mcp-v1.21.4) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** get_messages pagination cursor silently skipped history ([f144892](https://github.com/george43g/EQStack/commit/f144892866564e3738b6209abf816da5a841178b)), closes [#253](https://github.com/george43g/EQStack/issues/253)
+
 ## imsg-mcp [1.21.3](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.2...imsg-mcp-v1.21.3) (2026-08-14)
 
 
