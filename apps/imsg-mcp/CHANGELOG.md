@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.7](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.6...imsg-mcp-v1.21.7) (2026-08-15)
+
+
+### Performance Improvements
+
+* **imsg-mcp:** cut listConversations from 1.8s to 0.7s; de-flake the WAL watcher test ([db3443d](https://github.com/george43g/EQStack/commit/db3443d9e65dd2e48620aeacc46f6dcd619d11a5))
+
 ## imsg-mcp [1.21.6](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.5...imsg-mcp-v1.21.6) (2026-08-15)
 
 
