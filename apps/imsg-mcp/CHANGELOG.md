@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.14](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.13...imsg-mcp-v1.21.14) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** settings rows collapsed and overlaid each other at short heights ([b2b3c00](https://github.com/george43g/EQStack/commit/b2b3c00cd9738e75f882d2305cf7b718626cafed))
+
 ## imsg-mcp [1.21.13](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.12...imsg-mcp-v1.21.13) (2026-08-15)
 
 
