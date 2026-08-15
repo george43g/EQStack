@@ -16,7 +16,7 @@ import {
   type RecipientResolution,
   resolveRecipient,
 } from "../../recipient.js";
-import { type Conversation, type Message, minMessageId } from "../../types.js";
+import { type Conversation, type Message, oldestMessageCursor } from "../../types.js";
 import { getCached, isFresh, prependCached, setCached } from "../messageCache.js";
 
 export function useImsg() {
@@ -48,7 +48,7 @@ export function useImsg() {
       // Inline cached/instant transcripts + captions before caching (peek only —
       // never blocks on a cloud call).
       applyInlineInterpretations(messages);
-      const oldestId = minMessageId(messages) ?? 0;
+      const oldestId = oldestMessageCursor(messages) ?? 0;
       setCached(chatIdentifier, messages, oldestId);
       return messages;
     },
