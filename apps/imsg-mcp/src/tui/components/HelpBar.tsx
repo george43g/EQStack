@@ -72,9 +72,9 @@ const EXPORT_KEYS = [
 ];
 
 const DATE_JUMP_KEYS = [
-  ["Tab", "picker↔text"],
-  ["←→/h/l", "field"],
-  ["↑↓/k/j", "adjust"],
+  ["Tab", "picker/text"],
+  ["h/l", "field"],
+  ["k/j", "adjust"],
   ["Enter", "jump"],
   ["Esc", "cancel"],
 ];
@@ -134,7 +134,14 @@ export function HelpBar({ mode, focus }: Props) {
   else keys = focus === "thread" ? THREAD_KEYS : SIDEBAR_KEYS;
 
   return (
-    <Box paddingX={1} height={1} gap={1}>
+    // `overflow="hidden"` is load-bearing: without it, flexShrink={0} children
+    // wider than the terminal make Ink emit a line LONGER than the terminal,
+    // which the terminal hard-wraps MID-HINT ("Tab:→msgs" → "Tab:→msg" +
+    // "s /:filter…" on the next row). That phantom second row eats a content
+    // line AND desyncs Ink's frame-height bookkeeping, leaving stale cells
+    // visible after a mode switch (seen live: "picker↔text s←→/h/l:field").
+    // With overflow hidden, trailing hints genuinely drop off the right edge.
+    <Box paddingX={1} height={1} gap={1} overflow="hidden">
       {keys.map(([key, desc]) => (
         // Render each hint as a SINGLE <Text> with nested colored spans.
         // Splitting `<Text>{key}</Text>` and `<Text>:desc</Text>` into separate
