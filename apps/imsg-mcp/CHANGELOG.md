@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.12](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.11...imsg-mcp-v1.21.12) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** unnamed groups showed raw chat ids; title them from members ([249f97f](https://github.com/george43g/EQStack/commit/249f97f85221e7d9669e7a2bf97e3cb811d22874))
+
 ## imsg-mcp [1.21.11](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.10...imsg-mcp-v1.21.11) (2026-08-15)
 
 
