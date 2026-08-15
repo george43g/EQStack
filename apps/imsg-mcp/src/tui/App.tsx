@@ -128,6 +128,19 @@ export function App({ changeBus }: AppProps = {}) {
   const resolvedNames = selected ? imsg.resolveNames(selected.participants) : [];
   const selectedMsg = state.selectedMsgIdx >= 0 ? state.messages[state.selectedMsgIdx] : undefined;
 
+  // handle → contact name for the message drawer's reaction rows, which
+  // otherwise print a raw `+61…` where a person's name belongs. Memoized on the
+  // selected message so opening the drawer costs one batched lookup rather than
+  // one per reaction per render (name resolution goes to the contacts DB).
+  const reactionNames = useMemo(() => {
+    const handles = [
+      ...new Set((selectedMsg?.reactions ?? []).map((r) => r.fromHandle).filter(Boolean)),
+    ] as string[];
+    if (handles.length === 0) return {};
+    const names = imsg.resolveNames(handles);
+    return Object.fromEntries(handles.map((h, i) => [h, names[i] ?? h]));
+  }, [selectedMsg, imsg]);
+
   // Commands list for the palette — recomputed on state change so `when`
   // gates and module command lists stay in sync.
   const commands = useMemo(() => allCommands(state), [state]);
@@ -1528,6 +1541,7 @@ export function App({ changeBus }: AppProps = {}) {
                 width={drawerWidth}
                 height={bodyHeight}
                 selectedAttachmentIdx={state.drawerAttachmentIdx}
+                reactionNames={reactionNames}
               />
             )}
             {state.mode === "info" && selected && (
