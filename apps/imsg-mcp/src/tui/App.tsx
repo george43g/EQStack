@@ -1641,7 +1641,16 @@ export function App({ changeBus }: AppProps = {}) {
       >
         {!state.showDevStats && <CompactStats stats={devStats} />}
       </StatusBar>
-      <HelpBar mode={state.mode} focus={state.focus} />
+      {/* flexShrink=0 wrapper: when a modal makes this column taller than
+          the terminal, yoga must squeeze the BODY, never the 1-line bars —
+          a height-0 box still paints its text over the row below. The pin
+          lives HERE (vertical flex context) because on HelpBar's own root
+          it would also block horizontal shrink-to-terminal-width, undoing
+          the mid-hint-wrap fix. StatusBar pins its own root (always
+          full-width, so no width conflict). */}
+      <Box flexShrink={0} height={1}>
+        <HelpBar mode={state.mode} focus={state.focus} />
+      </Box>
     </Box>
   );
 }

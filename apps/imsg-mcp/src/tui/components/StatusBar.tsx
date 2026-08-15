@@ -14,7 +14,17 @@ interface Props {
 export function StatusBar({ totalUnread, selected, status, loading, children }: Props) {
   const theme = useTheme();
   return (
-    <Box backgroundColor={theme.status.bg} paddingX={1} height={1} justifyContent="space-between">
+    // flexShrink=0: when a modal makes the root column taller than the
+    // terminal, yoga must squeeze the BODY, never this 1-line bar — a
+    // height-0 box still paints its text, overlaying the help row below
+    // (seen live: "Ai_s_ha"/"iM_e_ssage" fragments in the help row's gaps).
+    <Box
+      backgroundColor={theme.status.bg}
+      paddingX={1}
+      height={1}
+      flexShrink={0}
+      justifyContent="space-between"
+    >
       {/* Each segment uses flexShrink={0} so the row's `gap={2}` separators
        * don't collapse when the status toast on the right side grows —
        * pre-fix you'd see "Mum SMSRust parser + TS 0%0MB" glued together.
