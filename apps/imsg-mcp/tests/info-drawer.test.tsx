@@ -14,7 +14,7 @@ import Database from "better-sqlite3";
 import { render } from "ink-testing-library";
 import { afterAll, describe, expect, it } from "vitest";
 import { IMessageDB } from "../src/imessage-db.js";
-import { InfoDrawer } from "../src/tui/components/InfoDrawer.js";
+import { dedupeNames, InfoDrawer } from "../src/tui/components/InfoDrawer.js";
 import { makeTheme } from "../src/tui/theme.js";
 import { ThemeProvider } from "../src/tui/themes/ThemeContext.js";
 import type { ChatStats, Conversation, ConversationAttachment } from "../src/types.js";
@@ -217,5 +217,89 @@ describe("InfoDrawer render", () => {
     expect(frame).toContain("Attachments (0)");
     expect(frame).toContain("No attachments in this thread.");
     unmount();
+  });
+});
+
+/**
+ * Participant identity in the info drawer (live TUI audit, 2026-08-16).
+ *
+ * One human conversation spans several chat legs — phone + email, SMS +
+ * iMessage — and each leg contributes its own participant handle. Once those
+ * resolve to contact names the list repeats, so a 1-on-1 thread rendered
+ * "People: Shara, Shara" against the real DB. Groups had the opposite problem:
+ * they showed a bare participant COUNT and never named anybody.
+ */
+describe("InfoDrawer participants", () => {
+  const base: Conversation = {
+    chatId: "iMessage;-;+15550001111",
+    chatIdentifier: "+15550001111",
+    displayName: null,
+    rawIdentifier: "+15550001111",
+    participants: ["+15550001111"],
+    lastMessageDate: new Date("2025-06-01"),
+    lastMessageSnippet: null,
+    unreadCount: 0,
+    threadSlug: "x~imsg~a1b2",
+    isGroupChat: false,
+    serviceType: "iMessage",
+  };
+  const noStats: ChatStats = { count: 0, first: null, last: null };
+
+  function draw(conversation: Conversation, resolvedNames: string[]) {
+    return render(
+      <ThemeProvider value={makeTheme({ preset: "safe" })}>
+        <InfoDrawer
+          conversation={conversation}
+          resolvedNames={resolvedNames}
+          stats={noStats}
+          attachments={[]}
+          selectedAttachmentIdx={0}
+          width={60}
+          height={30}
+        />
+      </ThemeProvider>,
+    );
+  }
+
+  it("lists a 1-on-1 contact once even when merged legs repeat the name", () => {
+    const { lastFrame } = draw(base, ["Shara", "Shara"]);
+    const peopleRow = (lastFrame() ?? "").split("\n").find((l) => l.includes("People")) ?? "";
+    expect(peopleRow).toContain("Shara");
+    expect(peopleRow).not.toContain("Shara, Shara");
+  });
+
+  it("dedupes case-insensitively and drops blanks", () => {
+    expect(dedupeNames(["Shara", "shara", "  SHARA  ", "", "  ", "Naomi"])).toEqual([
+      "Shara",
+      "Naomi",
+    ]);
+  });
+
+  it("preserves first-seen order", () => {
+    expect(dedupeNames(["Zoe", "Amy", "zoe", "Bea"])).toEqual(["Zoe", "Amy", "Bea"]);
+  });
+
+  it("names group participants instead of only counting them", () => {
+    const group: Conversation = {
+      ...base,
+      isGroupChat: true,
+      participants: ["+1", "+2", "+3"],
+    };
+    const { lastFrame } = draw(group, ["Amy", "Bea", "Cal"]);
+    const peopleRow = (lastFrame() ?? "").split("\n").find((l) => l.includes("People")) ?? "";
+    expect(peopleRow).toContain("Amy");
+    expect(peopleRow).toContain("3");
+  });
+
+  it("counts a group by deduped people, not by raw leg count", () => {
+    const group: Conversation = {
+      ...base,
+      isGroupChat: true,
+      participants: ["+1", "+2", "+3", "+4"],
+    };
+    const { lastFrame } = draw(group, ["Amy", "Amy", "Bea"]);
+    const peopleRow = (lastFrame() ?? "").split("\n").find((l) => l.includes("People")) ?? "";
+    expect(peopleRow).toContain("2");
+    expect(peopleRow).not.toContain("Amy, Amy");
   });
 });

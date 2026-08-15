@@ -684,9 +684,12 @@ export function App({ changeBus }: AppProps = {}) {
           dispatch({ type: "SELECT", index: matchIdx, visibleCount: sidebarVisibleCount });
           void loadMessages(matchIdx, state.conversations[matchIdx]);
         }
-        dispatch({ type: "EXIT_FILTER" });
+        dispatch({ type: "EXIT_FILTER", restoreSelection: false });
       } else if (key.escape) {
-        dispatch({ type: "EXIT_FILTER" });
+        // Cancel: put the pre-filter selection back. Filtering snaps
+        // selectedIdx to 0 on each keystroke, so plain exit would leave the
+        // old thread's messages under conversation #0's name.
+        dispatch({ type: "EXIT_FILTER", restoreSelection: true });
       } else if (key.downArrow || (key.ctrl && input === "n")) {
         dispatch({ type: "FILTER_MOVE", delta: 1, visibleCount: sidebarVisibleCount });
       } else if (key.upArrow || (key.ctrl && input === "p")) {

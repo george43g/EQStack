@@ -58,6 +58,11 @@ export interface AppState {
   filterQuery: string;
   /** Cursor into the FILTERED result set (filter mode only); 0-based. */
   filterCursor: number;
+  /** selectedIdx at the moment `/` was pressed, so Escape can restore it.
+   *  null when not filtering (or after a committed filter). */
+  filterReturnIdx: number | null;
+  /** sidebarScroll at the moment `/` was pressed — restored alongside the index. */
+  filterReturnScroll: number;
   pending: PendingMessage[];
   loading: boolean;
   status: string;
@@ -140,7 +145,8 @@ export type Action =
   | { type: "ENTER_FILTER" }
   | { type: "UPDATE_FILTER"; query: string }
   | { type: "FILTER_MOVE"; delta: number; visibleCount?: number }
-  | { type: "EXIT_FILTER" }
+  /** `restoreSelection: true` = cancelled (Escape); false = committed (Enter). */
+  | { type: "EXIT_FILTER"; restoreSelection: boolean }
   | { type: "OPEN_DRAWER" }
   | { type: "CLOSE_DRAWER" }
   | { type: "SET_DRAWER_ATTACHMENT"; index: number }
@@ -202,6 +208,8 @@ export const initialState: AppState = {
   composeText: "",
   filterQuery: "",
   filterCursor: 0,
+  filterReturnIdx: null,
+  filterReturnScroll: 0,
   pending: [],
   loading: true,
   // Shown on the very first frame, before any DB work runs (App defers the
@@ -659,6 +667,10 @@ export function reducer(state: AppState, action: Action): AppState {
       // Reset cursor + scroll to the top: the filtered list shrinks, and a
       // stale scroll offset (e.g. after `G`) would slice past every match and
       // render "No conversations" despite the header showing a non-zero count.
+      //
+      // Remember where we came from so Escape can put it back — filtering moves
+      // selectedIdx as a side effect (see UPDATE_FILTER), and without this the
+      // cancel path silently reassigns the user's selection.
       return {
         ...state,
         mode: "filter",
@@ -668,6 +680,8 @@ export function reducer(state: AppState, action: Action): AppState {
         selectedModuleIdx: null,
         sidebarScroll: 0,
         filterCursor: 0,
+        filterReturnIdx: state.selectedIdx,
+        filterReturnScroll: state.sidebarScroll,
       };
     case "UPDATE_FILTER":
       // Each keystroke re-filters; snap the filtered cursor + scroll back to the
@@ -698,8 +712,23 @@ export function reducer(state: AppState, action: Action): AppState {
         : state.sidebarScroll;
       return { ...state, filterCursor: cursor, sidebarScroll };
     }
-    case "EXIT_FILTER":
-      return { ...state, mode: "browse", filterQuery: "", filterCursor: 0 };
+    case "EXIT_FILTER": {
+      const base = { ...state, mode: "browse" as const, filterQuery: "", filterCursor: 0 };
+      // Commit (Enter) already dispatched SELECT for the highlighted match —
+      // restoring here would immediately undo it.
+      if (!action.restoreSelection) return { ...base, filterReturnIdx: null };
+      // Cancel (Escape): put the selection back where it was before `/`.
+      // UPDATE_FILTER snaps selectedIdx to 0 on every keystroke, so without
+      // this the pane renders the PREVIOUS thread's messages and count under
+      // conversation #0's name until j/k happens to reload it.
+      if (state.filterReturnIdx == null) return { ...base, filterReturnIdx: null };
+      return {
+        ...base,
+        selectedIdx: Math.min(state.filterReturnIdx, Math.max(0, state.conversations.length - 1)),
+        sidebarScroll: state.filterReturnScroll,
+        filterReturnIdx: null,
+      };
+    }
     case "OPEN_DRAWER":
       return { ...state, mode: "drawer", drawerAttachmentIdx: 0 };
     case "CLOSE_DRAWER":
