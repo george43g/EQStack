@@ -216,17 +216,21 @@ function PaletteRow({
         </Box>
       )}
       <Box backgroundColor={selected ? theme.sidebar.selected : undefined}>
-        <Box width={titleW}>
-          <Text color={selected ? theme.sidebar.selectedFg : undefined}>
-            {selected ? "▸ " : "  "}
-          </Text>
-          <Text
-            color={selected ? theme.sidebar.selectedFg : theme.info.value}
-            bold={selected}
-            wrap="truncate"
-          >
-            {title}
-          </Text>
+        <Box width={titleW} overflow="hidden">
+          {/* The title is pinned (flexShrink=0): title + desc are shrink
+              siblings, so a long description used to steal the title's
+              columns and truncate it MID-WORD ("Copy thread s", "Analytics:
+              Messag") while the desc kept generous room. Now the desc alone
+              absorbs the squeeze; overflow=hidden clips the rare title
+              longer than the whole column. */}
+          <Box flexShrink={0}>
+            <Text color={selected ? theme.sidebar.selectedFg : undefined}>
+              {selected ? "▸ " : "  "}
+            </Text>
+            <Text color={selected ? theme.sidebar.selectedFg : theme.info.value} bold={selected}>
+              {title}
+            </Text>
+          </Box>
           {desc && (
             <Text color={theme.help.desc} wrap="truncate">
               {"  "}
