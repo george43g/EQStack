@@ -87,6 +87,12 @@ export function useImsg() {
     [getDb],
   );
 
+  /** Analytics bucket key (handle or group chat id) → human label. */
+  const resolveChatLabel = useCallback(
+    (key: string): string => getDb().resolveChatLabel(key),
+    [getDb],
+  );
+
   /** Message count + first/last date for a conversation (per-thread info drawer). */
   const getChatStats = useCallback(
     (chatIdentifier: string) => getDb().getChatStats(chatIdentifier),
@@ -219,6 +225,7 @@ export function useImsg() {
       loadOlderMessages,
       loadMessagesInWindow,
       resolveNames,
+      resolveChatLabel,
       getChatStats,
       listConversationAttachments,
       send,
@@ -235,6 +242,7 @@ export function useImsg() {
       loadOlderMessages,
       loadMessagesInWindow,
       resolveNames,
+      resolveChatLabel,
       getChatStats,
       listConversationAttachments,
       send,

@@ -40,7 +40,7 @@ function renderStreaks(rows: StreakResult[]): string {
           ? ` (${r.longestStreakStart}→${r.longestStreakEnd})`
           : "";
       const cur = r.currentStreakDays > 0 ? `, current ${r.currentStreakDays}d` : "";
-      return `${String(i + 1).padStart(2)}. ${r.contact} — longest ${r.longestStreakDays}d${span}${cur}`;
+      return `${String(i + 1).padStart(2)}. ${r.contactName ?? r.contact} — longest ${r.longestStreakDays}d${span}${cur}`;
     })
     .join("\n");
 }
@@ -51,7 +51,7 @@ function renderDoubleTexts(rows: DoubleTextResult[]): string {
     .slice(0, TOP)
     .map(
       (r, i) =>
-        `${String(i + 1).padStart(2)}. ${r.contact} — you ${r.doubleTextsFromMe}×, them ${r.doubleTextsFromThem}×`,
+        `${String(i + 1).padStart(2)}. ${r.contactName ?? r.contact} — you ${r.doubleTextsFromMe}×, them ${r.doubleTextsFromThem}×`,
     )
     .join("\n");
 }
@@ -62,7 +62,7 @@ function renderResponseTimes(rows: ResponseTimeStats[]): string {
     .slice(0, TOP)
     .map(
       (r, i) =>
-        `${String(i + 1).padStart(2)}. ${r.contact} — median ${humanDuration(r.medianMs)}, p95 ${humanDuration(r.p95Ms)}, mean ${humanDuration(r.meanMs)} (n=${r.count})`,
+        `${String(i + 1).padStart(2)}. ${r.contactName ?? r.contact} — median ${humanDuration(r.medianMs)}, p95 ${humanDuration(r.p95Ms)}, mean ${humanDuration(r.meanMs)} (n=${r.count})`,
     )
     .join("\n");
 }
@@ -101,7 +101,7 @@ function renderTapbacks(rows: TapbackResult[]): string {
         r.question && `❓${r.question}`,
         r.emoji && `🙂${r.emoji}`,
       ].filter(Boolean);
-      return `${String(i + 1).padStart(2)}. ${r.contact} — ${parts.join(" ")} (total ${r.total})`;
+      return `${String(i + 1).padStart(2)}. ${r.contactName ?? r.contact} — ${parts.join(" ")} (total ${r.total})`;
     })
     .join("\n");
 }
@@ -112,7 +112,7 @@ function renderWrapped(w: WrappedResult): string {
     `Sent: ${w.totalSent.toLocaleString()}   Received: ${w.totalReceived.toLocaleString()}   Reactions: ${w.totalReactions.toLocaleString()}`,
     w.peakDay ? `Peak day: ${w.peakDay.date} (${w.peakDay.count} messages)` : "Peak day: —",
     w.longestStreakContact
-      ? `Longest streak: ${w.longestStreakDays}d with ${w.longestStreakContact}`
+      ? `Longest streak: ${w.longestStreakDays}d with ${w.longestStreakContactName ?? w.longestStreakContact}`
       : `Longest streak: ${w.longestStreakDays}d`,
     "",
     "Top contacts:",
@@ -120,7 +120,7 @@ function renderWrapped(w: WrappedResult): string {
       .slice(0, 10)
       .map(
         (c, i) =>
-          `${String(i + 1).padStart(2)}. ${c.contact} — ${c.total} (↑${c.sent} / ↓${c.received})`,
+          `${String(i + 1).padStart(2)}. ${c.contactName ?? c.contact} — ${c.total} (↑${c.sent} / ↓${c.received})`,
       ),
   ];
   return lines.join("\n");
