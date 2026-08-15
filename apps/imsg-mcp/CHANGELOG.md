@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.17](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.16...imsg-mcp-v1.21.17) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** palette titles truncated mid-word when a description was present ([306f666](https://github.com/george43g/EQStack/commit/306f666eaa6b1373b4d99b283fd4440b7c5b3bbd))
+
 ## imsg-mcp [1.21.16](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.15...imsg-mcp-v1.21.16) (2026-08-15)
 
 
