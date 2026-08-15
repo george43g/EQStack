@@ -39,22 +39,28 @@ describe("DatePicker render + submit", () => {
 describe("DatePicker source-level keymap", () => {
   // ink-testing-library doesn't reliably translate ANSI escape sequences into
   // Ink's `key.rightArrow`/`upArrow`/etc, so we pin the keymap at source
-  // level. Manual TUI exercise verifies the runtime behavior.
-  it("right-arrow advances field", () => {
-    expect(SRC).toMatch(/if \(key\.rightArrow\)/);
+  // level. Manual TUI exercise verifies the runtime behavior; the state
+  // transitions themselves are unit-tested in date-picker-model.test.ts.
+  it("arrows AND h/l advance fields", () => {
+    expect(SRC).toMatch(/key\.leftArrow \|\| input === "h"/);
+    expect(SRC).toMatch(/key\.rightArrow \|\| input === "l"/);
   });
-  it("up/down arrows adjust the active field", () => {
-    expect(SRC).toMatch(/if \(key\.upArrow\)/);
-    expect(SRC).toMatch(/if \(key\.downArrow\)/);
+  it("arrows AND k/j adjust the active field", () => {
+    expect(SRC).toMatch(/key\.upArrow \|\| input === "k"/);
+    expect(SRC).toMatch(/key\.downArrow \|\| input === "j"/);
   });
   it("Esc invokes onCancel", () => {
     expect(SRC).toMatch(/if \(key\.escape\)/);
     expect(SRC).toContain("onCancel()");
   });
-  it("digit input shifts onto the active field", () => {
-    expect(SRC).toMatch(/\/\^\[0-9\]\$\//);
+  it("digit chunks fan into the model (chunked-keystroke law)", () => {
+    expect(SRC).toMatch(/\/\^\[0-9\]\+\$\//);
+    expect(SRC).toContain("applyDigits");
   });
   it("does not consume Tab — modal owns that for mode swap", () => {
-    expect(SRC).not.toMatch(/key\.tab/);
+    // key.tab may appear only as a NEGATED guard on the text-intent branch;
+    // an `if (key.tab)` handler would steal the modal's mode toggle.
+    expect(SRC).not.toMatch(/if \(key\.tab\)/);
+    expect(SRC).toContain("!key.tab");
   });
 });
