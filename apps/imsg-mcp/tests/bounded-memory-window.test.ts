@@ -5,7 +5,7 @@
  * so the UI can show "N more messages" placeholders.
  */
 import { describe, expect, it } from "vitest";
-import { boundMessagesIfNeeded } from "../src/tui/types.js";
+import { boundMessagesIfNeeded, initialState, reducer } from "../src/tui/types.js";
 import type { Message } from "../src/types.js";
 
 function fakeMsgs(n: number): Message[] {
@@ -97,5 +97,57 @@ describe("boundMessagesIfNeeded", () => {
     // atIdx should equal the size of the first kept range (cursor window)
     // = 401 messages (indices 0..400)
     expect(gap.atIdx).toBe(401);
+  });
+});
+
+/**
+ * The load-older cursor after an evicting prepend (found 2026-08-16 while
+ * verifying the eviction path the swarm could never reach).
+ *
+ * PREPEND_MESSAGES used to set `messageOldestLoadedId` to the FETCHED batch's
+ * oldest id unconditionally. When bounding evicted the head of that batch, the
+ * state then claimed history was loaded further back than the array held — the
+ * next load-older paged from BELOW the evicted rows, skipping them forever and
+ * reporting false exhaustion with a silent hole where they were. The cursor
+ * must describe what SURVIVED.
+ */
+describe("PREPEND_MESSAGES load-older cursor vs eviction", () => {
+  function prependState(existing: number, cursorIdx: number) {
+    return { ...initialState, messages: fakeMsgs(existing), selectedMsgIdx: cursorIdx };
+  }
+
+  it("keeps the fetched cursor when nothing was evicted", () => {
+    let s = prependState(100, 99);
+    // Offset ids so the prepended batch is genuinely older (lower date).
+    const older = fakeMsgs(50).map((m, i) => ({ ...m, id: 5000 + i, date: new Date(i) }));
+    s = reducer(s, { type: "PREPEND_MESSAGES", data: older, oldestId: 5000 });
+    expect(s.messages.length).toBe(150); // under the cap — no eviction
+    expect(s.messageOldestLoadedId).toBe(5000);
+  });
+
+  it("moves the cursor to the oldest SURVIVOR when the head was evicted", () => {
+    // 200 existing + 5900 older = 6100, over the 5000 cap with the cursor at
+    // the tail — the head of the fetched batch gets evicted.
+    let s = prependState(200, 199);
+    const older = Array.from({ length: 5900 }, (_, i) => ({
+      ...fakeMsgs(1)[0],
+      id: 10_000 + i,
+      guid: `old-${i}`,
+      date: new Date(i), // all older than the existing msgs (dates 1000+)
+    }));
+    s = reducer(s, { type: "PREPEND_MESSAGES", data: older, oldestId: 10_000 });
+
+    expect(s.messages.length).toBeLessThan(6100); // eviction happened
+    const survivingOldest = s.messages[0];
+    // The cursor must point at what the array actually holds — never below it.
+    expect(s.messageOldestLoadedId).toBe(survivingOldest.id);
+    // Regression shape: the old behaviour left the fetched batch's oldest.
+    expect(s.messageOldestLoadedId).not.toBe(10_000);
+  });
+
+  it("preserves the -1 exhaustion sentinel on an empty prepend", () => {
+    let s = prependState(50, 0);
+    s = reducer(s, { type: "PREPEND_MESSAGES", data: [], oldestId: -1 });
+    expect(s.messageOldestLoadedId).toBe(-1);
   });
 });

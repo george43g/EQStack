@@ -500,12 +500,26 @@ export function reducer(state: AppState, action: Action): AppState {
       // Apply bounded-window eviction if we've grown past the cap
       const bounded = boundMessagesIfNeeded(merged, shiftedCursor, state.gapMarkers);
 
+      // The "load older" cursor must describe what SURVIVED, not what was
+      // fetched. When bounding evicts the head of the batch we just prepended,
+      // `action.oldestId` (the fetch's oldest) claims we've already loaded
+      // further back than the array actually holds — the next load-older then
+      // pages from BELOW the evicted rows, skipping them forever and reporting
+      // false exhaustion with a silent hole where they were. Recompute from the
+      // survivors whenever eviction dropped rows; otherwise keep the caller's
+      // cursor untouched, because `-1` is the exhaustion sentinel and an empty
+      // prepend must not resurrect paging.
+      const evicted = bounded.messages.length < merged.length;
+      const oldestLoadedId = evicted
+        ? (oldestMessageCursor(bounded.messages) ?? action.oldestId)
+        : action.oldestId;
+
       return {
         ...state,
         messages: bounded.messages,
         selectedMsgIdx: bounded.selectedMsgIdx,
         gapMarkers: bounded.gapMarkers,
-        messageOldestLoadedId: action.oldestId,
+        messageOldestLoadedId: oldestLoadedId,
         messageLoadingOlder: false,
       };
     }
