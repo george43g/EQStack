@@ -186,3 +186,72 @@ describe("App.tsx filter navigation + commit", () => {
     expect(block, "up/prev must move the filter cursor").toMatch(/upArrow[\s\S]*FILTER_MOVE/);
   });
 });
+
+/**
+ * Escape cancels a filter — it must not silently reassign the selection.
+ *
+ * `UPDATE_FILTER` snaps `selectedIdx` to 0 on every keystroke (the filtered
+ * list is re-sliced each time). Plain `EXIT_FILTER` used to leave that behind,
+ * so `/` → type → Escape landed the user on conversation #0 with the PREVIOUS
+ * thread's messages and count still rendered underneath its name, until a j/k
+ * happened to trigger a reload. Escape now restores the pre-filter position;
+ * Enter (commit) deliberately does not, because it has already dispatched
+ * SELECT for the highlighted match.
+ */
+describe("filter cancel restores the pre-filter selection", () => {
+  const conversations = [
+    conv({ displayName: "Aaron", chatIdentifier: "+1000" }),
+    conv({ displayName: "Beth", chatIdentifier: "+1001" }),
+    conv({ displayName: "Carl", chatIdentifier: "+1002" }),
+    conv({ displayName: "Dana", chatIdentifier: "+1003" }),
+  ];
+
+  function stateAt(idx: number, scroll = 0): AppState {
+    return { ...initialState, conversations, selectedIdx: idx, sidebarScroll: scroll };
+  }
+
+  it("Escape puts selectedIdx and scroll back where they were", () => {
+    let s = stateAt(3, 2);
+    s = reducer(s, { type: "ENTER_FILTER" });
+    s = reducer(s, { type: "UPDATE_FILTER", query: "be" });
+    expect(s.selectedIdx).toBe(0); // the filtering side effect this test exists for
+
+    s = reducer(s, { type: "EXIT_FILTER", restoreSelection: true });
+    expect(s.selectedIdx).toBe(3);
+    expect(s.sidebarScroll).toBe(2);
+    expect(s.mode).toBe("browse");
+    expect(s.filterQuery).toBe("");
+    expect(s.filterReturnIdx).toBeNull();
+  });
+
+  it("Enter (commit) keeps the committed selection instead of restoring", () => {
+    let s = stateAt(3);
+    s = reducer(s, { type: "ENTER_FILTER" });
+    s = reducer(s, { type: "UPDATE_FILTER", query: "carl" });
+    // App dispatches SELECT for the highlighted match before exiting.
+    s = reducer(s, { type: "SELECT", index: 2, visibleCount: 10 });
+    s = reducer(s, { type: "EXIT_FILTER", restoreSelection: false });
+    expect(s.selectedIdx).toBe(2);
+    expect(s.filterReturnIdx).toBeNull();
+  });
+
+  it("clamps the restored index if the list shrank while filtering", () => {
+    let s = stateAt(3);
+    s = reducer(s, { type: "ENTER_FILTER" });
+    s = reducer(s, { type: "SET_CONVERSATIONS", data: conversations.slice(0, 2) });
+    s = reducer(s, { type: "EXIT_FILTER", restoreSelection: true });
+    expect(s.selectedIdx).toBe(1);
+  });
+
+  it("is a no-op on selection when Escape arrives with nothing remembered", () => {
+    const s = reducer(
+      { ...stateAt(2), mode: "filter" },
+      {
+        type: "EXIT_FILTER",
+        restoreSelection: true,
+      },
+    );
+    expect(s.selectedIdx).toBe(2);
+    expect(s.mode).toBe("browse");
+  });
+});

@@ -14,6 +14,30 @@ interface Props {
   height: number;
 }
 
+/**
+ * Collapse participant names to one entry per person, preserving order.
+ *
+ * A conversation merges several chat legs (phone + email, SMS + iMessage), and
+ * each leg carries its own participant handle. Once those resolve to contact
+ * names the list repeats — a 1-on-1 thread rendered "People: Shara, Shara".
+ * Compared case-insensitively on the trimmed name; blanks are dropped.
+ *
+ * Exported for tests.
+ */
+export function dedupeNames(names: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of names) {
+    const name = raw?.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
 /** Drawer-row label, mirrors MessageDrawer's Label (flexShrink so it never squeezes). */
 function Label({ children }: { children: string }) {
   const theme = useTheme();
@@ -51,10 +75,13 @@ export function InfoDrawer({
   height,
 }: Props) {
   const theme = useTheme();
-  const names = resolvedNames.length > 0 ? resolvedNames : conversation.participants;
+  // Dedupe by resolved identity. One human conversation spans several chat
+  // legs (phone + email, SMS + iMessage), and each leg contributes its own
+  // participant row — so a 1-on-1 thread rendered "People: Shara, Shara".
+  const names = dedupeNames(resolvedNames.length > 0 ? resolvedNames : conversation.participants);
   const title =
     conversation.displayName ||
-    (conversation.isGroupChat ? `Group (${conversation.participants.length})` : names[0]) ||
+    (conversation.isGroupChat ? `Group (${names.length})` : names[0]) ||
     conversation.chatIdentifier;
 
   // Attachment list viewport: 2 rows per item, kept centered on the selection so
@@ -114,8 +141,10 @@ export function InfoDrawer({
         <Box>
           <Label>People</Label>
           <Text color={theme.drawer.value} wrap="truncate">
-            {conversation.isGroupChat
-              ? `${conversation.participants.length} participants`
+            {/* Groups used to show a bare count — the one thing you already
+                knew. Lead with the count, then name them; the row truncates. */}
+            {conversation.isGroupChat && names.length > 0
+              ? `${names.length}: ${names.join(", ")}`
               : names.join(", ")}
           </Text>
         </Box>
