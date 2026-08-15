@@ -1,64 +1,51 @@
 /**
- * Three-field date picker (YYYY / MM / DD) with arrow-key navigation.
+ * Three-field date picker (YYYY / MM / DD).
  *
- *   ←/→     cycle active field
- *   ↑/↓     increment/decrement value
- *   0–9     type digit (right-shifts onto the field; full field auto-advances)
- *   Bksp    delete last digit of active field
- *   Enter   submit
+ *   ←/→  or h/l   cycle active field
+ *   ↑/↓  or k/j   increment/decrement value
+ *   0–9           type digit (first digit replaces the field, then appends;
+ *                 a full field auto-advances — see date-picker-model.ts)
+ *   Bksp          delete last digit of active field
+ *   Enter         submit
+ *   other letters fire `onTextIntent` so the parent can flip to free-text
+ *                 mode seeded with what was typed ("y…" → "yesterday")
  *
- * Returns the picked date as an ISO string ("YYYY-MM-DD") to keep the modal's
- * existing parser path unchanged.
+ * All state transitions live in date-picker-model.ts (pure, unit-tested).
+ * Returns the picked date as an ISO string ("YYYY-MM-DD") to keep the
+ * modal's existing parser path unchanged.
  */
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
+import {
+  adjust,
+  applyDigits,
+  backspaceField,
+  type Field,
+  initPickerState,
+  moveField,
+  toIso,
+} from "../date-picker-model.js";
 import { useTheme } from "../themes/ThemeContext.js";
-
-type Field = "year" | "month" | "day";
-const ORDER: Field[] = ["year", "month", "day"];
 
 interface Props {
   initial?: Date;
   focused: boolean;
   onSubmit: (isoDate: string) => void;
   onCancel: () => void;
+  /**
+   * Fired when the user types something the picker doesn't own (letters,
+   * punctuation, or a pasted chunk containing non-digits). The parent modal
+   * switches to free-text mode seeded with this string — so typing
+   * "yesterday" from the default picker mode Just Works instead of being
+   * silently ignored (the original "free-text silently refused" bug).
+   * h/j/k/l are picker navigation and never reach this.
+   */
+  onTextIntent?: (seed: string) => void;
 }
 
-const MIN_YEAR = 1900;
-const MAX_YEAR = 2100;
-
-function daysInMonth(year: number, monthOneBased: number): number {
-  return new Date(year, monthOneBased, 0).getDate();
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(Math.max(n, lo), hi);
-}
-
-export function DatePicker({ initial, focused, onSubmit, onCancel }: Props) {
+export function DatePicker({ initial, focused, onSubmit, onCancel, onTextIntent }: Props) {
   const theme = useTheme();
-  const now = initial ?? new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [day, setDay] = useState(now.getDate());
-  const [active, setActive] = useState<Field>("year");
-
-  const fieldValue = (f: Field) => (f === "year" ? year : f === "month" ? month : day);
-
-  const setField = (f: Field, v: number) => {
-    if (f === "year") {
-      const y = clamp(v, MIN_YEAR, MAX_YEAR);
-      setYear(y);
-      // Re-clamp day to month/year (Feb 29 → Feb 28 on non-leap)
-      setDay((d) => clamp(d, 1, daysInMonth(y, month)));
-    } else if (f === "month") {
-      const m = clamp(v, 1, 12);
-      setMonth(m);
-      setDay((d) => clamp(d, 1, daysInMonth(year, m)));
-    } else {
-      setDay(clamp(v, 1, daysInMonth(year, month)));
-    }
-  };
+  const [state, setState] = useState(() => initPickerState(initial ?? new Date()));
 
   useInput(
     (input, key) => {
@@ -68,57 +55,50 @@ export function DatePicker({ initial, focused, onSubmit, onCancel }: Props) {
         return;
       }
       if (key.return) {
-        const iso = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-        onSubmit(iso);
+        onSubmit(toIso(state));
         return;
       }
-      if (key.leftArrow) {
-        const i = ORDER.indexOf(active);
-        setActive(ORDER[(i + ORDER.length - 1) % ORDER.length]);
+      if (key.leftArrow || input === "h") {
+        setState((s) => moveField(s, -1));
         return;
       }
-      if (key.rightArrow) {
-        const i = ORDER.indexOf(active);
-        setActive(ORDER[(i + 1) % ORDER.length]);
+      if (key.rightArrow || input === "l") {
+        setState((s) => moveField(s, 1));
         return;
       }
-      if (key.upArrow) {
-        setField(active, fieldValue(active) + 1);
+      if (key.upArrow || input === "k") {
+        setState((s) => adjust(s, 1));
         return;
       }
-      if (key.downArrow) {
-        setField(active, fieldValue(active) - 1);
-        return;
-      }
-      if (input && /^[0-9]$/.test(input)) {
-        const digit = Number.parseInt(input, 10);
-        if (active === "year") {
-          // Shift left and append. Year field is 4 digits.
-          const next = (year % 1000) * 10 + digit;
-          setField("year", next);
-        } else if (active === "month") {
-          // 2-digit shift
-          const next = (month % 10) * 10 + digit;
-          setField("month", next < 1 ? 1 : next);
-        } else {
-          const next = (day % 10) * 10 + digit;
-          setField("day", next < 1 ? 1 : next);
-        }
+      if (key.downArrow || input === "j") {
+        setState((s) => adjust(s, -1));
         return;
       }
       if (key.backspace || key.delete) {
-        if (active === "year") setField("year", Math.floor(year / 10) || MIN_YEAR);
-        else if (active === "month") setField("month", Math.floor(month / 10) || 1);
-        else setField("day", Math.floor(day / 10) || 1);
+        setState((s) => backspaceField(s));
+        return;
+      }
+      // Chunked-keystroke law: a fast burst or paste arrives as ONE input
+      // string. Pure-digit chunks are keys we own — fan them into the model.
+      if (input && /^[0-9]+$/.test(input)) {
+        setState((s) => applyDigits(s, input));
+        return;
+      }
+      // Anything else printable = the user is trying to type a date phrase.
+      if (input && !key.ctrl && !key.meta && !key.tab) {
+        onTextIntent?.(input);
       }
     },
     { isActive: focused },
   );
 
-  const fieldStr = (f: Field, width: number) => String(fieldValue(f)).padStart(width, "0");
+  const fieldStr = (f: Field, width: number) => {
+    const v = f === "year" ? state.year : f === "month" ? state.month : state.day;
+    return String(v).padStart(width, "0");
+  };
 
   const renderField = (f: Field, width: number) => {
-    const isActive = active === f;
+    const isActive = state.active === f;
     return (
       <Text
         color={isActive ? theme.status.accent : theme.drawer.value}
@@ -140,7 +120,9 @@ export function DatePicker({ initial, focused, onSubmit, onCancel }: Props) {
         {renderField("day", 2)}
       </Box>
       <Box>
-        <Text color={theme.help.desc}>←/→ field · ↑/↓ adjust · digits to type · Enter to jump</Text>
+        <Text color={theme.help.desc}>
+          ←→/h/l field · ↑↓/k/j adjust · digits type · letters → free-text · Enter to jump
+        </Text>
       </Box>
     </Box>
   );

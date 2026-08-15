@@ -73,8 +73,8 @@ const EXPORT_KEYS = [
 
 const DATE_JUMP_KEYS = [
   ["Tab", "picker↔text"],
-  ["←/→", "field"],
-  ["↑/↓", "adjust"],
+  ["←→/h/l", "field"],
+  ["↑↓/k/j", "adjust"],
   ["Enter", "jump"],
   ["Esc", "cancel"],
 ];

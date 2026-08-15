@@ -67,6 +67,14 @@ export function DateJumpModal({ value, error, onChange, onSubmit }: Props) {
             // Esc handled by the App's date-jump exit branch — DatePicker
             // forwards it via onCancel but we leave actual exit to the parent.
           }}
+          onTextIntent={(seed) => {
+            // The user typed a letter ("y…" for yesterday) at the picker:
+            // flip to free-text mode seeded with what they typed. Both state
+            // updates land before the TextInput mounts, so defaultValue
+            // picks the seed up.
+            onChange(seed);
+            setMode("text");
+          }}
         />
       ) : (
         <Box flexDirection="column" flexShrink={0}>
