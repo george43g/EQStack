@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.16](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.15...imsg-mcp-v1.21.16) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** status bar bled into the help row when modals overflowed the terminal ([b9bfa42](https://github.com/george43g/EQStack/commit/b9bfa42448cab41dbff903cfc902a995043e401f)), closes [#99](https://github.com/george43g/EQStack/issues/99) [#101](https://github.com/george43g/EQStack/issues/101)
+
 ## imsg-mcp [1.21.15](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.14...imsg-mcp-v1.21.15) (2026-08-15)
 
 
