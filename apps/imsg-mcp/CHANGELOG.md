@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.21.10](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.9...imsg-mcp-v1.21.10) (2026-08-15)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** eviction made older history permanently unreachable ([2427c7d](https://github.com/george43g/EQStack/commit/2427c7d5a643e075a2592154ee893ba9530bc052))
+
 ## imsg-mcp [1.21.9](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.8...imsg-mcp-v1.21.9) (2026-08-15)
 
 
