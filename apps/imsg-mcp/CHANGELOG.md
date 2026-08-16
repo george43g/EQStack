@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+# imsg-mcp [1.23.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.22.2...imsg-mcp-v1.23.0) (2026-08-16)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** shutdown marker could log twice when a co-cleanup hung ([47e8fc2](https://github.com/george43g/EQStack/commit/47e8fc233ee741077f2d6ca3c372e3d4d89af6d1))
+
+
+### Features
+
+* **imsg-mcp:** opt-in <untrusted> envelopes for structuredContent (STATUS §6) ([3e7e0f9](https://github.com/george43g/EQStack/commit/3e7e0f9e829156d496ee365003baaa47e8d05952))
+
 ## imsg-mcp [1.22.2](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.22.1...imsg-mcp-v1.22.2) (2026-08-16)
 
 
