@@ -4,9 +4,11 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-08-16 · current release **v1.21.13** (npm; tarball-verified through the
-#94–#99 merge queue: eviction cursor, voice-mcp keychain re-key, date picker, unnamed-group
-titles, help-bar overflow)._
+_Last updated 2026-08-16 · current release **v1.23.0** (npm; every release through the
+#94–#110 queue tag+npm-verified: eviction cursor, date picker, unnamed-group titles, the
+height-0-box render family, analytics contact names, group events (v1.22.0), robustness
+0.8.1 full adoption (v1.22.1–2), structuredContent envelopes + single-shot shutdown marker
+(v1.23.0))._
 
 > **🖥️ Claude Desktop / distribution / online-MCP:** the `.mcpb type:node` extension crashes in
 > Desktop (Electron has no in-process SQLite); iMessage works there today via a **manual `mcpServers`

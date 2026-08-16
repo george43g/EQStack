@@ -565,3 +565,34 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   heap 0.2% — not chased). Suite 1093 → 1117. Ops note: one CI flake family remains — voice-mcp's
   gateway.integration.test.ts WS-timing ("call has no live session" + afterAll hook timeout), hit
   once on #102 build-test, rerun-green; de-flake if it recurs.
+- 2026-08-16 · Claude · **Upstream-integration leg: #105–#110 merged, v1.22.0 → v1.23.0 all
+  verified.** **#106 (v1.22.0)** group renames/joins/leaves surfaced (STATUS §9 gap): typed
+  `ConversationEvent` decode via dedicated `getConversationEvents` (item_type 1/2/3 via
+  `group_action_type`+`other_handle`/`group_title`; real-DB verified), info-drawer "Group changes"
+  section; remaining: inline thread-pane rows + MCP accessor (batch with next tool change).
+  **#107 (v1.22.1)** robustness 0.8.0 partial adoption — upstream's correction absorbed (our
+  stdin_eof/orphaned cause branches were DEAD on 0.7.0, those paths emitted nothing; 0.8.0 emits
+  both, drill-verified live) + our own TUI cause gate; full adoption DEFERRED on a defect I
+  reported (kit recorded rejection/exception causes BEFORE the exit gate — a survived error
+  poisoned later clean quits and first-writer-wins masked real causes). **#108 (v1.22.2)** upstream
+  shipped our gate verbatim in 0.8.1 within the hour → local cause state + all diagnostic-sniffing
+  branches DELETED, kit is the single source; drills byte-identical (stdin_eof /
+  watchdog:rss_exceeded); TUI q/Ctrl-C now record `user_quit` (drill-verified). **#109 (v1.23.0)**
+  three-commit hardening: STATUS §6 `IMSG_WRAP_STRUCTURED_TEXT=1` (opt-in <untrusted> envelopes on
+  every structuredContent narrative field, default off byte-identical), the duplicate-shutdown-
+  marker fix (upstream-measured: the exit listener's sync sweep re-runs early-registered cleanups
+  after force-exit — both entries were marker-FIRST; now last-registered + write-once guarded,
+  since runtime registrations make "last" unstable), and the checkpoint-survival de-flake
+  (arming-proof retry; fixed sleeps raced the kqueue re-arm under suite load). **#110 (docs)**
+  TWILIO SAGA CLOSED: George's "the key exists" was RIGHT — SK key minted 2026-05-13 via
+  twilio-cli, secret in `~/.twilio-cli/config.json` (mode 644), invisible to every 1P sweep;
+  settled by listing Twilio's own `Keys.json` (my proposed check). Now 1P item `TWILIO_API_KEY`
+  (no rename, `twilio-us1-live` untouched, real secret separation). ⚠ SK secret PENDING ROTATION
+  (leaked in life-stack transcript; George-only) + twilio-cli re-stores plaintext 644. Gotcha
+  recorded: API keys 401 on the Account resource but 200 on resource endpoints — future doctor
+  probes must use a RESOURCE endpoint. Also: STATUS §1 (20 analytics types) PARKED per George —
+  absorbed by the future analytics app, do not build in imsg-mcp. Suite 1132. NEXT: inline
+  group-event rows, send-via border clip + analytics emoji column shift (cosmetics), STATUS §5
+  account diagnostics, or §2 god-file decomposition (needs greenlight). Upstream correspondence
+  with mcp-cli-toolkit CLOSED (three defects total this arc: one theirs-shipped, one mine-caught,
+  one network-caught; every one found by a consumer running the thing, not by a test suite).
