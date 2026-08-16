@@ -31,56 +31,6 @@ import { appendLog } from "./logger.js";
 
 type CleanupFn = () => void | Promise<void>;
 
-/**
- * Why this process is going down, as learned from the controller's diagnostics.
- *
- * Both entry points used to log a hardcoded `logShutdown("normal")`, so every
- * exit — a user pressing `q`, a SIGTERM from a supervisor, a watchdog self-kill,
- * an uncaught exception — produced the same final NDJSON marker. Postmortems
- * could see THAT the process stopped cleanly but never WHY, which is exactly
- * the question a crash trail exists to answer.
- */
-let shutdownCause: string | null = null;
-
-/**
- * The recorded cause, or `"normal"` when nothing signalled one (a clean quit).
- * Entry points pass this to `logShutdown` instead of a literal.
- */
-export function getShutdownCause(): string {
-  return shutdownCause ?? "normal";
-}
-
-/**
- * Record an explicit cause. Used by the watchdog, whose kill reason
- * (`rss_exceeded`, `event_loop_blocked`, `memory_leak_suspected`,
- * `idle_restart`) is known to it and not derivable from a signal.
- * First writer wins: the initiating cause is more informative than any
- * follow-on event it triggers.
- */
-export function noteShutdownCause(cause: string): void {
-  if (shutdownCause === null) shutdownCause = cause;
-}
-
-/** @internal test seam */
-export function _resetShutdownCause(): void {
-  shutdownCause = null;
-}
-
-/**
- * Whether an uncaught exception will actually initiate shutdown (the kit's
- * `exitOnUncaughtException`, default true; the TUI reconfigures it to false).
- * The cause capture below must respect it: a shutdown CAUSE describes what
- * initiated the shutdown, and in the TUI an uncaught exception is survived —
- * recording it would make a later clean `q` quit report `uncaught_exception`,
- * and first-writer-wins would mask any real later cause (e.g. a genuine
- * SIGTERM). This is also why there is deliberately NO branch for
- * `unhandled_rejection`: imsg pins exitOnUnhandledRejection false everywhere,
- * so a rejection never initiates shutdown and must never be its cause. (The
- * kit's own 0.8.0 cause tracking records both UNCONDITIONALLY — reported
- * upstream 2026-08-16; we keep local cause state until that is gated.)
- */
-let exitsOnUncaughtException = true;
-
 const controller = createShutdownController({
   // imsg policy: log unhandled rejections but DO NOT exit. Pre-fix, a single
   // unhandled rejection in a background task (heartbeat / cache sweeper /
@@ -100,24 +50,6 @@ const controller = createShutdownController({
     // throws mid-shutdown (writeToFile/writeStderrLine swallow), so no
     // try/catch is needed here.
     appendLog(d.level, d.event, d.data);
-
-    // Capture WHY we're going down, for the final `shutdown` marker. The
-    // signal name lives in the diagnostic payload under a couple of possible
-    // keys depending on kit version, so probe rather than assume.
-    // Note: the stdin_eof / orphaned branches were DEAD on robustness 0.7.0
-    // (those paths emitted no diagnostic at all — upstream finding); 0.8.0
-    // emits both, so they are live for the first time.
-    if (d.event === "signal_received") {
-      const data = (d.data ?? {}) as Record<string, unknown>;
-      const sig = data.signal ?? data.name ?? data.reason;
-      noteShutdownCause(typeof sig === "string" ? `signal:${sig}` : "signal");
-    } else if (d.event === "uncaught_exception") {
-      if (exitsOnUncaughtException) noteShutdownCause("uncaught_exception");
-    } else if (d.event === "stdin_eof") {
-      noteShutdownCause("stdin_eof");
-    } else if (d.event === "orphaned") {
-      noteShutdownCause("orphaned");
-    }
   },
 });
 
@@ -125,8 +57,47 @@ const controller = createShutdownController({
  * @internal Consumed by `watchdog.ts` so watchdog kills run THIS registry's
  * cleanups (DB close, heap-monitor stop, screen unmount) — the kit watchdog's
  * default is its own package singleton, whose registry would be empty.
+ * Since robustness 0.8.x the kit watchdog also records `watchdog:<reason>`
+ * as the shutdown cause through this controller's `noteShutdownCause`.
  */
 export const _controller = controller;
+
+/**
+ * Why this process went down — `"normal"` for a clean quit, else
+ * `signal:<NAME>` / `uncaught_exception` / `unhandled_rejection` /
+ * `stdin_eof` / `orphaned` / `watchdog:<reason>` / an explicit note.
+ *
+ * Fully delegated to robustness ≥0.8.1, which records causes AT the
+ * lifecycle call sites (first-writer-wins) and — after our upstream defect
+ * report — only when the event actually initiates shutdown: an error the
+ * process SURVIVES (imsg pins exitOnUnhandledRejection false everywhere;
+ * the TUI also pins exitOnUncaughtException false) is a diagnostic, never
+ * a cause, so it cannot poison a later clean quit or mask a real cause.
+ * The 0.7.0-era local implementation (module state + diagnostic-sniffing
+ * branches, two of which turned out to be dead paths) is deleted.
+ */
+export function getShutdownCause(): string {
+  return controller.getShutdownCause();
+}
+
+/**
+ * Record an explicit cause (e.g. `user_quit` from the TUI's `q` handler).
+ * First writer wins: the initiating cause is more informative than any
+ * follow-on event it triggers.
+ */
+export function noteShutdownCause(cause: string): void {
+  controller.noteShutdownCause(cause);
+}
+
+/**
+ * @internal test seam. NOTE: the kit's `reset()` clears the WHOLE controller
+ * (cleanup registry, handlers, shutting-down flag), not just the cause —
+ * fine for its one caller (an isolated `vi.resetModules()` test), lethal in
+ * a live process. Never call outside tests.
+ */
+export function _resetShutdownCause(): void {
+  controller.reset();
+}
 
 /**
  * Register a cleanup function to run on shutdown.
@@ -178,7 +149,6 @@ export interface ShutdownOpts {
  */
 export function installShutdownHandlers(opts: ShutdownOpts = {}): void {
   if (opts.exitOnUncaughtException !== undefined) {
-    exitsOnUncaughtException = opts.exitOnUncaughtException;
     controller.reconfigure({ exitOnUncaughtException: opts.exitOnUncaughtException });
   }
   controller.installHandlers();

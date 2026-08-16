@@ -15,7 +15,7 @@ import {
   getInterpretRuntime,
   primaryMediaRef,
 } from "../media-intel-runtime.js";
-import { registerCleanup } from "../shutdown.js";
+import { noteShutdownCause, registerCleanup } from "../shutdown.js";
 import { type Conversation, type Message, oldestMessageCursor, type Reaction } from "../types.js";
 import { getInstalledChatApps } from "../url-schemes.js";
 import {
@@ -641,6 +641,7 @@ export function App({ changeBus }: AppProps = {}) {
   const handleKey = async (input: string, key: KeyState) => {
     // Ctrl-C always exits
     if (key.ctrl && input === "c") {
+      noteShutdownCause("user_quit");
       await imsg.close();
       exit();
       return;
@@ -1049,6 +1050,10 @@ export function App({ changeBus }: AppProps = {}) {
       return;
     }
     if (input === "q") {
+      // Record the cause explicitly: "user_quit" in the shutdown marker beats
+      // the ambient "normal" — a postmortem can tell a deliberate quit from
+      // any exit that merely recorded nothing.
+      noteShutdownCause("user_quit");
       await imsg.close();
       exit();
       return;

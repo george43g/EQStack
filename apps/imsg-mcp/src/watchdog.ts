@@ -27,13 +27,16 @@
 
 import { createWatchdog, isMonotonicallyGrowing } from "@george43g/robustness";
 import { error, info, warn } from "./logger.js";
-import { _controller, noteShutdownCause } from "./shutdown.js";
+import { _controller } from "./shutdown.js";
 
 const controller = createWatchdog({
   envPrefix: "IMSG",
   // Kills must run imsg's cleanup registry (DB close, heap-monitor stop,
   // screen unmount) — the kit's default is its own package singleton, whose
-  // registry would be empty here.
+  // registry would be empty here. Since 0.8.x the kit's `triggerKill` also
+  // records `watchdog:<reason>` as the shutdown cause through this
+  // controller — the local diagnostic-sniffing branch that used to do it
+  // is deleted (drill-verified equivalent on the real NDJSON marker).
   shutdownController: _controller,
   onDiagnostic: (d) => {
     // Keep watchdog_kill / rss_kill_heap_forensics / event_loop_lag /
@@ -43,19 +46,6 @@ const controller = createWatchdog({
     if (d.level === "error") error(d.event, d.data);
     else if (d.level === "warn") warn(d.event, d.data);
     else info(d.event, d.data);
-
-    // A watchdog kill is the most informative shutdown cause there is — carry
-    // it into the final `shutdown` marker so a postmortem sees
-    // "shutdown reason=rss_exceeded", not "reason=normal" after a self-kill.
-    if (d.event.startsWith("watchdog_kill")) {
-      const data = (d.data ?? {}) as Record<string, unknown>;
-      const reason = data.reason;
-      noteShutdownCause(
-        typeof reason === "string"
-          ? `watchdog:${reason}`
-          : d.event.replace(/^watchdog_kill:?\s*/, "watchdog:") || "watchdog",
-      );
-    }
   },
 });
 
