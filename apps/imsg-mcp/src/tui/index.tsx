@@ -120,8 +120,6 @@ export async function runTui(): Promise<void> {
     stopCacheSweepers();
     clearCache();
     stopHeapMonitor();
-    // See the MCP entry point: report the recorded cause, not a literal.
-    logShutdown(getShutdownCause());
   });
 
   // Live change stream: the bus is constructed here (one per TUI process);
@@ -142,6 +140,20 @@ export async function runTui(): Promise<void> {
     } catch {
       // Screen may already be unmounted
     }
+  });
+
+  // The shutdown marker is registered LATE and guarded write-once (see the
+  // MCP entry point for the full rationale): registered early, a hanging
+  // co-cleanup makes the exit listener's synchronous registry sweep run the
+  // marker a SECOND time — two shutdown lines on the kill path. The App also
+  // registers cleanups at runtime (change-watcher stop) AFTER this one, so
+  // ordering alone cannot guarantee last place — the write-once guard is the
+  // invariant. Reports the recorded cause, not a literal.
+  let shutdownMarkerLogged = false;
+  registerCleanup(() => {
+    if (shutdownMarkerLogged) return;
+    shutdownMarkerLogged = true;
+    logShutdown(getShutdownCause());
   });
 
   await screen.start();

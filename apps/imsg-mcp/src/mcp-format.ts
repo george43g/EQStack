@@ -9,7 +9,7 @@ import { dirname, isAbsolute } from "node:path";
 import type { AnalyticType } from "./analytics.js";
 import { renderAnalyticText } from "./analytics-render.js";
 import { hasNativeModule } from "./native-bridge.js";
-import { wrapUntrusted } from "./prompt-injection.js";
+import { shouldWrapStructuredText, wrapUntrusted } from "./prompt-injection.js";
 import { sanitizeUserText } from "./sanitize.js";
 import type { Message } from "./types.js";
 
@@ -124,9 +124,47 @@ export function formatMessage(msg: Message, conversationLabel?: string): string 
 }
 
 export function messageToStructured(msg: Message) {
+  // Opt-in (IMSG_WRAP_STRUCTURED_TEXT=1): also envelope the user-text fields
+  // in structuredContent. The human-readable content[0].text was always
+  // wrapped, but hosts that pipe structuredContent straight into a prompt
+  // were exposed — a message body saying "ignore your previous instructions"
+  // reached the model unmarked. Default OFF: wrapping changes the DATA, and
+  // agents doing exact-match on .text expect the raw string. When ON, every
+  // free-text narrative field gets the envelope: the body, the reply
+  // preview, media interpretations, and edit-history versions.
+  const wrap = shouldWrapStructuredText();
+  const guard = (t: string | null | undefined): string | null => {
+    const clean = sanitizeUserText(t);
+    return clean == null ? null : wrap ? wrapUntrusted(clean) : clean;
+  };
   return {
     ...msg,
-    text: sanitizeUserText(msg.text),
+    text: guard(msg.text),
+    ...(wrap && msg.replyTo
+      ? { replyTo: { ...msg.replyTo, replyToText: guard(msg.replyTo.replyToText) } }
+      : {}),
+    ...(wrap && msg.interpretedMedia
+      ? {
+          interpretedMedia: {
+            ...msg.interpretedMedia,
+            text: wrapUntrusted(msg.interpretedMedia.text),
+          },
+        }
+      : {}),
+    ...(wrap && msg.editHistory
+      ? {
+          editHistory: {
+            ...msg.editHistory,
+            parts: msg.editHistory.parts.map((p) => ({
+              ...p,
+              versions: p.versions.map((v) => ({
+                ...v,
+                text: v.text == null ? v.text : wrapUntrusted(v.text),
+              })),
+            })),
+          },
+        }
+      : {}),
     date: msg.date.toISOString(),
     dateRead: msg.dateRead?.toISOString() ?? null,
     dateDelivered: msg.dateDelivered?.toISOString() ?? null,

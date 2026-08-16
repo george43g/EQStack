@@ -2175,12 +2175,25 @@ export class IMessageMCPServer {
   async run(): Promise<void> {
     // Install process lifecycle handlers
     installShutdownHandlers();
-    // Not a literal "normal": the cause is whatever the shutdown controller or
-    // watchdog recorded (signal:SIGTERM, watchdog:rss_exceeded, stdin_eof, …),
-    // falling back to "normal" for a genuine clean exit.
-    registerCleanup(() => logShutdown(getShutdownCause()));
     registerCleanup(() => stopHeapMonitor());
     registerCleanup(() => this.db.close());
+    // The shutdown marker is registered LAST here and guarded write-once — a
+    // robustness guarantee relied on (documented on registerCleanup since
+    // 0.8.1): cleanups run in registration order in an async pass, and the
+    // exit listener additionally sweeps the WHOLE registry synchronously.
+    // Registered first, a hanging db.close() stalls the async pass after the
+    // marker already ran, the force-exit fires, and the sweep runs the marker
+    // AGAIN — two shutdown lines on exactly the watchdog-kill path a
+    // postmortem reads (upstream finding, measured). Ordering handles the
+    // normal pass; the guard covers cleanups registered later at runtime
+    // (e.g. wait_for_changes arming a watcher). Not a literal "normal": the
+    // cause is whatever the controller or watchdog recorded.
+    let shutdownMarkerLogged = false;
+    registerCleanup(() => {
+      if (shutdownMarkerLogged) return;
+      shutdownMarkerLogged = true;
+      logShutdown(getShutdownCause());
+    });
     enableStdinEofDetection();
     enableOrphanWatchdog();
     installWatchdog();

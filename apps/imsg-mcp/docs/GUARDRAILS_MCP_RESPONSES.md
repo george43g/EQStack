@@ -50,7 +50,7 @@ Convenience for the common case of returning a structured error with a remediati
 |---|---|---|
 | Message body in `formatMessage()` | `wrapUntrusted` | Applied at the human-readable render layer (the `content[0].text` field). |
 | Conversation snippet in `list_conversations` | `wrapUntrusted` | Same rationale. |
-| Structured `text` in `messageToStructured` | not currently wrapped | Left raw so downstream consumers can render their own way. Hosts that pipe `structuredContent.messages[i].text` directly into a prompt should wrap it client-side or we extend this contract. |
+| Structured `text` in `messageToStructured` | opt-in via `IMSG_WRAP_STRUCTURED_TEXT=1` | Default raw so exact-match/processing consumers see the real string. When the host operator sets the env knob, every free-text narrative field in `structuredContent` (body, reply preview, media interpretation, edit-history versions) gets the `<untrusted>` envelope. Host-level posture — an env knob, not a per-call schema flag. |
 | Contact display name | not currently wrapped | Names come from the local Address Book and are high-trust. Wrap here if attacks surface. |
 | Reply preview text | not yet wrapped | TODO when reply previews land in the structured output. |
 | Tool error responses | `_meta.duration_ms` + `engine` stamped automatically | The error text itself is server-authored. |
@@ -72,6 +72,6 @@ Convenience for the common case of returning a structured error with a remediati
 
 ## Future hardening (not implemented)
 
-- **Wrap on the structured side too.** Currently `structuredContent.messages[i].text` is the raw body. Hosts may pipe that directly into a prompt; wrapping there too costs nothing if hosts agree on the convention.
+- ~~Wrap on the structured side too.~~ **Done 2026-08-16**: `IMSG_WRAP_STRUCTURED_TEXT=1` (see table above).
 - **Per-field UUID.** A single per-session UUID is sufficient against most attackers. If we ever expose `<instructions>` for cross-session signing, rotate per request.
 - **Image OCR sanitization.** Quick Look attachments aren't scanned; an image with embedded text is OCR'able by some downstream models. Not currently in scope.
