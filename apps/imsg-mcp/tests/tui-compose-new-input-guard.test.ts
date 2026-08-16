@@ -27,7 +27,11 @@ describe("App.tsx compose-new input guard", () => {
 
   it("guards compose-new BEFORE the bare `q` quit handler", () => {
     const guardIdx = SRC.search(/if \(state\.mode === "compose-new"\)/);
-    const quitIdx = SRC.search(/if \(input === "q"\)\s*\{\s*await imsg\.close\(\)/);
+    // The quit handler now records the shutdown cause (user_quit) and carries
+    // a comment before closing — anchor on the noteShutdownCause line.
+    const quitIdx = SRC.search(
+      /if \(input === "q"\)\s*\{[\s\S]{0,400}?noteShutdownCause\("user_quit"\)/,
+    );
     expect(guardIdx, "compose-new guard not found").toBeGreaterThan(-1);
     expect(quitIdx, "q-quit handler not found").toBeGreaterThan(-1);
     expect(guardIdx).toBeLessThan(quitIdx);
@@ -36,7 +40,11 @@ describe("App.tsx compose-new input guard", () => {
   it("every text-entry modal mode short-circuits before the browse-mode keys", () => {
     // The bare `q` quit is the canary: if any text-entry modal falls through
     // to it, a keystroke can kill the TUI. Assert each returns earlier.
-    const quitIdx = SRC.search(/if \(input === "q"\)\s*\{\s*await imsg\.close\(\)/);
+    // The quit handler now records the shutdown cause (user_quit) and carries
+    // a comment before closing — anchor on the noteShutdownCause line.
+    const quitIdx = SRC.search(
+      /if \(input === "q"\)\s*\{[\s\S]{0,400}?noteShutdownCause\("user_quit"\)/,
+    );
     for (const mode of ["filter", "compose", "compose-new"]) {
       const idx = SRC.search(new RegExp(`if \\(state\\.mode === "${mode}"\\)`));
       expect(idx, `no guard for mode "${mode}"`).toBeGreaterThan(-1);
@@ -49,7 +57,11 @@ describe("App.tsx compose-new input guard", () => {
     // non-handled key, so `q` inside a visual selection quit the whole app.
     // The block must now bail on anything that isn't a movement key.
     const selectIdx = SRC.search(/if \(state\.mode === "select"\)/);
-    const quitIdx = SRC.search(/if \(input === "q"\)\s*\{\s*await imsg\.close\(\)/);
+    // The quit handler now records the shutdown cause (user_quit) and carries
+    // a comment before closing — anchor on the noteShutdownCause line.
+    const quitIdx = SRC.search(
+      /if \(input === "q"\)\s*\{[\s\S]{0,400}?noteShutdownCause\("user_quit"\)/,
+    );
     expect(selectIdx, "select-mode block not found").toBeGreaterThan(-1);
     // The movement whitelist + its non-movement early return live inside the block.
     expect(SRC).toMatch(/const selectMovement =/);
