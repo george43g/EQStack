@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.22.2](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.22.1...imsg-mcp-v1.22.2) (2026-08-16)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** complete robustness 0.8.1 cause adoption; TUI quits record user_quit ([e33c264](https://github.com/george43g/EQStack/commit/e33c264fe85a35175447985b070149b47520ef2d))
+
 ## imsg-mcp [1.22.1](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.22.0...imsg-mcp-v1.22.1) (2026-08-16)
 
 
