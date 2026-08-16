@@ -95,7 +95,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@george43g/robustness": "^0.7.0",
+    "@george43g/robustness": "^0.8.0",
     "@george43g/tui-kit": "^0.4.0",
     "@inkjs/ui": "^2.0.0",
     "@inquirer/prompts": "^8.5.2",

@@ -66,6 +66,21 @@ export function _resetShutdownCause(): void {
   shutdownCause = null;
 }
 
+/**
+ * Whether an uncaught exception will actually initiate shutdown (the kit's
+ * `exitOnUncaughtException`, default true; the TUI reconfigures it to false).
+ * The cause capture below must respect it: a shutdown CAUSE describes what
+ * initiated the shutdown, and in the TUI an uncaught exception is survived —
+ * recording it would make a later clean `q` quit report `uncaught_exception`,
+ * and first-writer-wins would mask any real later cause (e.g. a genuine
+ * SIGTERM). This is also why there is deliberately NO branch for
+ * `unhandled_rejection`: imsg pins exitOnUnhandledRejection false everywhere,
+ * so a rejection never initiates shutdown and must never be its cause. (The
+ * kit's own 0.8.0 cause tracking records both UNCONDITIONALLY — reported
+ * upstream 2026-08-16; we keep local cause state until that is gated.)
+ */
+let exitsOnUncaughtException = true;
+
 const controller = createShutdownController({
   // imsg policy: log unhandled rejections but DO NOT exit. Pre-fix, a single
   // unhandled rejection in a background task (heartbeat / cache sweeper /
@@ -77,8 +92,9 @@ const controller = createShutdownController({
   exitOnUnhandledRejection: false,
   onDiagnostic: (d) => {
     // Route lifecycle events (signal_received, unhandled_rejection,
-    // uncaught_exception, cleanup_failed, cleanup_timeout, …) into imsg's
-    // ring buffer + NDJSON, keeping event names grep-compatible with the old
+    // uncaught_exception, cleanup_failed, cleanup_timeout, and — since
+    // robustness 0.8.0 — stdin_eof and orphaned) into imsg's ring buffer +
+    // NDJSON, keeping event names grep-compatible with the old
     // implementation. Stderr mirroring rides the logger's existing
     // enableStderrLogging() gate, so this stays TUI-safe. The logger never
     // throws mid-shutdown (writeToFile/writeStderrLine swallow), so no
@@ -88,12 +104,15 @@ const controller = createShutdownController({
     // Capture WHY we're going down, for the final `shutdown` marker. The
     // signal name lives in the diagnostic payload under a couple of possible
     // keys depending on kit version, so probe rather than assume.
+    // Note: the stdin_eof / orphaned branches were DEAD on robustness 0.7.0
+    // (those paths emitted no diagnostic at all — upstream finding); 0.8.0
+    // emits both, so they are live for the first time.
     if (d.event === "signal_received") {
       const data = (d.data ?? {}) as Record<string, unknown>;
       const sig = data.signal ?? data.name ?? data.reason;
       noteShutdownCause(typeof sig === "string" ? `signal:${sig}` : "signal");
     } else if (d.event === "uncaught_exception") {
-      noteShutdownCause("uncaught_exception");
+      if (exitsOnUncaughtException) noteShutdownCause("uncaught_exception");
     } else if (d.event === "stdin_eof") {
       noteShutdownCause("stdin_eof");
     } else if (d.event === "orphaned") {
@@ -159,6 +178,7 @@ export interface ShutdownOpts {
  */
 export function installShutdownHandlers(opts: ShutdownOpts = {}): void {
   if (opts.exitOnUncaughtException !== undefined) {
+    exitsOnUncaughtException = opts.exitOnUncaughtException;
     controller.reconfigure({ exitOnUncaughtException: opts.exitOnUncaughtException });
   }
   controller.installHandlers();

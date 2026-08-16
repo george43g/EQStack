@@ -147,11 +147,12 @@ Durable facts that repeatedly bite — keep these in mind before touching the re
 
 Ordered roughly by priority. Nothing here blocks the current release.
 
-### 1. Analytics — 20 remaining types (P2)
-`chat_analytics` ships 7 types; the enum reserves 20 more (`FUTURE_TYPES` in `src/analytics.ts`),
-which return a friendly schema error until implemented. Each is a pure
-`(messages: Message[]) => Result` added to `dispatchAnalytic` + `IMPLEMENTED_TYPES` + `ANALYTIC_INFO`
-(the cache layer is type-agnostic). Aim for ~5-per-PR. Reserved: `silences`, `ghost_storms`,
+### 1. Analytics — 20 remaining types (PARKED 2026-08-16, George's call)
+**Parked: these will be absorbed by the future relationship-analytics app** (`apps/analysis`, the
+monorepo's second app) rather than implemented in imsg-mcp — do not build them here. The enum
+reservations stay so the schema error remains friendly. Original notes kept for the analytics app's
+benefit: each was a pure `(messages: Message[]) => Result` added to `dispatchAnalytic` +
+`IMPLEMENTED_TYPES` + `ANALYTIC_INFO` (the cache layer is type-agnostic). Reserved: `silences`, `ghost_storms`,
 `conversation_half_life`, `sent_received_imbalance`, `tapback_per_person`, `read_receipt_latency`,
 `most_used_words`, `emoji_leaderboard`, `attachment_volume`, `media_share_breakdown`,
 `group_chat_activity`, `chat_age_distribution`, `first_messages_log`, `last_messages_log`,

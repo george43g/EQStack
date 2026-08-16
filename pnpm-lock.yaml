@@ -51,11 +51,11 @@ importers:
   apps/imsg-mcp:
     dependencies:
       '@george43g/robustness':
-        specifier: ^0.7.0
-        version: 0.7.0
+        specifier: ^0.8.0
+        version: 0.8.0
       '@george43g/tui-kit':
         specifier: ^0.4.0
-        version: 0.4.0(@george43g/robustness@0.7.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))(react@19.2.8)
+        version: 0.4.0(@george43g/robustness@0.8.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))(react@19.2.8)
       '@inkjs/ui':
         specifier: ^2.0.0
         version: 2.0.0(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))
@@ -649,6 +649,10 @@ packages:
 
   '@george43g/robustness@0.7.0':
     resolution: {integrity: sha512-dTdN/tGRPzIgyjtcPzIVpNjzPFNoUdyx6DJ3V0CW/KO62Pqie/u0W/wLBmmEp9kE66j2RD+DE6Y1jTwz4XCVqA==}
+    engines: {node: '>=24'}
+
+  '@george43g/robustness@0.8.0':
+    resolution: {integrity: sha512-ciuqcI+No2vIEIG+w4G47NtWQHBVk6akKY3VHE4lXtzGnBJJ6P3MfV9NJciHy1S5AMZvZYGMWDdUZsXiF2hVhQ==}
     engines: {node: '>=24'}
 
   '@george43g/tui-kit@0.4.0':
@@ -4156,9 +4160,11 @@ snapshots:
 
   '@george43g/robustness@0.7.0': {}
 
-  '@george43g/tui-kit@0.4.0(@george43g/robustness@0.7.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))(react@19.2.8)':
+  '@george43g/robustness@0.8.0': {}
+
+  '@george43g/tui-kit@0.4.0(@george43g/robustness@0.8.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@george43g/robustness': 0.7.0
+      '@george43g/robustness': 0.8.0
       fullscreen-ink: 0.1.0(@types/react@19.2.14)
       ink: 7.1.1(@types/react@19.2.14)(react@19.2.8)
       react: 19.2.8

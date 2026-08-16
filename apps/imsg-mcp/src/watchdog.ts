@@ -66,27 +66,17 @@ export function noteActivity(): void {
   controller.noteActivity();
 }
 
-/** Read current watchdog state — used by health_check and TUI dev stats. */
+/**
+ * Read current watchdog state — used by health_check and TUI dev stats.
+ *
+ * robustness 0.8.0 lifted this module's pre-first-sample fill (a fresh
+ * process no longer reads 0MB for its first minute) and applied it to the
+ * on-disk state snapshot too, which our local fill never covered. The kit
+ * also adds `memorySampled: boolean` so "live reading taken just now" stays
+ * distinguishable from "the sampler's last recording".
+ */
 export function readWatchdogState() {
-  const state = controller.readState();
-  // The memory sampler runs every 60s, but callers poll far faster — the TUI
-  // dev-stats panel every 5s, health_check on demand. Until the first sample
-  // lands the kit reports 0, so a freshly-started process appeared to be using
-  // no memory at all for its first minute: the exact window in which someone
-  // debugging a startup problem is looking. Fill the gap from a live reading;
-  // it costs a `process.memoryUsage()` call and is the same measurement the
-  // sampler takes. (health_check had its own local fallback for this — now
-  // redundant, but harmless, and every other caller gets it too.)
-  if (!state.rssMb || !state.heapMb) {
-    const mem = process.memoryUsage();
-    const round1 = (n: number) => Math.round(n * 10) / 10;
-    return {
-      ...state,
-      rssMb: state.rssMb || round1(mem.rss / 1024 / 1024),
-      heapMb: state.heapMb || round1(mem.heapUsed / 1024 / 1024),
-    };
-  }
-  return state;
+  return controller.readState();
 }
 
 /**
