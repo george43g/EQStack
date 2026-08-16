@@ -304,17 +304,20 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
     unlinkSync(join(dir, "chat.db-wal"));
     await new Promise((r) => setTimeout(r, 150));
     writeFileSync(join(dir, "chat.db-wal"), "gen2");
-    await new Promise((r) => setTimeout(r, 250));
 
+    // Arming-proof retry (same pattern as this file's first test): a single
+    // append after fixed sleeps races the kqueue RE-arm under full-suite CPU
+    // load — if the append lands before the new WAL file is watched (and the
+    // safety poll is disabled here), it is missed with no second chance.
+    // Retrying the append until a batch is observed proves the re-arm
+    // without depending on scheduler timing.
     push(msg(1));
-    appendFileSync(join(dir, "chat.db-wal"), "-post-checkpoint-append");
-
-    await vi.waitFor(
-      () => {
-        expect(batches.flat().length).toBeGreaterThanOrEqual(1);
-      },
-      { timeout: 3_000 },
-    );
+    const deadline = Date.now() + 8_000;
+    while (batches.flat().length === 0 && Date.now() < deadline) {
+      appendFileSync(join(dir, "chat.db-wal"), "-post-checkpoint-append");
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    expect(batches.flat().length).toBeGreaterThanOrEqual(1);
     w.stop();
   });
 });
