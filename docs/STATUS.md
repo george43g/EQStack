@@ -193,10 +193,10 @@ with `IMSG_DEV=1` (`health_check` is dev-gated — without it check 5b#6 always 
 Optional `listFileTransfers()` as a TUI progress widget. Patterns are compile-checked in
 [`applescript-examples.md`](../apps/imsg-mcp/docs/applescript-examples.md); wiring is straight `runAppleScript()` wrappers.
 
-### 6. Wrap `structuredContent` message bodies in `wrapUntrusted` (P2)
-`wrapUntrusted` is applied only to the human-readable `content[0].text`, not to
-`structuredContent.messages[i].text`. Hosts that pipe `structuredContent` straight into a prompt are
-still exposed. Thread it through `messageToStructured` behind an opt-in flag. See
+### 6. ~~Wrap `structuredContent` message bodies in `wrapUntrusted`~~ (DONE 2026-08-16)
+Shipped: `IMSG_WRAP_STRUCTURED_TEXT=1` (host-operator env knob, default off for exact-match
+consumers) envelopes every free-text narrative field in `structuredContent` — body, reply preview,
+media interpretation, edit-history versions — via `messageToStructured`. See
 [`GUARDRAILS_MCP_RESPONSES.md`](../apps/imsg-mcp/docs/GUARDRAILS_MCP_RESPONSES.md).
 
 ### 6b. Parked decisions / small guards (P3)

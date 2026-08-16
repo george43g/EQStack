@@ -44,6 +44,22 @@ export function wrapUntrusted(text: string | null | undefined): string {
 }
 
 /**
+ * Opt-in: also wrap the user-text fields inside `structuredContent`
+ * (message bodies, reply previews, media interpretations, edit-history
+ * versions). Default OFF because wrapping changes the DATA — agents doing
+ * exact-match or downstream processing on `structuredContent.messages[i]
+ * .text` expect the raw string, and the human-readable `content[0].text`
+ * is already enveloped. Hosts that pipe structuredContent straight into a
+ * prompt should set `IMSG_WRAP_STRUCTURED_TEXT=1`; that posture belongs to
+ * the host operator, which is why this is an env knob and not a per-call
+ * schema flag on six tools. Read live so tests (and a host restart) can
+ * flip it without cache invalidation.
+ */
+export function shouldWrapStructuredText(): boolean {
+  return process.env.IMSG_WRAP_STRUCTURED_TEXT === "1";
+}
+
+/**
  * Wrap trusted server-side instructions for the LLM. The UUID is generated
  * once per process so an attacker who embeds `<instructions uuid="...">` in
  * a message body can't fake instructions — they'd have to guess our UUID.
