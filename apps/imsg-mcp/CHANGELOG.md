@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.22.1](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.22.0...imsg-mcp-v1.22.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** adopt robustness 0.8.0 — live stdin_eof/orphaned causes, truthful TUI cause, kit-side 0MB fill ([896a8a2](https://github.com/george43g/EQStack/commit/896a8a227ae62b3f9ee135eee45b5a4db2625ed2))
+
 # imsg-mcp [1.22.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.21.17...imsg-mcp-v1.22.0) (2026-08-15)
 
 
