@@ -337,7 +337,19 @@ These uncommitted changes belong to life-stack and must **not** migrate:
   pair). RESOLVED 2026-08-16 (life-stack session): dotfiles templates now
   point `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` at `twilio-us1-live`; the
   stale `twilio-au1-{live,test}` items are archived (recoverable), not
-  deleted. Minting a real US1 `SK…` key remains the proper fix.
+  deleted. FULLY RESOLVED later same day: a real `SK…` API key turned out to
+  EXIST all along — minted 2026-05-13 via twilio-cli (secret sat in
+  `~/.twilio-cli/config.json`), invisible to every 1Password sweep; found by
+  listing `Accounts/<sid>/Keys.json` from Twilio itself. Now stored as
+  1Password item `TWILIO_API_KEY` in key-vault (username=SK SID,
+  credential=secret) and all four `TWILIO_*` vars resolve via opkeep.
+  ⚠ That secret leaked into an agent transcript — ROTATION PENDING
+  (George-only action); expect the value to change. ⚠ Health-check gotcha
+  for any future `doctor` enhancement: API keys get **401 on the Account
+  resource** (`Accounts/<sid>.json`, documented Twilio restriction) while
+  resource endpoints (`IncomingPhoneNumbers.json`, `Calls/…`) return 200 —
+  probe a RESOURCE endpoint or a valid SK key looks dead. Current adapter
+  calls are all resource-scoped, so runtime is unaffected.
 - **Voice-string decimals.** Twilio error `64101` (`Invalid values
   (block_elevenlabs/…) for tts settings`) is a **format** bug, not an account
   block: a settings value rendered as a bare integer (`…-1_0.7_0.8`).
