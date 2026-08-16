@@ -596,3 +596,49 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   account diagnostics, or §2 god-file decomposition (needs greenlight). Upstream correspondence
   with mcp-cli-toolkit CLOSED (three defects total this arc: one theirs-shipped, one mine-caught,
   one network-caught; every one found by a consumer running the thing, not by a test suite).
+- 2026-08-16 · Claude · **COMPACT-BOUNDARY ARTIFACT (precompact skill shape). Where this entry and
+  any post-compact summary disagree, THIS ENTRY is correct.**
+  **State:** loop healthy and idle at a clean boundary — v1.23.0 live on npm, PRs #94–#111 all
+  merged with every release tag+npm-verified, tree clean, no stashes, no in-flight PRs, both peer
+  correspondences (mcp-cli-toolkit, life-stack) closed.
+  **Constraints (verbatim, this session):** George 2026-08-16: "side note: the 20 analytics types
+  will be absorbed by the analytics app - so make that note parking that - and work on integrating
+  upstream and fixing bugs etc.." → STATUS §1 parked; do NOT build those types in imsg-mcp. The
+  standing /goal remains: "just keep working through the backlog, pausing to compact context when
+  it dips below 50% or if you hit a blocker I need to fix". All prior standing constraints
+  (merge-not-squash, one-PR-then-Release-run, verify tags+npm never trust green, pnpm verify
+  before push, never git add -A, signed commits, foreground tests, fixtures-only) unchanged.
+  **Done:** see the two leg entries above (#94–#104, #105–#110) — every item anchored to its PR
+  and verified release; nothing in them is pending.
+  **Open:** the register is docs/STATUS.md — live items: inline group-event rows in the thread
+  pane (§9, deliberate #106 follow-up, never attempted), MCP `get_conversation_events` accessor
+  (batch with next tool change, never attempted), send-via modal bottom-border clip at ≤24 rows +
+  analytics-table emoji 1-col shift (cosmetics, observed live, never attempted), §5 account
+  diagnostics, §2 god-file decomposition (NEEDS GEORGE'S GREENLIGHT), voice-mcp
+  gateway.integration.test.ts CI flake (WS timing; hit once on #102, rerun-green — de-flake on
+  recurrence), voice-mcp registry auth-token fallback + regional-endpoint override (flagged
+  2026-08-16 morning, never attempted).
+  **Corrections (claims now void):** "mint a US1 SK… key remains the proper fix" — VOID, the key
+  existed all along (twilio-cli mint 2026-05-13; see #110 entry). "No SK key exists anywhere" —
+  true only of 1Password; Twilio's Keys.json was the source of truth. Upstream's "unhandled
+  rejection shuts imsg-mcp down reporting normal" — VOID, imsg never exits on rejection.
+  **Traps (this leg's generalisable ones):** a yoga-shrunk Ink box at height 0 still paints its
+  text (three bugs in one day); a cause recorded before its exit gate poisons later attributions;
+  tests of ORDERING between valid inputs prove nothing about which inputs are ADMITTED;
+  write-once cleanups must be idempotent — registration order cannot protect them when cleanups
+  register at runtime; a CLI dotfile (~/.twilio-cli/config.json) is a credential store no vault
+  sweep sees; Twilio API keys 401 on the Account resource by design; macOS has no `timeout(1)` —
+  use background+kill; commits land on whatever branch is checked out (one needed cherry-pick
+  surgery — branch BEFORE the first edit).
+  **Tree:** EQStack main @ 58446ea (= origin/main, #111 merge), clean except the standing
+  intentionally-untracked docs/research/*, docs/agent-handoff/*, opencode.json.bak.*; the
+  `cursor/development-environment-setup-690b` branch is NOT this agent's — leave it.
+  **Blocked on George:** (1) rotate the Twilio SK key (secret leaked into the life-stack
+  transcript) and note twilio-cli will re-store the replacement plaintext at mode 644; (2) §2
+  god-file decomposition greenlight if wanted; (3) npm Trusted-Publisher / release pipeline needs
+  nothing — healthy.
+  **Resume:** no mid-flight state — nothing staged, no stash, no background tasks, no running
+  TUIs/tmux sessions of this agent's. Exact next action per the /goal: pick up the top of the
+  register — inline group-event rows in the thread pane (design note: merge ConversationEvents
+  into the message list rendering WITHOUT disturbing bounded-memory eviction, cursor math, or
+  gap markers; that interaction is why it was deferred from #106).
