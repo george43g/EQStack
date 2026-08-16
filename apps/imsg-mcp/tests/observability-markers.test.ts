@@ -108,3 +108,34 @@ describe("watchdog state memory reporting", () => {
     expect(state.rssMb).toBeLessThan(liveRssMb * 2);
   });
 });
+
+describe("uncaught-exception cause respects the exit policy (robustness 0.8.0 adoption)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("TUI policy (exitOnUncaughtException=false): a survived exception is NOT the cause", async () => {
+    const mod = await import("../src/shutdown.js");
+    mod.installShutdownHandlers({ exitOnUncaughtException: false });
+    // Emit through Node's real event so the KIT handler runs (it emits the
+    // diagnostic our sink maps). With exit disabled, no shutdown initiates —
+    // so the cause must stay "normal": the user's eventual clean quit was not
+    // caused by an error the process survived, and first-writer-wins must not
+    // let the stale error mask a real later cause.
+    process.emit("uncaughtException", new Error("survived render error"));
+    expect(mod.getShutdownCause()).toBe("normal");
+    // A real later cause still records — nothing was masked.
+    mod.noteShutdownCause("signal:SIGTERM");
+    expect(mod.getShutdownCause()).toBe("signal:SIGTERM");
+  });
+
+  it("deliberately has NO unhandled_rejection cause branch — imsg never exits on one", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/shutdown.ts", import.meta.url), "utf8");
+    // The absence is policy, not an omission: exitOnUnhandledRejection is
+    // pinned false for every entry point, so a rejection never initiates
+    // shutdown and must never be reported as its cause.
+    expect(src).toContain("exitOnUnhandledRejection: false");
+    expect(src).not.toMatch(/noteShutdownCause\("unhandled_rejection"\)/);
+  });
+});
