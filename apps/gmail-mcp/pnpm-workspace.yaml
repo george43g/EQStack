@@ -6,6 +6,10 @@ allowBuilds:
 overrides:
   "@hono/node-server": 2.0.11
   body-parser: 2.3.0
+  # googleapis-common 8.0.2+ exact-pins google-auth-library@10.5.0, which forks
+  # the GAL types against our direct ^10.9.0 (two copies -> TS2769 in CI's npm
+  # tree). 8.0.1 declares ^10.1.0 and dedupes to a single copy.
+  googleapis-common: 8.0.1
   fast-uri: 3.1.5
   hono: 4.13.3
   ip-address: 10.5.0

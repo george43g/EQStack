@@ -9,6 +9,7 @@
 // the registry singleton to isolate dispatcher behaviour from real op
 // handlers — the dispatcher is what's under test, not the ops.
 
+import { ToolTimeoutError } from "@george43g/robustness";
 import type { OAuth2Client } from "google-auth-library";
 import type { gmail_v1 } from "googleapis";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,7 +19,6 @@ import {
   setAuthorizedScopes,
   setSession,
 } from "../core/session.js";
-import { ToolTimeoutError } from "../robustness/index.js";
 import { buildMcpServer } from "./build.js";
 
 type RequestHandler = (...args: unknown[]) => unknown;

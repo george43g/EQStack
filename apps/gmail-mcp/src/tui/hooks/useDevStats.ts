@@ -2,9 +2,9 @@
 // session counters once per tick (default 1Hz). Cheap — heap / RSS / event
 // loop p99 come from existing watchdog state and a single process.memoryUsage().
 
+import { type HealthSnapshot, snapshotHealth } from "@george43g/robustness";
 import { useEffect, useState } from "react";
 import { getRecentErrorCount, getToolCallCount } from "../../core/session.js";
-import { type HealthSnapshot, snapshotHealth } from "../../robustness/health.js";
 
 export interface DevStats {
   health: HealthSnapshot;

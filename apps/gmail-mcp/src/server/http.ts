@@ -15,9 +15,10 @@
 
 import { randomUUID } from "node:crypto";
 import http from "node:http";
+import { formatHealthText } from "@george43g/robustness";
 import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { formatHealthText, snapshotHealth } from "../robustness/index.js";
+import { takeHealthSnapshot } from "../core/health-snapshot.js";
 
 export interface HttpServerOptions {
   server: McpServer;
@@ -66,7 +67,7 @@ export async function startHttpServer(opts: HttpServerOptions): Promise<HttpServ
       const method = req.method ?? "GET";
 
       if (method === "GET" && (url === "/health" || url.startsWith("/health?"))) {
-        const snap = snapshotHealth(opts.getCounters());
+        const snap = takeHealthSnapshot(opts.getCounters());
         res.writeHead(snap.status === "unhealthy" ? 503 : 200, {
           "content-type": "text/plain; charset=utf-8",
         });

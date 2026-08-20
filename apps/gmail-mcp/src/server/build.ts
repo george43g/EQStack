@@ -6,6 +6,7 @@
 // construction. The dispatcher closure captures the OAuth2Client + per-tool
 // timeout map + counters via session getters.
 
+import { envNum, noteActivity, ToolTimeoutError, withTimeout } from "@george43g/robustness";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { wrapToolError } from "../auth-errors.js";
@@ -17,7 +18,6 @@ import {
   incrementToolCallCount,
   recordToolError,
 } from "../core/session.js";
-import { envNum, noteActivity, ToolTimeoutError, withTimeout } from "../robustness/index.js";
 import { hasScope } from "../scopes.js";
 import { getToolByName, toMcpTools, toolDefinitions } from "../tools.js";
 import { VERSION } from "../version.js";

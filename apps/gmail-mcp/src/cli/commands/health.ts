@@ -4,8 +4,9 @@
 // answers instantly. Useful as a CI smoke test or for verifying the binary
 // works after install.
 
+import { formatHealthText } from "@george43g/robustness";
 import { Command } from "commander";
-import { formatHealthText, snapshotHealth } from "../../robustness/index.js";
+import { takeHealthSnapshot } from "../../core/health-snapshot.js";
 import { exitCli } from "../runtime.js";
 
 export interface HealthCommandOptions {
@@ -18,7 +19,7 @@ export function buildHealthCommand(): Command {
     .description("Run the health_check canary (no Gmail API calls)")
     .option("--json", "Output JSON instead of human-readable text")
     .action((options: HealthCommandOptions) => {
-      const snapshot = snapshotHealth({
+      const snapshot = takeHealthSnapshot({
         toolCalls: 0,
         recentErrors: 0,
       });

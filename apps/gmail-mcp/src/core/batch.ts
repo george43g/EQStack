@@ -7,7 +7,7 @@
 //
 // Pure / surface-agnostic — no Gmail / Google imports.
 
-import { info as logInfo } from "../robustness/index.js";
+import { info as logInfo } from "@george43g/robustness";
 
 export interface BatchResult<T, U> {
   successes: U[];

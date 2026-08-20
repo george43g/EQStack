@@ -4,9 +4,9 @@
 // modular refactor (Step 4). Zero behavior change — same Gmail calls, same
 // output text, same retry/rate-limit wrapping for the read paths.
 
+import { rateLimitAcquire, withRetry } from "@george43g/robustness";
 import type { z } from "zod";
 import { type ParsedAddress, parseEmailAddress, parseEmailAddresses } from "../../email-export.js";
-import { rateLimitAcquire, withRetry } from "../../robustness/index.js";
 import {
   DeleteEmailSchema,
   ModifyEmailSchema,

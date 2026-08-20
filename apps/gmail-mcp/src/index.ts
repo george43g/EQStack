@@ -37,10 +37,10 @@ import { getCredentialsPath } from "./core/config-paths.js";
 // the registry at module load time. Adding an import here exposes the op
 // to the dispatcher constructed by server/build.ts.
 import "./core/ops/index.js";
-import { getRecentErrorCount, getToolCallCount, setSession } from "./core/session.js";
 import {
   enableOrphanWatchdog,
   enableStdinEofDetection,
+  getShutdownCause,
   installShutdownHandlers,
   installWatchdog,
   info as logInfo,
@@ -48,12 +48,20 @@ import {
   logStartup,
   warn as logWarn,
   registerCleanup,
+  setLogFilePrefix,
   shutdown,
   startHeapMonitor,
-} from "./robustness/index.js";
+} from "@george43g/robustness";
+import { getRecentErrorCount, getToolCallCount, setSession } from "./core/session.js";
 import { DEFAULT_SCOPES } from "./scopes.js";
 import { buildMcpServer, type CallToolFn } from "./server/build.js";
 import { resolveToolPrefix } from "./server/tool-prefix.js";
+
+// Preserve the pre-package log-naming contract: NDJSON files land in
+// $TMPDIR/gmail-mcp/ as gmail-mcp-<pid>-<ts>.ndjson (the package default
+// prefix is "mcp"). Module-level so every surface that imports this
+// orchestrator inherits it before the first log line.
+setLogFilePrefix("gmail-mcp");
 
 // In-process dispatcher reference. Populated by `bootstrapSession()` after
 // session initialisation so non-stdio callers (CLI / TUI / HTTP wrapper) can
@@ -278,7 +286,17 @@ export async function main(opts: { skipTransport?: boolean } = {}) {
   }
 
   installShutdownHandlers();
-  registerCleanup(() => logShutdown("normal"));
+  let shutdownLogged = false;
+  registerCleanup(() => {
+    // The shutdown controller's exit listener sweeps the whole cleanup
+    // registry synchronously after the async pass, so an unguarded write here
+    // lands the `shutdown` marker twice whenever a later cleanup stalls — and
+    // the NDJSON post-mortem contract ("no shutdown entry = crash") needs
+    // exactly one.
+    if (shutdownLogged) return;
+    shutdownLogged = true;
+    logShutdown(getShutdownCause());
+  });
   startHeapMonitor();
   installWatchdog();
   logStartup("gmail-mcp");

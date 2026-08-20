@@ -1,7 +1,9 @@
+import { truncateToWidth } from "@george43g/tui-kit";
 import { Box, Text } from "ink";
 import { memo } from "react";
 import type { ThreadList as ThreadListT } from "../reducer.js";
 import type { Theme } from "../themes/index.js";
+import { padToWidth } from "../util/text.js";
 
 interface Props {
   threads: ThreadListT | null;
@@ -39,7 +41,7 @@ function ThreadListImpl({ threads, cursor, focused, theme, title, width, openThr
         threads.threads.map((t, i) => {
           const selected = focused && i === cursor;
           const isOpen = openThreadId === t.threadId;
-          const from = truncate(senderName(t.latestMessage.from), 22);
+          const from = truncateToWidth(senderName(t.latestMessage.from), 22);
           const account =
             "accountId" in t && t.accountId
               ? `[${t.accountId}${t.emailAddress ? ` ${t.emailAddress}` : ""}] `
@@ -51,7 +53,7 @@ function ThreadListImpl({ threads, cursor, focused, theme, title, width, openThr
           // whose thread is currently loaded in the detail pane (regardless
           // of focus), or a space otherwise. Selected wins on the same row.
           const leader = selected ? "❯" : isOpen ? "▎" : " ";
-          const raw = `${leader} ${dateStr.padEnd(8)} ${from.padEnd(22)} ${subject} ${indicator}`;
+          const raw = `${leader} ${dateStr.padEnd(8)} ${padToWidth(from, 22)} ${subject} ${indicator}`;
           const ROW_TARGET = 120;
           const padded = raw.padEnd(ROW_TARGET);
           // Colour hierarchy:
@@ -75,11 +77,6 @@ function ThreadListImpl({ threads, cursor, focused, theme, title, width, openThr
       )}
     </Box>
   );
-}
-
-function truncate(s: string, n: number): string {
-  if (s.length <= n) return s;
-  return `${s.slice(0, Math.max(0, n - 1))}…`;
 }
 
 // Strip the `<addr>` half of an RFC-5322 `Name <addr>` form so the thread

@@ -94,21 +94,14 @@ src/
 │       ├── filters.ts    # filters {list, get, create, delete, template}
 │       └── downloads.ts  # download-email, download-attachment
 │
-└── robustness/           # Reusable robustness library — surface-agnostic
-    ├── env.ts            # envNum / envBool / envStr helpers
-    ├── shutdown.ts       # Cleanup registry + signal handlers + EOF/orphan
-    ├── logger.ts         # NDJSON file + 500-line ring buffer + perf spans
-    ├── watchdog.ts       # Event-loop / memory / idle monitors
-    ├── with-timeout.ts   # Per-tool Promise.race timeout wrapper
-    ├── health.ts         # health_check formatter
-    ├── retry.ts          # Exponential backoff for transient Gmail errors
-    ├── rate-limit.ts     # Token-bucket limiter
-    └── index.ts          # Barrel
+└── (robustness harness)  # No longer in-tree: provided by @george43g/robustness
+                          # (shared kit from mcp-cli-starter-template). See
+                          # "Robustness harness" below.
 ```
 
 ### Module boundary rules
 
-- **`src/robustness/`** — must NOT import Gmail / Google libraries. Library-eligible drop-in code for any local MCP server.
+- **Robustness comes from `@george43g/robustness`** (npm; source: `github.com/george43g/mcp-cli-starter-template`, `packages/robustness/`). Do NOT re-grow a local `src/robustness/` — gaps or bugs in the package are work orders for the starter repo (its session confers with the other consumers and publishes fixes), not local forks.
 - **`src/core/credentials.ts`, `src/core/config-paths.ts`, `src/core/session.ts` (no runtime imports), `src/core/registry.ts`, `src/core/context.ts`, `src/core/batch.ts`, `src/core/email-helpers.ts`** — Gmail-agnostic shape handling. No `googleapis` / `google-auth-library` imports.
 - **`src/core/auth-flow.ts`** — imports `google-auth-library` because OAuth-via-Google is intrinsic.
 - **`src/core/ops/*.ts`** — uses `ctx.gmail` from OperationContext to make Gmail API calls. No top-level `googleapis` imports needed; the typed handle comes via the context.
@@ -138,7 +131,19 @@ Auth errors throw inside the handler; `wrapToolError` (in `auth-errors.ts`) catc
 
 ## Robustness harness
 
-The `src/robustness/` modules form a "robustness harness" that any local stdio MCP server can lift wholesale.
+The harness is the **`@george43g/robustness`** package (shared kit published from
+`mcp-cli-starter-template`; this repo's former `src/robustness/` was its ancestor and was replaced
+by the package in the EQ-Stack-convergence refactor). Everything below still describes the runtime
+behavior — module semantics, env knobs, NDJSON records, and exit codes are unchanged. Repo-specific
+wiring to know:
+- `src/index.ts` calls `setLogFilePrefix("gmail-mcp")` at module load so log files keep the
+  `$TMPDIR/gmail-mcp/gmail-mcp-<pid>-<ts>.ndjson` naming (the package default prefix is `mcp`).
+- The `shutdown` NDJSON marker is written by a **once-guarded** cleanup in `main()` — the package's
+  exit listener sweeps the cleanup registry synchronously after the async pass, so an unguarded
+  write would land twice. The marker's reason comes from `getShutdownCause()`
+  (`signal:SIGTERM` / `stdin_eof` / `orphaned` / `watchdog:<reason>` / `normal`).
+- The package's unit coverage lives upstream; this repo pins the CONTRACT from outside via the
+  stress harness (10 lifecycle cases) + `src/index.test.ts` + `src/server/*.test.ts`.
 
 | Module | What it does |
 |---|---|
@@ -151,7 +156,7 @@ The `src/robustness/` modules form a "robustness harness" that any local stdio M
 
 ### Self-healing contract (who installs what)
 
-The watchdog + signal handlers are installed by transport-owning `main()` calls in `src/index.ts`, **not** by `bootstrapSession()` or `main({skipTransport:true})`. This is load-bearing — it lets the CLI/TUI/console own their lifecycle and lets the TUI catch `BootstrapError` to render a "credentials missing" pane instead of exiting. The contract is pinned by `src/index.test.ts` (asserts both bootstrap paths register 0 SIG* listeners) and `src/robustness/shutdown.test.ts` (asserts `installShutdownHandlers` wires all four signals).
+The watchdog + signal handlers are installed by transport-owning `main()` calls in `src/index.ts`, **not** by `bootstrapSession()` or `main({skipTransport:true})`. This is load-bearing — it lets the CLI/TUI/console own their lifecycle and lets the TUI catch `BootstrapError` to render a "credentials missing" pane instead of exiting. The contract is pinned by `src/index.test.ts` (asserts both bootstrap paths register 0 SIG* listeners); signal wiring itself is covered upstream in the package's own suite plus this repo's stress harness.
 
 Self-healing surface covered by tests:
 - **Per-tool timeout** (`MCP_TOOL_TIMEOUT_DEFAULT_MS`, default 30s) → one hung handler returns `isError:true` envelope; the next call still routes through the dispatcher. Stress case `MCP self-heals: serves the next call after a timed-out one`.
@@ -382,7 +387,7 @@ Op handlers without an `outputSchema` stay text-only (no breakage; just no `--js
 2. **Every tool runs through `withTimeout`** — `src/index.ts` wraps the dispatcher body. New tools must declare a budget in `TOOL_TIMEOUTS_MS` (or rely on `DEFAULT_TOOL_TIMEOUT_MS`). Set to `0` to opt out only when you have a specific reason.
 3. **Honor `AbortSignal`** — long-running loops (e.g. `processBatches`) check `signal?.aborted` between iterations and bail with a logged record.
 4. **Auth errors get a remediation hint** — wrap with `wrapToolError` (in `src/auth-errors.ts`). Bare `invalid_grant` is never returned — always include the tool name and a `gmail account auth <id>` pointer.
-5. **No new robustness knobs without an `MCP_*` env override** — go through `src/robustness/env.ts`.
+5. **No new robustness knobs without an `MCP_*` env override** — go through `@george43g/robustness`'s `envNum`/`envBool`/`envStr` (fallback argument is required).
 6. **`health_check` never touches Gmail** — it's the canary that must answer instantly even when the network is down.
 
 ## Post-step verification rule (REQUIRED for all changes)
@@ -390,7 +395,7 @@ Op handlers without an `outputSchema` stay text-only (no breakage; just no `--js
 After every change to this repo:
 
 1. **Rebuild**: `npm run build`.
-2. **Add a regression test** when the change is unit-testable. Vitest tests live next to the source (`*.test.ts`). The robustness library has full unit coverage — keep it that way.
+2. **Add a regression test** when the change is unit-testable. Vitest tests live next to the source (`*.test.ts`). (The robustness harness's unit coverage lives upstream in `mcp-cli-starter-template`; here, cover its wiring via the stress harness.)
 3. **Regenerate/check CLI usage artifacts when Commander commands or help text change**: `pnpm run gen-usage`, then `pnpm run gen-usage -- --check`. `usage.kdl` is the source for completions and manpages.
 4. **Run the full test suite**: `npm test`.
 5. **Run the stress harness on changes that touch the dispatcher / lifecycle**: `npm run stress`.
@@ -440,6 +445,7 @@ Optional capture+anonymise scripts (`scripts/capture-fixtures.ts`, `scripts/anon
 - **`gmail console` polish.** The REPL exists, prints a legend, routes through the commander tree, and supports `accounts` plus `switch <id>` / `sw <id>`. Future polish: inline `@inquirer/prompts` widgets for destructive ops and richer account/status summaries.
 - **`usage.kdl` spec for shell completions.** Generated from the commander tree by `scripts/gen-usage.ts` (run via `pnpm run gen-usage`). `pnpm verify` runs `gen-usage --check` so drift fails CI. The committed `usage.kdl` is consumed by the [`usage`](https://usage.jdx.dev/) Rust binary; `gmail --usage-spec` also prints it on demand.
 - **TUI follow-ups.** `gmail tui` opens a 3-pane Ink/React UI against the in-process dispatcher: vim-modal keymap, `$EDITOR` suspend for compose / reply / reply-all / draft-edit, 8 themes (`:theme` overlay), account switcher (`:account` modal that subscribes to `sessionEvents.accountChanged`), dev stats overlay (`~` / `:stats`), per-thread LRU cache (`GMAIL_TUI_CACHE_MB`). **Draft recovery (D2):** every compose persists a `<kind>-<ts>[-n].eml` under `<configDir>/drafts/` carrying `X-Gmail-MCP-Kind`/`-Source-Message-Id`/`-Source-Thread-Id` breadcrumbs (built + parsed + stripped-before-send in `compose-parser.ts`); `p` / `:drafts` opens the recovery picker (`DraftsRecovery.tsx`, list/resume/discard), `:resume` reopens the most recent, and `e` (`msg.draft.edit`) now correlates the focused draft to a server-side draft via `list_drafts` and edits it in place with `update_draft` (no duplicate). Reads `~/.gmail-mcp/config.json` for `theme` / `editor` / `cacheMB`; `GMAIL_TUI_*` env wins over the file. Follow-ups: visual-mode batch ops, filter/label CRUD UI, attachment preview, sent/drafts folder UIs.
+- **Shared-kit convergence (EQ-Stack prep).** `@george43g/robustness` fully adopted (local `src/robustness/` deleted); `@george43g/tui-kit` adopted for `truncateToWidth`/`visualWidth` at the emoji-truncation sites (full TUI-kit adoption deliberately deferred — the kit's tree-navigator redesign is in flight upstream). **mcp-kit adoption deferred pending upstream seams**: its handler shape has no per-session context injection (ours is rebuilt by `switch_account`) and its text envelope is `JSON.stringify(structured)` (ours is a hand-authored wire contract); scope-gating + async auth-error remediation are also absent. All four filed as work orders with `mcp-cli-starter-template`; adopt once the kit grows the seams rather than forking 36 tools' output format here.
 - **Release automation (Phase 0)** ✅ shipped. semantic-release + commitlint. `.releaserc.json`: branches `["main"]`, tag `v${version}`, plugin order commit-analyzer → release-notes-generator → changelog → **npm → exec → git** — exec's `prepareCmd` (`gen-usage` + `npm install --package-lock-only`) runs **after** the npm plugin stamps the new version, so `usage.kdl` and the lockfile pick it up; the git plugin then commits `package.json` / both lockfiles / `usage.kdl` / `CHANGELOG.md` as `chore(release): x.y.z [skip ci]`. `.github/workflows/release.yml` fires on CI success on `main` and publishes via **npm OIDC trusted publishing** (`permissions: id-token: write`, provenance automatic, **no `NPM_TOKEN` secret**; do not add `registry-url` to `setup-node` — its `.npmrc` breaks the plugin's auth). It shares the `main-mutations` concurrency group with `screenshots.yml`'s auto-commit job so the two never push to `main` concurrently. `ci.yml`'s version asserts read `package.json` instead of a hardcoded string. ⚠ **Merging this to `main` arms auto-publish**: the next `feat`/`fix` commit on `main` with green CI cuts a real npm release — merge deliberately.
 - **VHS screenshot pipeline** ✅ shipped. `pnpm screenshots` regenerates `docs/screenshots/*.{png,gif}` from `scripts/screenshots/*.tape` against `GMAIL_FIXTURE_MODE=1`. The 6 stills + animated workflow GIF feed the top-level README and `docs/SCREENSHOTS.md` gallery. CI (`.github/workflows/screenshots.yml`) auto-regenerates on push (auto-commits with `[skip ci]`) and gates PRs (`git diff --exit-code`). Local pre-push hook at `.githooks/pre-push` refuses to push TUI changes that drift the captures.
 - **Phase G2 — multi-tenant HTTP mode.** Defer until a real use case appears. Would add per-request OAuth introspection, per-tenant credential lookup, scope-isolated rate limiting.

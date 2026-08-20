@@ -12,8 +12,8 @@
 // scopes than the previous one, the host's cached tools/list is stale and
 // affected tools will reject at call-time with the usual re-auth hint.
 
+import { info as logInfo } from "@george43g/robustness";
 import type { z } from "zod";
-import { info as logInfo } from "../../robustness/index.js";
 import { hasScope } from "../../scopes.js";
 import {
   ListAccountsOutputSchema,

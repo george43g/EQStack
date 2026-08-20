@@ -7,6 +7,7 @@ settings:
 overrides:
   '@hono/node-server': 2.0.11
   body-parser: 2.3.0
+  googleapis-common: 8.0.1
   fast-uri: 3.1.5
   hono: 4.13.3
   ip-address: 10.5.0
@@ -17,6 +18,12 @@ importers:
 
   .:
     dependencies:
+      '@george43g/robustness':
+        specifier: ^0.9.0
+        version: 0.9.0
+      '@george43g/tui-kit':
+        specifier: ^0.4.1
+        version: 0.4.1(@george43g/robustness@0.9.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
       '@inquirer/prompts':
         specifier: ^8.4.2
         version: 8.4.2(@types/node@20.19.37)
@@ -679,6 +686,18 @@ packages:
   '@fastify/busboy@2.1.1':
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
     engines: {node: '>=14'}
+
+  '@george43g/robustness@0.9.0':
+    resolution: {integrity: sha512-vugAl/g5SNl7Gl7ImkL+Ys6X9yLA0NFAbEdAUrrg9z05qXR5fM0NmuSkoT4C8DkrR+81e2gCvxDlVUauHUbOLQ==}
+    engines: {node: '>=24'}
+
+  '@george43g/tui-kit@0.4.1':
+    resolution: {integrity: sha512-Ye6caSGBajxgaXeclrQ/biUKioGSuQIgY3ivuW/WMhs18SXzds25fb9ZT4FsAZVf8yntet6UFvsSsmAv6hr/Ng==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      '@george43g/robustness': '>=0.1.1 <1'
+      ink: ^7.1.1
+      react: ^19.2.8
 
   '@hono/node-server@2.0.11':
     resolution: {integrity: sha512-bjD221KPLoJTWUwso1J6fGKiTXEUFedG/s0visavY4zakFPkeGURMRNly+FhBHs7T8Dz4qHaZIMX9ZoJHSJtKA==}
@@ -1789,6 +1808,9 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  fullscreen-ink@0.1.0:
+    resolution: {integrity: sha512-GkyPG5Y8YxRT6i1Q8mZ0BCMSpgQjdBY+C39DnCUMswBpSypTk0G80rAYs6FoEp6Da2gzAwygXbJbju6GahbrFQ==}
 
   function-bind@1.1.2:
     resolution: {integrity: sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==}
@@ -3729,6 +3751,20 @@ snapshots:
 
   '@fastify/busboy@2.1.1': {}
 
+  '@george43g/robustness@0.9.0': {}
+
+  '@george43g/tui-kit@0.4.1(@george43g/robustness@0.9.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@george43g/robustness': 0.9.0
+      fullscreen-ink: 0.1.0(@types/react@19.2.14)
+      ink: 7.1.1(@types/react@19.2.14)(react@19.2.6)
+      react: 19.2.6
+    transitivePeerDependencies:
+      - '@types/react'
+      - bufferutil
+      - react-devtools-core
+      - utf-8-validate
+
   '@hono/node-server@2.0.11(hono@4.13.3)':
     dependencies:
       hono: 4.13.3
@@ -4900,6 +4936,16 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  fullscreen-ink@0.1.0(@types/react@19.2.14):
+    dependencies:
+      ink: 7.1.1(@types/react@19.2.14)(react@19.2.6)
+      react: 19.2.6
+    transitivePeerDependencies:
+      - '@types/react'
+      - bufferutil
+      - react-devtools-core
+      - utf-8-validate
 
   function-bind@1.1.2: {}
 

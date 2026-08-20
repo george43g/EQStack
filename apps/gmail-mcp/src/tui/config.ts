@@ -10,8 +10,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { warn as logWarn } from "@george43g/robustness";
 import { getConfigDir } from "../core/config-paths.js";
-import { warn as logWarn } from "../robustness/logger.js";
 
 export interface TuiConfig {
   theme: string;

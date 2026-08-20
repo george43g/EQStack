@@ -1,6 +1,6 @@
+import { error as logError, info as logInfo } from "@george43g/robustness";
 import type { OAuth2Client } from "google-auth-library";
 import { getCurrentAccountId } from "./core/session.js";
-import { error as logError, info as logInfo } from "./robustness/index.js";
 
 /**
  * Detects Gmail / OAuth auth failures, attempts a single token refresh on

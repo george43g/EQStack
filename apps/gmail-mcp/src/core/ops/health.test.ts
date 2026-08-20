@@ -3,47 +3,54 @@
 // Covers health_check text/structured output plus degraded/unhealthy branches
 // driven by event-loop p99 and watchdog kill reasons.
 //
-// Strategy: mock src/robustness/watchdog.ts so readWatchdogState() returns
-// driver-supplied values. Side-effect import of ./health.js registers the op;
-// we dispatch through the registry singleton with a stub context (the handler
+// Strategy: mock the local health-snapshot seam. Tests that drive
+// degraded/unhealthy branches fabricate a full snapshot through it (the
+// status-computation logic itself is covered upstream in
+// mcp-cli-starter-template's robustness suite); tests that only exercise
+// session counters leave the holder null and flow through the REAL package
+// snapshotHealth. Side-effect import of ./health.js registers the op; we
+// dispatch through the registry singleton with a stub context (the handler
 // never touches ctx.gmail).
 
+import type { HealthSnapshot } from "@george43g/robustness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationContext } from "../context.js";
 import { registry } from "../registry.js";
 import { _resetForTests, incrementToolCallCount, recordToolError } from "../session.js";
 
-// Mocked watchdog state — mutated by individual tests, then read by
-// snapshotHealth via readWatchdogState().
-type WatchdogStateLike = {
-  startedAt: number;
-  eventLoopP99Ms: number;
-  eventLoopMaxMs: number;
-  rssMb: number;
-  heapMb: number;
-  heapHistory: number[];
-  lastActivityTs: number;
-  killReason: string | null;
-};
+const mockSnapshot = vi.hoisted(() => ({ value: null as HealthSnapshot | null }));
 
-const mockState: WatchdogStateLike = {
-  startedAt: Date.now(),
-  eventLoopP99Ms: 0,
-  eventLoopMaxMs: 0,
-  rssMb: 0,
-  heapMb: 0,
-  heapHistory: [],
-  lastActivityTs: Date.now(),
-  killReason: null,
-};
+vi.mock("../health-snapshot.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../health-snapshot.js")>();
+  return {
+    takeHealthSnapshot: (counters: { toolCalls: number; recentErrors: number }) =>
+      mockSnapshot.value
+        ? {
+            ...mockSnapshot.value,
+            tool_calls: counters.toolCalls,
+            recent_errors: counters.recentErrors,
+          }
+        : real.takeHealthSnapshot(counters),
+  };
+});
 
-vi.mock("../../robustness/watchdog.js", () => ({
-  readWatchdogState: () => mockState,
-  noteActivity: () => {},
-  installWatchdog: () => {},
-  onMemorySample: () => () => {},
-  isMonotonicallyGrowing: () => false,
-}));
+function makeSnap(over: Partial<HealthSnapshot>): HealthSnapshot {
+  return {
+    status: "healthy",
+    issues: [],
+    uptime_s: 1,
+    pid: process.pid,
+    node: process.version,
+    heap_mb: 10,
+    rss_mb: 50,
+    event_loop_p99_ms: 0,
+    event_loop_max_ms: 0,
+    tool_calls: 0,
+    recent_errors: 0,
+    last_activity_age_s: 0,
+    ...over,
+  };
+}
 
 // Side-effect: registers the health_check op on the registry singleton.
 await import("./health.js");
@@ -59,21 +66,9 @@ function makeCtx(): OperationContext {
   };
 }
 
-function resetMockState(): void {
-  const now = Date.now();
-  mockState.startedAt = now;
-  mockState.eventLoopP99Ms = 0;
-  mockState.eventLoopMaxMs = 0;
-  mockState.rssMb = 0;
-  mockState.heapMb = 0;
-  mockState.heapHistory = [];
-  mockState.lastActivityTs = now;
-  mockState.killReason = null;
-}
-
 describe("health_check handler (8.1)", () => {
   beforeEach(() => {
-    resetMockState();
+    mockSnapshot.value = null;
     _resetForTests();
   });
 
@@ -115,8 +110,12 @@ describe("health_check handler (8.1)", () => {
     expect(sc.recent_errors).toBe(2);
   });
 
-  it("returns degraded when event-loop p99 is in [500ms, 5000ms)", async () => {
-    mockState.eventLoopP99Ms = 750;
+  it("propagates a degraded snapshot (event-loop p99 issue)", async () => {
+    mockSnapshot.value = makeSnap({
+      status: "degraded",
+      issues: ["event loop p99 750ms"],
+      event_loop_p99_ms: 750,
+    });
 
     const result = await registry.dispatch("health_check", {}, makeCtx());
 
@@ -143,9 +142,9 @@ describe("health_check handler (8.1)", () => {
   });
 });
 
-describe("snapshotHealth unhealthy branches (8.2)", () => {
+describe("health op propagates unhealthy snapshots (8.2)", () => {
   beforeEach(() => {
-    resetMockState();
+    mockSnapshot.value = null;
     _resetForTests();
   });
 
@@ -153,8 +152,12 @@ describe("snapshotHealth unhealthy branches (8.2)", () => {
     _resetForTests();
   });
 
-  it("returns unhealthy when event-loop p99 >= 5000ms", async () => {
-    mockState.eventLoopP99Ms = 5000;
+  it("returns unhealthy when the snapshot reports a blocked event loop", async () => {
+    mockSnapshot.value = makeSnap({
+      status: "unhealthy",
+      issues: ["event loop p99 5000ms"],
+      event_loop_p99_ms: 5000,
+    });
 
     const result = await registry.dispatch("health_check", {}, makeCtx());
 
@@ -164,8 +167,11 @@ describe("snapshotHealth unhealthy branches (8.2)", () => {
     expect(result.content[0].text).toContain("Status: unhealthy");
   });
 
-  it("returns unhealthy when watchdog killReason is set (overrides healthy)", async () => {
-    mockState.killReason = "rss_exceeded";
+  it("returns unhealthy when the snapshot carries a watchdog kill", async () => {
+    mockSnapshot.value = makeSnap({
+      status: "unhealthy",
+      issues: ["watchdog kill: rss_exceeded"],
+    });
 
     const result = await registry.dispatch("health_check", {}, makeCtx());
 
@@ -176,9 +182,12 @@ describe("snapshotHealth unhealthy branches (8.2)", () => {
     expect(result.content[0].text).toContain("Issues: watchdog kill: rss_exceeded");
   });
 
-  it("killReason promotes degraded → unhealthy and both issues are listed", async () => {
-    mockState.eventLoopP99Ms = 750; // degraded on its own
-    mockState.killReason = "event_loop_blocked";
+  it("renders multiple issues from an unhealthy snapshot", async () => {
+    mockSnapshot.value = makeSnap({
+      status: "unhealthy",
+      issues: ["event loop p99 750ms", "watchdog kill: event_loop_blocked"],
+      event_loop_p99_ms: 750,
+    });
 
     const result = await registry.dispatch("health_check", {}, makeCtx());
 

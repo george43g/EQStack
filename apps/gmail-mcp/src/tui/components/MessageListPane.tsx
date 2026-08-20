@@ -1,8 +1,10 @@
+import { truncateToWidth } from "@george43g/tui-kit";
 import { Box, Text } from "ink";
 import { memo } from "react";
 import type { ThreadView } from "../reducer.js";
 import type { Theme } from "../themes/index.js";
 import { senderColor, senderDisplayName } from "../util/sender-color.js";
+import { padToWidth } from "../util/text.js";
 
 interface Props {
   thread: ThreadView | null;
@@ -56,7 +58,7 @@ function MessageListPaneImpl({ thread, cursor, focused, theme, width = 56 }: Pro
       borderColor={focused ? theme.accent : theme.border}
     >
       <Text color={theme.accent} bold>
-        {truncate(subject, 60)}
+        {truncateToWidth(subject, 60)}
       </Text>
       <Text color={theme.dim}>
         {`${messages.length} message${messages.length === 1 ? "" : "s"} · ${clampedCursor + 1}/${messages.length}`}
@@ -77,7 +79,7 @@ function MessageListPaneImpl({ thread, cursor, focused, theme, width = 56 }: Pro
           return (
             <Box key={msg.messageId} flexDirection="column">
               <Text color={color} backgroundColor={bg} bold={selected} wrap="truncate">
-                {`${cursorMark} ${truncate(name, 24).padEnd(24)}  ${date.padEnd(16)}${attach}`}
+                {`${cursorMark} ${padToWidth(truncateToWidth(name, 24), 24)}  ${date.padEnd(16)}${attach}`}
               </Text>
               <Text
                 color={selected ? theme.selectedFg : theme.dim}
@@ -92,11 +94,6 @@ function MessageListPaneImpl({ thread, cursor, focused, theme, width = 56 }: Pro
       )}
     </Box>
   );
-}
-
-function truncate(s: string, n: number): string {
-  if (s.length <= n) return s;
-  return `${s.slice(0, Math.max(0, n - 1))}…`;
 }
 
 function oneLine(body: string): string {
