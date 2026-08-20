@@ -75,14 +75,19 @@ describe("App.tsx compose-new input guard", () => {
 describe("chunked-input fan-out (Ink delivers bursts/pastes as ONE call)", () => {
   it("splits multi-key chunks made entirely of motion keys", () => {
     // "jj" never equalled "j", so fast scrolling dropped most keystrokes.
-    expect(SRC).toMatch(/const CHUNKABLE_KEYS = \/\^\[0-9gGjk\{\}\]\+\$\//);
-    expect(SRC).toMatch(/for \(const ch of input\) await handleKeyRef\.current\(ch, key\)/);
+    // The pure split now lives upstream (tui-kit splitNavChunk, lifted from
+    // this router); the owned set and the per-char dispatch stay pinned here.
+    expect(SRC).toMatch(/const OWNED_NAV_KEYS = new Set\(\[\.\.\."0123456789gGjk\{\}"\]\)/);
+    expect(SRC).toMatch(/for \(const ch of split\) await handleKeyRef\.current\(ch, key\)/);
   });
 
   it("passes non-motion chunks through WHOLE (a paste must not drive motion)", () => {
-    // The fan-out is gated on the whole chunk matching owned keys.
-    const gate = SRC.search(/CHUNKABLE_KEYS\.test\(input\)/);
-    expect(gate, "fan-out must be gated on CHUNKABLE_KEYS").toBeGreaterThan(-1);
+    // The fan-out is gated on splitNavChunk's all-or-nothing null contract:
+    // any character outside OWNED_NAV_KEYS → null → the chunk passes through
+    // whole and can never drive motion or reach a destructive key.
+    const gate = SRC.search(/splitNavChunk\(input, OWNED_NAV_KEYS\)/);
+    expect(gate, "fan-out must be gated on splitNavChunk(OWNED_NAV_KEYS)").toBeGreaterThan(-1);
+    expect(SRC).toMatch(/if \(split\) \{/);
   });
 
   it("the vim count guard matches a SINGLE digit, not a lexicographic range", () => {
