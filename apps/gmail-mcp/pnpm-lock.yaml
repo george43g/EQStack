@@ -23,7 +23,7 @@ importers:
         version: 0.10.0
       '@george43g/tui-kit':
         specifier: '>=0.4.1 <1'
-        version: 0.4.1(@george43g/robustness@0.10.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
+        version: 0.5.0(@george43g/robustness@0.10.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
       '@inquirer/prompts':
         specifier: ^8.4.2
         version: 8.4.2(@types/node@20.19.37)
@@ -691,8 +691,8 @@ packages:
     resolution: {integrity: sha512-m98Eeq7nwo11eJ35i4D61uc7JEc4rIzH/OgLdd+4rw2wwlSLFFe7sxYcUTW1wDE7R0VXfZeJjtxPqWBsAIPzvg==}
     engines: {node: '>=24'}
 
-  '@george43g/tui-kit@0.4.1':
-    resolution: {integrity: sha512-Ye6caSGBajxgaXeclrQ/biUKioGSuQIgY3ivuW/WMhs18SXzds25fb9ZT4FsAZVf8yntet6UFvsSsmAv6hr/Ng==}
+  '@george43g/tui-kit@0.5.0':
+    resolution: {integrity: sha512-ilZzCP+eM4H6cETtqv/S6iVau6e18l95DTPsqeV74N1HJXpek2GaBczt8gw1VoSX5UGgrqNz22HKs1irHUF5JA==}
     engines: {node: '>=24'}
     peerDependencies:
       '@george43g/robustness': '>=0.1.1 <1'
@@ -3767,7 +3767,7 @@ snapshots:
 
   '@george43g/robustness@0.10.0': {}
 
-  '@george43g/tui-kit@0.4.1(@george43g/robustness@0.10.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)':
+  '@george43g/tui-kit@0.5.0(@george43g/robustness@0.10.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)':
     dependencies:
       '@george43g/robustness': 0.10.0
       fullscreen-ink: 0.1.0(@types/react@19.2.14)

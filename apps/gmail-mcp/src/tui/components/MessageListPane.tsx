@@ -1,10 +1,9 @@
-import { truncateToWidth } from "@george43g/tui-kit";
+import { fitToWidth, truncateToWidth } from "@george43g/tui-kit";
 import { Box, Text } from "ink";
 import { memo } from "react";
 import type { ThreadView } from "../reducer.js";
 import type { Theme } from "../themes/index.js";
 import { senderColor, senderDisplayName } from "../util/sender-color.js";
-import { padToWidth } from "../util/text.js";
 
 interface Props {
   thread: ThreadView | null;
@@ -79,7 +78,7 @@ function MessageListPaneImpl({ thread, cursor, focused, theme, width = 56 }: Pro
           return (
             <Box key={msg.messageId} flexDirection="column">
               <Text color={color} backgroundColor={bg} bold={selected} wrap="truncate">
-                {`${cursorMark} ${padToWidth(truncateToWidth(name, 24), 24)}  ${date.padEnd(16)}${attach}`}
+                {`${cursorMark} ${fitToWidth(name, 24)}  ${date.padEnd(16)}${attach}`}
               </Text>
               <Text
                 color={selected ? theme.selectedFg : theme.dim}

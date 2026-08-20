@@ -1,9 +1,8 @@
-import { truncateToWidth } from "@george43g/tui-kit";
+import { fitToWidth } from "@george43g/tui-kit";
 import { Box, Text } from "ink";
 import { memo } from "react";
 import type { ThreadList as ThreadListT } from "../reducer.js";
 import type { Theme } from "../themes/index.js";
-import { padToWidth } from "../util/text.js";
 
 interface Props {
   threads: ThreadListT | null;
@@ -41,7 +40,7 @@ function ThreadListImpl({ threads, cursor, focused, theme, title, width, openThr
         threads.threads.map((t, i) => {
           const selected = focused && i === cursor;
           const isOpen = openThreadId === t.threadId;
-          const from = truncateToWidth(senderName(t.latestMessage.from), 22);
+          const from = senderName(t.latestMessage.from);
           const account =
             "accountId" in t && t.accountId
               ? `[${t.accountId}${t.emailAddress ? ` ${t.emailAddress}` : ""}] `
@@ -53,7 +52,7 @@ function ThreadListImpl({ threads, cursor, focused, theme, title, width, openThr
           // whose thread is currently loaded in the detail pane (regardless
           // of focus), or a space otherwise. Selected wins on the same row.
           const leader = selected ? "❯" : isOpen ? "▎" : " ";
-          const raw = `${leader} ${dateStr.padEnd(8)} ${padToWidth(from, 22)} ${subject} ${indicator}`;
+          const raw = `${leader} ${dateStr.padEnd(8)} ${fitToWidth(from, 22)} ${subject} ${indicator}`;
           const ROW_TARGET = 120;
           const padded = raw.padEnd(ROW_TARGET);
           // Colour hierarchy:
