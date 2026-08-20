@@ -23,7 +23,12 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { watch } from "node:fs";
 import { resolve } from "node:path";
 
-const MCP_DEV_CMD = process.env.MCP_DEV_CMD || "tsx src/cli/index.ts mcp";
+// `node --import tsx`, never the `tsx` CLI wrapper: the wrapper spawns a
+// grandchild and SIGKILLs it when a relayed signal isn't IPC-acked within
+// 30ms (busy event loop = no ack), which forecloses graceful shutdown and
+// leaves NDJSON logs without a `shutdown` marker — indistinguishable from a
+// crash under the post-mortem contract.
+const MCP_DEV_CMD = process.env.MCP_DEV_CMD || "node --import tsx src/cli/index.ts mcp";
 const WATCH_DIR = resolve(process.cwd(), process.env.MCP_DEV_WATCH_DIR || "src");
 const RESTART_DELAY_MS = 100;
 const RESPAWN_TIMEOUT_MS = 10_000;

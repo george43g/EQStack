@@ -4,12 +4,14 @@
     "gmail-mcp-dev": {
       "type": "local",
       "command": [
-        "/Users/george/repos/Gmail-MCP-Server/node_modules/.bin/tsx",
+        "/Users/george/.local/share/mise/shims/node",
+        "--import",
+        "tsx",
         "/Users/george/repos/Gmail-MCP-Server/scripts/mcp-dev-proxy.ts"
       ],
       "enabled": true,
       "environment": {
-        "MCP_DEV_CMD": "/Users/george/repos/Gmail-MCP-Server/node_modules/.bin/tsx --env-file-if-exists=/Users/george/repos/Gmail-MCP-Server/.env --env-file-if-exists=/Users/george/repos/Gmail-MCP-Server/.env.local /Users/george/repos/Gmail-MCP-Server/src/cli/index.ts mcp"
+        "MCP_DEV_CMD": "/Users/george/.local/share/mise/shims/node --import tsx --env-file-if-exists=/Users/george/repos/Gmail-MCP-Server/.env --env-file-if-exists=/Users/george/repos/Gmail-MCP-Server/.env.local /Users/george/repos/Gmail-MCP-Server/src/cli/index.ts mcp"
       }
     },
     "tmux-rust": {
