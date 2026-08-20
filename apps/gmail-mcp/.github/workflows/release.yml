@@ -7,11 +7,18 @@ name: Release
 # The FIRST publish of the package is done manually; this workflow handles
 # subsequent releases driven by conventional commits.
 
+# ⚠ AUTO-RELEASE IS DISABLED during pre-EQ-Stack-merge development: heavy
+# changes/testing are still ahead, and the npm trusted-publishing linkage
+# (and package.json repository URL, which provenance validates) will move to
+# the EQ-Stack repo anyway. Re-enable by restoring the workflow_run trigger
+# below. A manual workflow_dispatch still runs a REAL release — only trigger
+# it deliberately.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
+  # workflow_run:
+  #   workflows: [CI]
+  #   types: [completed]
+  #   branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,7 +26,7 @@ permissions:
 jobs:
   release:
     name: Release
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     # Shared with screenshots.yml's commit job so the two workflows never push
     # to main concurrently (the semantic-release commit would race the
