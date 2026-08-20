@@ -7,29 +7,34 @@
 // (`port: 0`) so suites can run in parallel without collisions.
 
 import http from "node:http";
-import type { HealthSnapshot } from "@george43g/robustness";
+import type { WatchdogState } from "@george43g/robustness";
 import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type HttpServerHandle, startHttpServer } from "./http.js";
 
-// Local seam mock: null flows through the real package snapshotHealth; a
-// non-null value drives the 503 branch without touching real watchdog state
-// (the package's readWatchdogState returns a copy, so mutation can't).
-const mockSnapshot = vi.hoisted(() => ({ value: null as HealthSnapshot | null }));
+// Partial barrel mock: the /health route passes readWatchdogState() into the
+// REAL snapshotHealth (injectable-state param, robustness 0.10.0), so tests
+// drive the actual status ladder by mutating this synthetic state.
+const mockState = vi.hoisted(
+  (): WatchdogState => ({
+    startedAt: Date.now(),
+    eventLoopP99Ms: 0,
+    eventLoopMaxMs: 0,
+    eventLoopSustainedCount: 0,
+    lastEventLoopSampleTs: Date.now(),
+    rssMb: 0,
+    heapMb: 0,
+    heapHistory: [],
+    lastActivityTs: Date.now(),
+    killReason: null,
+    memorySampled: false,
+  }),
+);
 
-vi.mock("../core/health-snapshot.js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../core/health-snapshot.js")>();
-  return {
-    takeHealthSnapshot: (counters: { toolCalls: number; recentErrors: number }) =>
-      mockSnapshot.value
-        ? {
-            ...mockSnapshot.value,
-            tool_calls: counters.toolCalls,
-            recent_errors: counters.recentErrors,
-          }
-        : real.takeHealthSnapshot(counters),
-  };
-});
+vi.mock("@george43g/robustness", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@george43g/robustness")>()),
+  readWatchdogState: () => mockState,
+}));
 
 const TOKEN_ENV = "GMAIL_HTTP_TEST_TOKEN";
 const TEST_TOKEN = "test-secret-do-not-share";
@@ -88,7 +93,8 @@ function requestHttp(
 let handle: HttpServerHandle | undefined;
 
 beforeEach(() => {
-  mockSnapshot.value = null;
+  mockState.killReason = null;
+  mockState.eventLoopP99Ms = 0;
   process.env[TOKEN_ENV] = TEST_TOKEN;
 });
 
@@ -98,7 +104,7 @@ afterEach(async () => {
     handle = undefined;
   }
   delete process.env[TOKEN_ENV];
-  mockSnapshot.value = null;
+  mockState.killReason = null;
 });
 
 describe("startHttpServer token requirement (12.9 — SECURITY)", () => {
@@ -150,7 +156,7 @@ describe("/health endpoint (12.10)", () => {
     expect(res.body).toContain("Tool calls: 7");
   });
 
-  it("returns 503 when the snapshot is unhealthy (watchdog kill recorded)", async () => {
+  it("returns 503 when the watchdog has recorded a kill reason (unhealthy branch)", async () => {
     handle = await startHttpServer({
       server: makeBareServer(),
       port: 0,
@@ -160,21 +166,9 @@ describe("/health endpoint (12.10)", () => {
       log: () => {},
     });
 
-    // An unhealthy snapshot maps to 503 in the HTTP layer.
-    mockSnapshot.value = {
-      status: "unhealthy",
-      issues: ["watchdog kill: test_forced_kill"],
-      uptime_s: 1,
-      pid: process.pid,
-      node: process.version,
-      heap_mb: 10,
-      rss_mb: 50,
-      event_loop_p99_ms: 0,
-      event_loop_max_ms: 0,
-      tool_calls: 0,
-      recent_errors: 0,
-      last_activity_age_s: 0,
-    };
+    // Drive the unhealthy branch in the real snapshotHealth: any non-null
+    // killReason forces status="unhealthy", which the HTTP layer maps to 503.
+    mockState.killReason = "test_forced_kill";
 
     const res = await requestHttp(handle.port, "GET", "/health");
     expect(res.status).toBe(503);

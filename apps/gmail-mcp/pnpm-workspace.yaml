@@ -15,3 +15,16 @@ overrides:
   ip-address: 10.5.0
   qs: 6.15.3
   ws: 8.21.1
+
+# pnpm resolves direct-dep ranges to the LOWEST satisfying version by default
+# (lowest-direct). The @george43g kit ranges (">=0.x <1") assume highest —
+# without this, 0.10.0+ fixes are published but never installed here.
+resolutionMode: highest
+
+# pnpm 11 quarantines freshly-published versions from RANGE resolution by
+# default (minimumReleaseAge supply-chain protection; exact specifiers
+# bypass it). Good default — but it silently defeats the shared-kit
+# "publish a fix, consumer installs it immediately" workflow. Exempt our
+# own scope only; everything else stays quarantined.
+minimumReleaseAgeExclude:
+  - "@george43g/*"
