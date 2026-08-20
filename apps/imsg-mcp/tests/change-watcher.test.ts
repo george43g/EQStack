@@ -236,7 +236,11 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
     writeFileSync(join(dir, "chat.db-wal"), "abcd");
     await new Promise((r) => setTimeout(r, 120));
     expect(reads()).toBe(settledReads); // disarmed
-  });
+    // Explicit timeout: must exceed the 10s arming-retry deadline above.
+    // Vitest's 5s default undercut it — on a machine where kqueue delivery
+    // itself takes seconds (measured 2026-08-21), the test was killed before
+    // its own retry loop could do its job.
+  }, 20_000);
 
   it("APPENDS to a pre-existing WAL trigger a drain (the production write mode)", async () => {
     // Companion to the silent-watch bug: on the real ~/Library/Messages the
@@ -277,14 +281,15 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
         () => {
           expect(batches.length).toBeGreaterThanOrEqual(1);
         },
-        { timeout: 5_000 },
+        { timeout: 10_000 },
       );
     } finally {
       clearInterval(appender);
     }
     expect(batches[0]).toHaveLength(1);
     w.stop();
-  });
+    // Timeout comfortably above the waitFor budget (see the 20s test above).
+  }, 15_000);
 
   it("keeps firing after the WAL is truncated and recreated (checkpoint survival)", async () => {
     dir = mkdtempSync(join(tmpdir(), "imsg-cw-ckpt-"));
@@ -319,5 +324,6 @@ describe("ChangeWatcher (integration, real fs.watch)", () => {
     }
     expect(batches.flat().length).toBeGreaterThanOrEqual(1);
     w.stop();
-  });
+    // Timeout comfortably above the 8s retry deadline (see the 20s test above).
+  }, 15_000);
 });
