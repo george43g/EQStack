@@ -14,11 +14,7 @@
     },
     "tmux-rust": {
       "type": "local",
-      "command": [
-        "/opt/homebrew/bin/tmux-mcp-rs",
-        "--shell-type",
-        "zsh"
-      ],
+      "command": ["/opt/homebrew/bin/tmux-mcp-rs", "--shell-type", "zsh"],
       "enabled": true
     }
   }
