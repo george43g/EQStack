@@ -291,13 +291,16 @@ describe("create_filter_from_template handler (6.5)", () => {
     ["largeEmails", { labelIds: [] }, /sizeInBytes is required for largeEmails/],
     ["containingText", { labelIds: [] }, /searchText is required for containingText/],
     ["mailingList", { labelIds: [] }, /listIdentifier is required for mailingList/],
-  ])("rejects '%s' when the required parameter is missing", async (template, parameters, expected) => {
-    const { createMock, ctx } = setup();
-    await expect(
-      registry.dispatch("create_filter_from_template", { template, parameters }, ctx),
-    ).rejects.toThrow(expected);
-    expect(createMock).not.toHaveBeenCalled();
-  });
+  ])(
+    "rejects '%s' when the required parameter is missing",
+    async (template, parameters, expected) => {
+      const { createMock, ctx } = setup();
+      await expect(
+        registry.dispatch("create_filter_from_template", { template, parameters }, ctx),
+      ).rejects.toThrow(expected);
+      expect(createMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects unknown templates with 'Unknown template: <name>' (default-case throw)", async () => {
     // The zod enum on CreateFilterFromTemplateSchema makes this branch

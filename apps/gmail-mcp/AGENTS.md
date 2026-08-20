@@ -458,5 +458,16 @@ Optional capture+anonymise scripts (`scripts/capture-fixtures.ts`, `scripts/anon
 Canonical set: `.mcp.json` (standard MCP schema, `${VAR}` placeholders only —
 never literal secrets). `.cursor/mcp.json` and `.warp/.mcp.json` are symlinks
 to it. `opencode.json`'s `mcp` key is GENERATED — after editing `.mcp.json`,
-run: `node ~/dotfiles/mcp/render.js --manifest .mcp.json --opencode opencode.json`.
+run: `mcpsync sync --scope project` (the global `mcpsync` bin from
+`mcp-cli-starter-template/apps/mcpsync`; it replaced the retired
+`~/dotfiles/mcp/render.js`). `--dry-run` previews without writing.
 Global servers and scope decisions: `~/dotfiles/docs/mcp-registry.md`.
+
+⚠ Inverted-source caveat: in THIS repo the canonical `.mcp.json` is
+**gitignored** (machine-specific absolute paths) while derived `opencode.json`
+is committed. On a fresh clone, recreate `.mcp.json` by hand from
+`opencode.json`'s entries **before** running `sync` — do NOT `mcpsync import`
+from a stale host config, which can resurrect retired invocation shapes (e.g.
+the `node_modules/.bin/tsx` launcher; dev MCP servers must spawn via
+`node --import tsx` — the tsx CLI wrapper SIGKILLs busy children 30ms after a
+relayed signal).

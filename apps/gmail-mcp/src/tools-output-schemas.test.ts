@@ -462,11 +462,12 @@ const cases: SchemaCase[] = [
 ];
 
 describe("output schemas (Phase B2)", () => {
-  it.each(
-    cases.map((c) => [c.name, c] as const),
-  )("%s accepts minimal-valid payload", (_name, c) => {
-    expect(() => c.schema.parse(c.valid)).not.toThrow();
-  });
+  it.each(cases.map((c) => [c.name, c] as const))(
+    "%s accepts minimal-valid payload",
+    (_name, c) => {
+      expect(() => c.schema.parse(c.valid)).not.toThrow();
+    },
+  );
 
   it.each(cases.map((c) => [c.name, c] as const))("%s rejects malformed payload", (_name, c) => {
     expect(() => c.schema.parse(c.invalid)).toThrow();
