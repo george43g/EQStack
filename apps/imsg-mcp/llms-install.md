@@ -92,15 +92,22 @@ Edit `~/.cursor/mcp.json`:
 {
   "mcpServers": {
     "imessage-mcp-dev": {
-      "command": "/path/to/imsg-mcp/node_modules/.bin/tsx",
-      "args": ["/path/to/imsg-mcp/scripts/mcp-dev-proxy.ts"],
-      "env": {
-        "MCP_DEV_CMD": "/path/to/imsg-mcp/node_modules/.bin/tsx /path/to/imsg-mcp/src/cli.ts mcp"
-      }
+      "command": "node",
+      "args": [
+        "--import",
+        "/path/to/imsg-mcp/node_modules/tsx/dist/loader.mjs",
+        "/path/to/imsg-mcp/scripts/mcp-dev-proxy.ts"
+      ]
     }
   }
 }
 ```
+
+> Run TypeScript via `node --import <tsx loader>`, **not** the `.bin/tsx` CLI.
+> The tsx CLI wraps your code in a grandchild and relays signals to it with a
+> 30ms ack window — a child whose event loop is busy at signal time (routine
+> during shutdown) gets SIGKILLed, skipping graceful cleanup. The proxy's
+> default child command (no `MCP_DEV_CMD` needed) already uses the safe shape.
 
 The dev proxy keeps the MCP server alive across restarts and replays the protocol handshake. It also injects `IMSG_DEV=1` so dev-only tools (`health_check`, `get_logs`, `run_build`, `request_restart`, `get_last_send_error`) are visible to your agent.
 

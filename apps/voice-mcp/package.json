@@ -11,10 +11,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "tsx src/cli.ts",
-    "mcp": "tsx src/cli.ts mcp",
-    "serve": "tsx src/cli.ts serve",
-    "doctor": "tsx src/cli.ts doctor",
+    "start": "node --import tsx src/cli.ts",
+    "mcp": "node --import tsx src/cli.ts mcp",
+    "serve": "node --import tsx src/cli.ts serve",
+    "doctor": "node --import tsx src/cli.ts doctor",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",

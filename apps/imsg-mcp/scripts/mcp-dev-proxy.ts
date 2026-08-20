@@ -11,12 +11,19 @@
  * 2. Then flushes any buffered subsequent requests.
  *
  * Usage:
- *   MCP_DEV_CMD="tsx src/cli.ts mcp" tsx scripts/mcp-dev-proxy.ts
+ *   tsx scripts/mcp-dev-proxy.ts                    # default child command
+ *   MCP_DEV_CMD="node dist/cli.js mcp" tsx scripts/mcp-dev-proxy.ts
+ *
+ * If overriding MCP_DEV_CMD, never point it at the tsx CLI (`.bin/tsx`) —
+ * its signal relay SIGKILLs a busy child ~60ms after the signal, truncating
+ * graceful shutdown. Use `node --import <tsx loader>` instead; see
+ * scripts/dev-proxy-cmd.ts for the mechanism.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { buildDefaultDevCmd } from "./dev-proxy-cmd.js";
 
-const MCP_DEV_CMD = process.env.MCP_DEV_CMD || "tsx src/cli.ts mcp";
+const MCP_DEV_CMD = process.env.MCP_DEV_CMD || buildDefaultDevCmd();
 const RESTART_DELAY_MS = 100;
 const RESPAWN_TIMEOUT_MS = 10_000;
 
@@ -89,11 +96,13 @@ function processStdinChunk(chunk: Buffer): void {
 }
 
 function spawnChild(): void {
-  const [cmd, ...args] = MCP_DEV_CMD.split(" ");
   childReady = false;
   restartCount++;
 
-  child = spawn(cmd, args, {
+  // Pass the command string whole — the shell does the word-splitting.
+  // Pre-splitting into an args array with shell:true trips DEP0190
+  // (args are concatenated unescaped) and adds nothing.
+  child = spawn(MCP_DEV_CMD, {
     cwd: process.cwd(),
     // IMSG_DEV=1 tells the MCP server to expose dev-only tools (health_check,
     // get_logs, get_last_send_error, run_build, request_restart). The prod
