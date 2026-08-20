@@ -11,6 +11,7 @@
  * `loadSettingsState` is the one fs-reading glue (config + credentials); the
  * rest is pure and unit-tested directly.
  */
+import { lineWindow } from "@george43g/tui-kit";
 import type { Dispatch } from "react";
 import {
   defaultTuiConfigPath,
@@ -350,8 +351,13 @@ export function settingsRowLineCost(rows: SettingsRow[], i: number, cursor: numb
  * whisper)" leaving a stray "e)" where the longer label peeked past the
  * shorter one.
  *
- * Greedy expansion around the cursor, alternating down/up, so the cursor
- * stays roughly centered and the window fills the budget exactly.
+ * Delegates to tui-kit `lineWindow` (0.5.0) — the shared line-budget
+ * windowing this function and ThreadPane's walk were two hand-written copies
+ * of. `aboveFraction: 0.5` keeps the cursor roughly centered, matching the
+ * old alternating expansion; the invariants the panel depends on (cursor
+ * always inside the window, rendered lines never exceed the budget except
+ * for a single over-tall item, window maximal in both directions) are the
+ * kit function's documented contract.
  */
 export function computeSettingsWindow(
   rows: SettingsRow[],
@@ -360,32 +366,13 @@ export function computeSettingsWindow(
 ): { start: number; end: number } {
   if (rows.length === 0) return { start: 0, end: 0 };
   const c = Math.max(0, Math.min(cursor, rows.length - 1));
-  let start = c;
-  let end = c + 1;
-  let lines = settingsRowLineCost(rows, c, cursor);
-  let canUp = start > 0;
-  let canDown = end < rows.length;
-  while (canUp || canDown) {
-    if (canDown) {
-      const cost = settingsRowLineCost(rows, end, cursor);
-      if (lines + cost <= bodyLines) {
-        lines += cost;
-        end++;
-        canDown = end < rows.length;
-      } else {
-        canDown = false;
-      }
-    }
-    if (canUp) {
-      const cost = settingsRowLineCost(rows, start - 1, cursor);
-      if (lines + cost <= bodyLines) {
-        lines += cost;
-        start--;
-        canUp = start > 0;
-      } else {
-        canUp = false;
-      }
-    }
-  }
-  return { start, end };
+  const w = lineWindow({
+    itemCount: rows.length,
+    cursor: c,
+    budgetLines: bodyLines,
+    heightOf: (i) => settingsRowLineCost(rows, i, cursor),
+    anchor: "cursor",
+    aboveFraction: 0.5,
+  });
+  return { start: w.start, end: w.end };
 }

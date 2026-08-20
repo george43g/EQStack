@@ -15,3 +15,6 @@ onlyBuiltDependencies:
 
 overrides:
   imsg-mcp: 'link:apps/imsg-mcp'
+
+minimumReleaseAgeExclude:
+  - "@george43g/*"

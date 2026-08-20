@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { useMouse } from "@george43g/tui-kit";
+import { allocateWidths, splitNavChunk, useMouse } from "@george43g/tui-kit";
 import { useScreenSize } from "fullscreen-ink";
 import { Box, type Key as KeyState, useApp, useInput } from "ink";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useSyncExternalStore } from "react";
@@ -87,7 +87,17 @@ export interface AppProps {
 export function App({ changeBus }: AppProps = {}) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { exit } = useApp();
-  const { width: columns, height: rows } = useScreenSize();
+  // Guard the screen size at the source: under ink-testing-library (no TTY)
+  // useScreenSize yields non-finite rows, and every downstream computation
+  // (bodyHeight → pane heights → line budgets) inherits the NaN. The old
+  // hand-rolled window walk happened to fail CLOSED under NaN (comparisons
+  // all false → 1-item window); tui-kit lineWindow 0.5.0 fails OPEN (its
+  // break condition is false too → the ENTIRE thread renders — measured
+  // 65MB of retained fiber in tui-memory.test). Finite fallbacks make the
+  // failure mode impossible rather than merely accidental.
+  const { width: rawColumns, height: rawRows } = useScreenSize();
+  const columns = Number.isFinite(rawColumns) ? rawColumns : 80;
+  const rows = Number.isFinite(rawRows) ? rawRows : 24;
   const imsg = useImsg();
   // `visible` gates the SAMPLING RATE, not whether stats exist: panel open =
   // live 2s ticks; panel closed = the footer rides the watchdog's 60s memory
@@ -99,15 +109,61 @@ export function App({ changeBus }: AppProps = {}) {
   const ggPendingRef = useRef(false); // tracks if 'g' was pressed, waiting for second 'g'
   const ggTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const drawerWidth =
+  // Column widths via tui-kit `allocateWidths` (0.5.0). Per the kit contract,
+  // fractions and mode-gating are the CALLER's business: the drawer's 35%/40%
+  // (capped 50/60) is computed here, and a closed column is OMITTED from the
+  // spec rather than passed as width 0. All columns pin at their floor
+  // (`collapse: "min"`) — on a terminal narrower than the floor sum the
+  // renderer clips, exactly as the old hand-rolled formulae behaved. The
+  // thread column has no `max`, so the remainder lands on it (highest
+  // priority not at ceiling), matching the old `columns - …` remainder line.
+  const detailPaneWidth =
     state.mode === "drawer"
       ? Math.min(Math.floor(columns * 0.35), 50)
       : state.mode === "info"
         ? Math.min(Math.floor(columns * 0.4), 60)
         : 0;
-  const devStatsWidth = state.showDevStats ? 20 : 0;
-  const sidebarWidth = Math.max(Math.floor((columns - drawerWidth - devStatsWidth) * 0.32), 28);
-  const threadWidth = Math.max(columns - sidebarWidth - drawerWidth - devStatsWidth, 20);
+  const alloc = allocateWidths(columns, [
+    { id: "thread", min: 20, preferred: 20, priority: 3, collapse: "min" },
+    {
+      id: "sidebar",
+      min: 28,
+      preferred: Math.max(
+        Math.floor((columns - detailPaneWidth - (state.showDevStats ? 20 : 0)) * 0.32),
+        28,
+      ),
+      priority: 2,
+      collapse: "min",
+    },
+    ...(detailPaneWidth > 0
+      ? [
+          {
+            id: "detail",
+            min: detailPaneWidth,
+            preferred: detailPaneWidth,
+            max: detailPaneWidth,
+            priority: 1,
+            collapse: "min" as const,
+          },
+        ]
+      : []),
+    ...(state.showDevStats
+      ? [
+          {
+            id: "devstats",
+            min: 20,
+            preferred: 20,
+            max: 20,
+            priority: 0,
+            collapse: "min" as const,
+          },
+        ]
+      : []),
+  ]);
+  const drawerWidth = alloc.widths.detail ?? 0;
+  const devStatsWidth = alloc.widths.devstats ?? 0;
+  const sidebarWidth = alloc.widths.sidebar ?? 28;
+  const threadWidth = alloc.widths.thread ?? 20;
   const bodyHeight = rows - 2; // status + help
 
   // Sidebar item layout: each item = 4 rows (name + snippet + slug + separator)
@@ -613,27 +669,26 @@ export function App({ changeBus }: AppProps = {}) {
   // "jj" never equalled "j" and rapid scrolling silently dropped most of the
   // input. Worse, the vim count guard used a lexicographic range, which "5j"
   // satisfies — a chunked count entered the buffer whole and replayed on the
-  // NEXT key (a lone `j` jumping 5 rows for no visible reason). Same class the
-  // tui-kit `useVimKeys` fix addresses upstream; imsg has its own router, so it
-  // needs its own fan-out. Only chunks made ENTIRELY of these keys are split —
-  // anything else (a pasted recipient name, an escape sequence) is passed
-  // through whole so it can never drive motion or reach a destructive key.
-  const CHUNKABLE_KEYS = /^[0-9gGjk{}]+$/;
+  // NEXT key (a lone `j` jumping 5 rows for no visible reason).
+  //
+  // The pure half of this chunked-keystroke law now lives upstream as tui-kit
+  // `splitNavChunk` (0.5.0, lifted from this router): ALL-OR-NOTHING — a chunk
+  // containing anything outside the owned set returns null and is passed
+  // through whole, so a pasted recipient name or an escape sequence can never
+  // drive motion or reach a destructive key. The stateful half (which modes
+  // are active, what each key means) stays HERE, per the input-guard law.
+  const OWNED_NAV_KEYS = new Set([..."0123456789gGjk{}"]);
 
   const handleKeyRef = useRef<((input: string, key: KeyState) => Promise<void>) | null>(null);
 
   useInput(async (input, key) => {
     // Fan out a multi-key chunk into single-key dispatches, in order.
-    if (
-      input.length > 1 &&
-      !key.ctrl &&
-      !key.meta &&
-      !key.escape &&
-      CHUNKABLE_KEYS.test(input) &&
-      handleKeyRef.current
-    ) {
-      for (const ch of input) await handleKeyRef.current(ch, key);
-      return;
+    if (input.length > 1 && !key.ctrl && !key.meta && !key.escape && handleKeyRef.current) {
+      const split = splitNavChunk(input, OWNED_NAV_KEYS);
+      if (split) {
+        for (const ch of split) await handleKeyRef.current(ch, key);
+        return;
+      }
     }
     await handleKeyRef.current?.(input, key);
   });

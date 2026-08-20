@@ -1,4 +1,4 @@
-import { visualWidth } from "@george43g/tui-kit";
+import { chooseAnchor, lineWindow, visualWidth } from "@george43g/tui-kit";
 import { Box, Text } from "ink";
 import React, { useMemo, useRef } from "react";
 import type { Conversation, Message } from "../../types.js";
@@ -55,72 +55,45 @@ export function ThreadPane({
 }: Props) {
   const theme = useTheme();
   const isGroup = conversation?.isGroupChat ?? false;
-  const maxBubbleW = Math.max(width - 8, 20);
+  // Non-finite width is the second NaN ingress (besides height): it flows
+  // through maxBubbleW into the height estimator, and NaN heights make the
+  // kit window fail open exactly like a NaN budget. Same clamp discipline.
+  const maxBubbleW = Number.isFinite(width) ? Math.max(width - 8, 20) : 72;
   const composing = mode === "compose" || mode === "confirm";
 
-  // Available height for messages
+  // Available height for messages. Defense-in-depth on top of App's screen-
+  // size guard: a non-finite height would flow into lineWindow's budget,
+  // where kit 0.5.0 fails OPEN (NaN never trips the break condition → the
+  // whole thread renders). Reported upstream; the clamp keeps this pane safe
+  // for any caller regardless.
   const headerH = 1;
   const composeH = composing ? 1 : 0;
   const borderH = 2;
-  const msgAreaHeight = Math.max(height - headerH - composeH - borderH, 3);
+  const rawArea = height - headerH - composeH - borderH;
+  const msgAreaHeight = Number.isFinite(rawArea) ? Math.max(rawArea, 3) : 3;
 
-  // Compute visible window anchored on selectedMsgIdx.
-  // Account for multi-line items: replies take 2 lines, date separators take 1 extra line.
+  // Compute visible window anchored on selectedMsgIdx — tui-kit `lineWindow`
+  // (0.5.0), which is this pane's old walk lifted upstream: line-budget
+  // windowing with a caller-supplied pure height estimator. Near the tail we
+  // pin the LAST item to the bottom edge (anchor "end", chooseAnchor's
+  // nearEnd=2 matches the old NEAR_END) so the last messages never run past
+  // Ink's overflow="hidden"; -1 (follow-tail) forces "end" inside the kit.
+  // Pending sends keep the cursor anchor: their bubbles append below and the
+  // old code never bottom-anchored while one was in flight.
   const { visibleStart, visibleEnd } = useMemo(() => {
     const total = messages.length + pending.length;
     if (total === 0) return { visibleStart: 0, visibleEnd: 0 };
 
-    let cursorIdx = selectedMsgIdx >= 0 ? selectedMsgIdx : total - 1;
-    cursorIdx = Math.max(0, Math.min(cursorIdx, total - 1));
-
-    // Bottom-anchor: when the cursor is at or near the last real message, walk
-    // UP from the end accumulating real heights until we fill msgAreaHeight.
-    // Fixes the clip where the last 1-3 messages run past Ink's overflow="hidden"
-    // because the downward fill loop never executes (end === total - 1 already).
-    const NEAR_END = 2;
-    if (cursorIdx >= messages.length - NEAR_END && pending.length === 0) {
-      const end = messages.length - 1;
-      let start = end;
-      let totalLines = lineHeight(messages, end, maxBubbleW, isGroup);
-      while (
-        start > 0 &&
-        totalLines + lineHeight(messages, start - 1, maxBubbleW, isGroup) <= msgAreaHeight
-      ) {
-        start--;
-        totalLines += lineHeight(messages, start, maxBubbleW, isGroup);
-      }
-      return { visibleStart: start, visibleEnd: end + 1 };
-    }
-
-    // Walk outward from cursor, counting actual lines consumed
-    // Start by going upward from cursor
-    let start = cursorIdx;
-    let linesAbove = 0;
-    const targetAbove = Math.floor(msgAreaHeight * 0.4);
-    while (start > 0 && linesAbove < targetAbove) {
-      start--;
-      linesAbove += lineHeight(messages, start, maxBubbleW, isGroup);
-    }
-
-    // Then go downward from cursor
-    let end = cursorIdx;
-    let totalLines = linesAbove + lineHeight(messages, cursorIdx, maxBubbleW, isGroup);
-    while (end < total - 1 && totalLines < msgAreaHeight) {
-      end++;
-      if (end < messages.length) {
-        totalLines += lineHeight(messages, end, maxBubbleW, isGroup);
-      } else {
-        totalLines += 1; // pending messages
-      }
-    }
-
-    // If we have room, extend upward more
-    while (start > 0 && totalLines < msgAreaHeight) {
-      start--;
-      totalLines += lineHeight(messages, start, maxBubbleW, isGroup);
-    }
-
-    return { visibleStart: start, visibleEnd: end + 1 };
+    const cursor = selectedMsgIdx >= 0 ? Math.min(selectedMsgIdx, total - 1) : -1;
+    const anchor = pending.length === 0 ? chooseAnchor(cursor, total) : "cursor";
+    const w = lineWindow({
+      itemCount: total,
+      cursor,
+      budgetLines: msgAreaHeight,
+      heightOf: (i) => (i < messages.length ? lineHeight(messages, i, maxBubbleW, isGroup) : 1), // pending rows are 1 line
+      anchor,
+    });
+    return { visibleStart: w.start, visibleEnd: w.end };
     // `messages` reference is preserved across non-messages reducer cases
     // (see types.ts reducer), so depending on length is sufficient for the
     // common fast path. Content-mutating actions (SET_MESSAGES /
