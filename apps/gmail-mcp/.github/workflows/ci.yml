@@ -69,10 +69,11 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/gmail-mcp-pack /tmp/gmail-mcp-install
           npm run package:tarball -- --pack-destination /tmp/gmail-mcp-pack
-          tarball=/tmp/gmail-mcp-pack/george43g-gmail-mcp-2.0.0.tgz
+          version=$(node -p "require('./package.json').version")
+          tarball=/tmp/gmail-mcp-pack/george43g-gmail-mcp-${version}.tgz
           npm install --prefix /tmp/gmail-mcp-install "$tarball"
           bin=/tmp/gmail-mcp-install/node_modules/.bin/gmail
-          test "$("$bin" --version)" = "2.0.0"
+          test "$("$bin" --version)" = "$version"
           "$bin" --help >/dev/null
           "$bin" health --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.status)process.exit(1)})'
           node -e 'const p=require(process.argv[1]);if(p.dependencies["@hono/node-server"]!=="^2.0.11")process.exit(1)' /tmp/gmail-mcp-install/node_modules/@george43g/gmail-mcp/node_modules/@modelcontextprotocol/sdk/package.json
@@ -89,5 +90,6 @@ jobs:
         run: |
           set -euo pipefail
           docker build -t gmail-mcp:ci .
-          test "$(docker run --rm gmail-mcp:ci --version)" = "2.0.0"
+          version=$(node -p "require('./package.json').version")
+          test "$(docker run --rm gmail-mcp:ci --version)" = "$version"
           docker run --rm gmail-mcp:ci health --json | grep -q '"status"'

@@ -136,6 +136,11 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: check
     runs-on: ubuntu-24.04
+    # Shared with release.yml so the screenshot auto-commit and the
+    # semantic-release commit never push to main concurrently.
+    concurrency:
+      group: main-mutations
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:

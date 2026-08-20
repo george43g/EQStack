@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Conventional-commits gate.
+#
+# Contract:
+#  1. Run commitlint (config: commitlint.config.js, extends
+#     @commitlint/config-conventional) against the message being committed.
+#  2. A non-conventional message aborts the commit with commitlint's report.
+#
+# semantic-release computes versions from these messages (release.yml), so a
+# malformed message on main would silently produce no release — fail here
+# instead. Wired via `npm run hooks:install` (core.hooksPath = .githooks).
+set -euo pipefail
+
+exec npx --no -- commitlint --edit "$1"
