@@ -1,35 +1,34 @@
 {
   "branches": ["main"],
-  "tagFormat": "v${version}",
   "plugins": [
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
     [
       "@semantic-release/changelog",
       {
-        "changelogFile": "CHANGELOG.md"
+        "changelogFile": "CHANGELOG.md",
+        "changelogTitle": "# Changelog\n\nAll notable changes to this project will be documented in this file.\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/)."
       }
     ],
-    "@semantic-release/npm",
+    [
+      "@anolilab/semantic-release-pnpm",
+      {
+        "npmPublish": true
+      }
+    ],
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "npm run gen-usage && npm install --package-lock-only"
+        "prepareCmd": "pnpm run gen-usage"
       }
     ],
+    "@semantic-release/github",
     [
       "@semantic-release/git",
       {
-        "assets": [
-          "package.json",
-          "package-lock.json",
-          "pnpm-lock.yaml",
-          "usage.kdl",
-          "CHANGELOG.md"
-        ],
+        "assets": ["CHANGELOG.md", "package.json", "usage.kdl"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }
-    ],
-    "@semantic-release/github"
+    ]
   ]
 }
