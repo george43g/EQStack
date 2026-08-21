@@ -1,0 +1,15 @@
+services:
+  gmail-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - mcp-gmail:/gmail-server
+    environment:
+      - GMAIL_CONFIG_DIR=/gmail-server
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  mcp-gmail:

@@ -1,0 +1,23 @@
+{
+  "id": "w_msg_002",
+  "threadId": "w_thr_002",
+  "labelIds": ["INBOX", "Label_2", "STARRED"],
+  "snippet": "INCIDENT-204 — checkout latency spike resolved",
+  "historyId": "1000003",
+  "internalDate": "1730086400000",
+  "payload": {
+    "mimeType": "text/plain",
+    "headers": [
+      { "name": "From", "value": "oncall@fixture.test" },
+      { "name": "To", "value": "user-work@fixture.test" },
+      { "name": "Subject", "value": "INCIDENT-204 resolved" },
+      { "name": "Date", "value": "Tue, 28 Oct 2025 12:00:00 +0000" },
+      { "name": "Message-Id", "value": "<incident-204@fixture.test>" }
+    ],
+    "body": {
+      "size": 96,
+      "data": "Q2hlY2tvdXQgbGF0ZW5jeSBzcGlrZSByZXNvbHZlZC4gUm9vdCBjYXVzZTogcG9vbCBleGhhdXN0aW9uLg=="
+    }
+  },
+  "sizeEstimate": 768
+}

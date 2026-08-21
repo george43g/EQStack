@@ -1,0 +1,24 @@
+{
+  "id": "f_draft_002",
+  "message": {
+    "id": "f_msg_202",
+    "threadId": "f_thr_100",
+    "labelIds": ["DRAFT"],
+    "snippet": "Re: migration — I can take the runbook section if that helps.",
+    "internalDate": "1730694600000",
+    "payload": {
+      "mimeType": "text/plain",
+      "headers": [
+        { "name": "From", "value": "user-full@fixture.test" },
+        { "name": "To", "value": "lead@fixture.test" },
+        { "name": "Subject", "value": "Re: [fixture] Migration cutover plan" },
+        { "name": "In-Reply-To", "value": "<migration-3@fixture.test>" },
+        { "name": "Date", "value": "Tue, 04 Nov 2025 10:15:00 +0000" }
+      ],
+      "body": {
+        "size": 60,
+        "data": "UmU6IG1pZ3JhdGlvbiDigJQgSSBjYW4gdGFrZSB0aGUgcnVuYm9vayBzZWN0aW9uIGlmIHRoYXQgaGVscHMuCg=="
+      }
+    }
+  }
+}

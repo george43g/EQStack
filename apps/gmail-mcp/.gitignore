@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun.lock
+
+# Build
+build/
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+mcp-config.json
+gcp-oauth.keys.json
+.calendar-mcp/
+credentials.json
+.calendar-server-credentials.json
+.gcp-oauth.keys.json
+
+# Local MCP host config — contains machine-specific absolute paths
+.mcp.json
+
+# Local agent/editor workspace config
+.agents/
+.codex/
+.claude/
+
+# Local, in-progress agent handoff docs (never part of the public package)
+HANDOFF.md
+HANDOFF-*.md
+
+# Fixture-mode runtime state (per-test config dir + raw capture output)
+.test-config/
+fixtures/raw/
+test.md

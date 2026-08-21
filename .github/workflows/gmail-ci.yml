@@ -1,0 +1,123 @@
+# App-scoped CI for apps/gmail-mcp (ported from the pre-migration standalone
+# repo's ci.yml; the docker-smoke job was dropped in the migration — nothing
+# else in this repo builds containers, and package-smoke gates the artifact
+# that ships). Root ci.yml stays imsg-centric; convergence is a later, separate
+# decision.
+name: gmail-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/gmail-mcp/**"
+      - ".github/workflows/gmail-ci.yml"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+  pull_request:
+    paths:
+      - "apps/gmail-mcp/**"
+      - ".github/workflows/gmail-ci.yml"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify (workspace, Node 24)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint + typecheck + unit tests + build
+        working-directory: apps/gmail-mcp
+        run: |
+          set -euo pipefail
+          pnpm run lint
+          pnpm run typecheck
+          pnpm run test
+          pnpm run build
+
+      - name: Usage spec drift + package check
+        working-directory: apps/gmail-mcp
+        run: |
+          set -euo pipefail
+          pnpm run gen-usage -- --check
+          pnpm run package:check
+
+      - name: Stress harness + e2e (fixture mode)
+        working-directory: apps/gmail-mcp
+        run: |
+          set -euo pipefail
+          pnpm run stress
+          pnpm run test:e2e
+
+      # pnpm audit is workspace-wide by design; failures here can root in any
+      # app's tree, so this step reports rather than gates. The BLOCKING
+      # security gate for this package is the consumer-side npm audit in
+      # package-smoke below (npm resolution, exactly what installers get).
+      - name: Workspace audit (report-only)
+        continue-on-error: true
+        run: pnpm audit --prod
+
+  package-smoke:
+    name: Package Smoke (build @ 24, run tarball @ 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace and build the tarball
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          cd apps/gmail-mcp
+          pnpm run build
+          mkdir -p /tmp/gmail-mcp-pack
+          pnpm run package:tarball -- --pack-destination /tmp/gmail-mcp-pack
+
+      # engines declares node >=20.6 for consumers — prove the shipped
+      # artifact actually runs there, not just where we develop.
+      - name: Switch to Node 20 (consumer floor)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install and run the exact tarball on Node 20
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gmail-mcp-install
+          version=$(node -p "require('./apps/gmail-mcp/package.json').version")
+          tarball=/tmp/gmail-mcp-pack/george43g-gmail-mcp-${version}.tgz
+          npm install --prefix /tmp/gmail-mcp-install "$tarball"
+          bin=/tmp/gmail-mcp-install/node_modules/.bin/gmail
+          test "$("$bin" --version)" = "$version"
+          "$bin" --help >/dev/null
+          "$bin" health --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.status)process.exit(1)})'
+          # No node_modules may ship inside the tarball (bundling was dropped
+          # 2026-08-22; a bundle from a pnpm-layout tree drags .pnpm store
+          # internals into the artifact).
+          if [ -d /tmp/gmail-mcp-install/node_modules/@george43g/gmail-mcp/node_modules ]; then
+            echo "::error::Tarball ships its own node_modules — bundling regressed"
+            exit 1
+          fi
+          # Consumer-side security gate: audit the tree npm actually installs.
+          npm audit --prefix /tmp/gmail-mcp-install --omit=dev

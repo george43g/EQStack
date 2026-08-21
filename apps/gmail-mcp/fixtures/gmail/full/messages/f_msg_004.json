@@ -1,0 +1,23 @@
+{
+  "id": "f_msg_004",
+  "threadId": "f_thr_004",
+  "labelIds": ["SPAM", "UNREAD"],
+  "snippet": "You have WON a totally-real prize.",
+  "historyId": "2000005",
+  "internalDate": "1730359200000",
+  "payload": {
+    "mimeType": "text/plain",
+    "headers": [
+      { "name": "From", "value": "prizes@spammer.fixture.test" },
+      { "name": "To", "value": "user-full@fixture.test" },
+      { "name": "Subject", "value": "[fixture] You WON!!!" },
+      { "name": "Date", "value": "Fri, 31 Oct 2025 09:00:00 +0000" },
+      { "name": "Message-Id", "value": "<spam-full@fixture.test>" }
+    ],
+    "body": {
+      "size": 70,
+      "data": "WW91IGhhdmUgV09OIGEgdG90YWxseS1yZWFsIHByaXplLiBDbGljayBub3RoaW5nOyB0aGlzIGlzIGEgc3BhbSBmaXh0dXJlLgo="
+    }
+  },
+  "sizeEstimate": 900
+}

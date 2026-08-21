@@ -1,0 +1,7 @@
+[
+  {
+    "id": "FilterPersonalNewsletters",
+    "criteria": { "from": "newsletter@fixture.test" },
+    "action": { "addLabelIds": ["Label_P1"] }
+  }
+]
