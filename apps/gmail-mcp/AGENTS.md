@@ -1,4 +1,9 @@
-# Gmail-MCP-Server — Agent Guide
+# gmail-mcp — Agent Guide
+
+> This app lives at `apps/gmail-mcp` in the **EQStack monorepo** (migrated 2026-08-22 from the
+> standalone `george43g/gmail-mcp` repo with full history). Repo-wide conventions — turbo tasks,
+> serial-merge release discipline, per-package msr releases, root hooks — live in the **root
+> `AGENTS.md`**; read both. This file covers the app itself.
 
 > `CLAUDE.md` is a symlink to this file, so Claude Code and other coding agents can share the same repository conventions.
 
@@ -21,13 +26,13 @@ Bare `gmail` prints help; the CLI is the default surface.
 - **Auth flow** (canonical): `gmail account auth [id] [--scopes=…] [--headless] [--print-json]`. Loads OAuth client keys from `GMAIL_OAUTH_KEYS_JSON` env or `~/.gmail-mcp/gcp-oauth.keys.json`, runs the loopback OAuth flow, writes credentials to `~/.gmail-mcp/accounts/<id>/credentials.json` (or prints them to stdout for env-driven deploys with `--print-json`). Bare `gmail account` opens the Inquirer account CRUD manager in a TTY. `gmail auth` is a deprecated stub that points users to `gmail account`.
 - **Test runner**: vitest (`pnpm test` / `npm test`).
 - **Quality scripts**: `pnpm lint` (biome), `pnpm typecheck` (`tsc --noEmit`), `pnpm format` (biome write), `pnpm verify` (lint+typecheck+test+clean build+e2e+usage+package+production audit).
-- **Package manager**: both `npm` and `pnpm` are supported. `pnpm-lock.yaml` and `package-lock.json` both live in the repo. Locally, `pnpm` is preferred. **When adding a dep, run `pnpm add <pkg>` followed by `npm install --package-lock-only` to keep both lockfiles in sync without disturbing pnpm's `node_modules` layout.** CI/published-package consumers using `npm` or `bunx` are unaffected.
+- **Package manager**: **pnpm workspace only** (root `pnpm-lock.yaml`; the app's own lockfiles were dropped in the monorepo migration). Add a dep with `pnpm add <pkg>` in this directory; the root lockfile updates. npm/bunx consumers of the **published package** are unaffected. Note: `pnpm audit --prod` is workspace-wide — failures can root in any app; the blocking security gate for this package is the consumer-side `npm audit` in `gmail-ci.yml`'s package-smoke.
 
 ## Branch workflow
 
 `main` is the stable public branch. Use focused feature branches for changes, keep commits reviewable, and do not push generated local config or credentials. Before opening or merging a PR, run the verification commands relevant to the touched surface; for broad changes, run `pnpm verify`.
 
-**Commit messages are Conventional Commits** (`feat(scope): …`, `fix: …`, `chore: …`, …). semantic-release derives versions and changelogs from them, so a malformed message on `main` silently produces no release. The `.githooks/commit-msg` hook runs commitlint (`commitlint.config.js`, extends `@commitlint/config-conventional`) — wire it once with `npm run hooks:install`.
+**Commit messages are Conventional Commits** (`feat(gmail-mcp): …`, `fix: …`, `chore: …`, …). multi-semantic-release derives per-package versions and changelogs from commits touching this app's path, so a malformed message on `main` silently produces no release. No commitlint hook in this repo — the convention is enforced socially and by msr semantics (root `AGENTS.md` owns hook policy). **Merges to `main` are strictly serial**: one PR → wait for its Release workflow run → next.
 
 ## Architecture
 
@@ -445,9 +450,9 @@ Optional capture+anonymise scripts (`scripts/capture-fixtures.ts`, `scripts/anon
 - **`gmail console` polish.** The REPL exists, prints a legend, routes through the commander tree, and supports `accounts` plus `switch <id>` / `sw <id>`. Future polish: inline `@inquirer/prompts` widgets for destructive ops and richer account/status summaries.
 - **`usage.kdl` spec for shell completions.** Generated from the commander tree by `scripts/gen-usage.ts` (run via `pnpm run gen-usage`). `pnpm verify` runs `gen-usage --check` so drift fails CI. The committed `usage.kdl` is consumed by the [`usage`](https://usage.jdx.dev/) Rust binary; `gmail --usage-spec` also prints it on demand.
 - **TUI follow-ups.** `gmail tui` opens a 3-pane Ink/React UI against the in-process dispatcher: vim-modal keymap, `$EDITOR` suspend for compose / reply / reply-all / draft-edit, 8 themes (`:theme` overlay), account switcher (`:account` modal that subscribes to `sessionEvents.accountChanged`), dev stats overlay (`~` / `:stats`), per-thread LRU cache (`GMAIL_TUI_CACHE_MB`). **Draft recovery (D2):** every compose persists a `<kind>-<ts>[-n].eml` under `<configDir>/drafts/` carrying `X-Gmail-MCP-Kind`/`-Source-Message-Id`/`-Source-Thread-Id` breadcrumbs (built + parsed + stripped-before-send in `compose-parser.ts`); `p` / `:drafts` opens the recovery picker (`DraftsRecovery.tsx`, list/resume/discard), `:resume` reopens the most recent, and `e` (`msg.draft.edit`) now correlates the focused draft to a server-side draft via `list_drafts` and edits it in place with `update_draft` (no duplicate). Reads `~/.gmail-mcp/config.json` for `theme` / `editor` / `cacheMB`; `GMAIL_TUI_*` env wins over the file. Follow-ups: visual-mode batch ops, filter/label CRUD UI, attachment preview, sent/drafts folder UIs.
-- **Shared-kit convergence (EQ-Stack prep).** `@george43g/robustness` fully adopted (local `src/robustness/` deleted); `@george43g/tui-kit` adopted for `truncateToWidth`/`visualWidth` at the emoji-truncation sites (full TUI-kit adoption deliberately deferred — the kit's tree-navigator redesign is in flight upstream). **mcp-kit adoption deferred pending upstream seams**: its handler shape has no per-session context injection (ours is rebuilt by `switch_account`) and its text envelope is `JSON.stringify(structured)` (ours is a hand-authored wire contract); scope-gating + async auth-error remediation are also absent. All four filed as work orders with `mcp-cli-starter-template`; adopt once the kit grows the seams rather than forking 36 tools' output format here.
-- **Release automation (Phase 0)** ✅ shipped. semantic-release + commitlint. `.releaserc.json`: branches `["main"]`, tag `v${version}`, plugin order commit-analyzer → release-notes-generator → changelog → **npm → exec → git** — exec's `prepareCmd` (`gen-usage` + `npm install --package-lock-only`) runs **after** the npm plugin stamps the new version, so `usage.kdl` and the lockfile pick it up; the git plugin then commits `package.json` / both lockfiles / `usage.kdl` / `CHANGELOG.md` as `chore(release): x.y.z [skip ci]`. `.github/workflows/release.yml` fires on CI success on `main` and publishes via **npm OIDC trusted publishing** (`permissions: id-token: write`, provenance automatic, **no `NPM_TOKEN` secret**; do not add `registry-url` to `setup-node` — its `.npmrc` breaks the plugin's auth). It shares the `main-mutations` concurrency group with `screenshots.yml`'s auto-commit job so the two never push to `main` concurrently. `ci.yml`'s version asserts read `package.json` instead of a hardcoded string. ⚠ **Merging this to `main` arms auto-publish**: the next `feat`/`fix` commit on `main` with green CI cuts a real npm release — merge deliberately.
-- **VHS screenshot pipeline** ✅ shipped. `pnpm screenshots` regenerates `docs/screenshots/*.{png,gif}` from `scripts/screenshots/*.tape` against `GMAIL_FIXTURE_MODE=1`. The 6 stills + animated workflow GIF feed the top-level README and `docs/SCREENSHOTS.md` gallery. CI (`.github/workflows/screenshots.yml`) auto-regenerates on push (auto-commits with `[skip ci]`) and gates PRs (`git diff --exit-code`). Local pre-push hook at `.githooks/pre-push` refuses to push TUI changes that drift the captures.
+- **Shared-kit convergence.** `@george43g/robustness` fully adopted (local `src/robustness/` deleted); `@george43g/tui-kit` adopted for `truncateToWidth`/`visualWidth` at the emoji-truncation sites (full TUI-kit adoption deliberately deferred — the kit's tree-navigator redesign is in flight upstream). **mcp-kit adoption deferred pending upstream seams**: its handler shape has no per-session context injection (ours is rebuilt by `switch_account`) and its text envelope is `JSON.stringify(structured)` (ours is a hand-authored wire contract); scope-gating + async auth-error remediation are also absent. All four filed as work orders with `mcp-cli-starter-template`; adopt once the kit grows the seams rather than forking 36 tools' output format here.
+- **Release automation** — now the monorepo's per-package msr pipeline. Root `release.yml` runs `pnpm release` (multi-semantic-release) on every `main` push; the global `--tag-format '${name}-v${version}'` FORCE-OVERRIDES any package-local tagFormat, so this package's tags are **`@george43g/gmail-mcp-v<semver>`**. The app's `.releaserc.json` uses `@anolilab/semantic-release-pnpm` (NOT `@semantic-release/npm` — it chokes on workspace trees), with exec's `gen-usage` AFTER the version stamp and deliberately NO `tarballDir` (a prepare-stage pack would freeze `usage.kdl` before regeneration). ⚠ **Publishing is currently DISABLED via `"private": true`** — msr skips private packages; that flag is the only off-switch. Re-enable checklist (George, deliberate): flip `private`, repoint the npm trusted publisher to `george43g/EQStack` + `release.yml`, push baseline tag `@george43g/gmail-mcp-v2.0.0` **BEFORE the first releasable merge** (no baseline → msr computes 1.0.0), first publish manual. `repository.url`+`directory` already point at EQStack (provenance validates both).
+- **VHS screenshot pipeline** ✅ shipped. `pnpm screenshots` regenerates `docs/screenshots/*.{png,gif}` from `scripts/screenshots/*.tape` against `GMAIL_FIXTURE_MODE=1`. The 6 stills + animated workflow GIF feed the app README and `docs/SCREENSHOTS.md` gallery. CI is **check-only** (root `.github/workflows/gmail-screenshots-check.yml`, path-filtered): hard gates are tapes-render + outputs exist at 1400×800; byte drift is informational (VHS encoders aren't byte-deterministic). The old standalone repo's auto-commit job was dropped in the migration — bot pushes to `main` conflict with the monorepo's serial-release discipline. If the TUI surface changes intentionally, run `pnpm screenshots` locally and commit the result.
 - **Phase G2 — multi-tenant HTTP mode.** Defer until a real use case appears. Would add per-request OAuth introspection, per-tenant credential lookup, scope-isolated rate limiting.
 - **`zod` 3 → 4** (with `zod-to-json-schema` co-bump). zod 4 changes the discriminated-union surface, default-value semantics, and error format. The schemas in `tools.ts` plus the test fixtures all need review. Defer until there's a concrete reason — currently no zod 3 bug is biting us.
 - **Wrap remaining Gmail call sites with `withRetry` / `rateLimitAcquire`**. The library is in place and is wired into `read_email` and `search_emails` as the canonical pattern. The other read paths (`list_inbox_threads`, `get_thread`, `download_*`, etc.) and the idempotent writes (`modify_*`, `delete_*`, `batch_*`) are progressive-adoption candidates. Send/draft creation must remain unwrapped (non-idempotent).
@@ -455,19 +460,13 @@ Optional capture+anonymise scripts (`scripts/capture-fixtures.ts`, `scripts/anon
 
 ## MCP servers (project scope)
 
-Canonical set: `.mcp.json` (standard MCP schema, `${VAR}` placeholders only —
-never literal secrets). `.cursor/mcp.json` and `.warp/.mcp.json` are symlinks
-to it. `opencode.json`'s `mcp` key is GENERATED — after editing `.mcp.json`,
-run: `mcpsync sync --scope project` (the global `mcpsync` bin from
-`mcp-cli-starter-template/apps/mcpsync`; it replaced the retired
-`~/dotfiles/mcp/render.js`). `--dry-run` previews without writing.
-Global servers and scope decisions: `~/dotfiles/docs/mcp-registry.md`.
-
-⚠ Inverted-source caveat: in THIS repo the canonical `.mcp.json` is
-**gitignored** (machine-specific absolute paths) while derived `opencode.json`
-is committed. On a fresh clone, recreate `.mcp.json` by hand from
-`opencode.json`'s entries **before** running `sync` — do NOT `mcpsync import`
-from a stale host config, which can resurrect retired invocation shapes (e.g.
-the `node_modules/.bin/tsx` launcher; dev MCP servers must spawn via
-`node --import tsx` — the tsx CLI wrapper SIGKILLs busy children 30ms after a
-relayed signal).
+MCP host config is a **monorepo-root concern** — the app-level `.mcp.json`
+symlink, `opencode.json`, and `.warp` config were dropped in the migration
+(the app's canonical `.mcp.json` was gitignored/machine-specific and does not
+exist here). To register a gmail dev server for local hosts, add it to the
+ROOT config per the root `AGENTS.md` conventions. Two standing rules survive
+the move: never put literal secrets in host config (`${VAR}` placeholders
+only), and dev MCP servers must spawn via `node --import tsx …`, NEVER the
+`.bin/tsx` CLI wrapper (it SIGKILLs busy children ~30ms after a relayed
+signal; imsg's repo-wide `tsx-spawn-inventory` guard test enforces this for
+all tracked code/config).
