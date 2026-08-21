@@ -20,10 +20,10 @@ importers:
     dependencies:
       '@george43g/robustness':
         specifier: '>=0.9.0 <1'
-        version: 0.10.0
+        version: 0.11.0
       '@george43g/tui-kit':
         specifier: '>=0.4.1 <1'
-        version: 0.5.0(@george43g/robustness@0.10.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
+        version: 0.5.1(@george43g/robustness@0.11.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
       '@inquirer/prompts':
         specifier: ^8.4.2
         version: 8.4.2(@types/node@20.19.37)
@@ -687,12 +687,12 @@ packages:
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
     engines: {node: '>=14'}
 
-  '@george43g/robustness@0.10.0':
-    resolution: {integrity: sha512-m98Eeq7nwo11eJ35i4D61uc7JEc4rIzH/OgLdd+4rw2wwlSLFFe7sxYcUTW1wDE7R0VXfZeJjtxPqWBsAIPzvg==}
+  '@george43g/robustness@0.11.0':
+    resolution: {integrity: sha512-2AArHPvT7Vj2gbtH897w3TIg7DaFwOuwPcXuNAZcuUBqUUYZOpVcSU4XT6hoeWFDLlLBlwbHHmc1WKoL+ytBDQ==}
     engines: {node: '>=24'}
 
-  '@george43g/tui-kit@0.5.0':
-    resolution: {integrity: sha512-ilZzCP+eM4H6cETtqv/S6iVau6e18l95DTPsqeV74N1HJXpek2GaBczt8gw1VoSX5UGgrqNz22HKs1irHUF5JA==}
+  '@george43g/tui-kit@0.5.1':
+    resolution: {integrity: sha512-O+QntIt37wONjtjmsEnFSSOC0j0ym//4F7tXkZTTabwPSDPltJbCkfR3gOB9YAvdbq/5RY+1BI5hP8b4mDHPfQ==}
     engines: {node: '>=24'}
     peerDependencies:
       '@george43g/robustness': '>=0.1.1 <1'
@@ -3765,11 +3765,11 @@ snapshots:
 
   '@fastify/busboy@2.1.1': {}
 
-  '@george43g/robustness@0.10.0': {}
+  '@george43g/robustness@0.11.0': {}
 
-  '@george43g/tui-kit@0.5.0(@george43g/robustness@0.10.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)':
+  '@george43g/tui-kit@0.5.1(@george43g/robustness@0.11.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)':
     dependencies:
-      '@george43g/robustness': 0.10.0
+      '@george43g/robustness': 0.11.0
       fullscreen-ink: 0.1.0(@types/react@19.2.14)
       ink: 7.1.1(@types/react@19.2.14)(react@19.2.6)
       react: 19.2.6
