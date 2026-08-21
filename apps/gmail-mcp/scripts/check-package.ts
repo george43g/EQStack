@@ -31,33 +31,19 @@ if (orphaned.length > 0) {
   throw new Error(`Orphaned compiled files found:\n${orphaned.join("\n")}`);
 }
 
+// Bundling note: until 2026-08-22 the package bundled a "patched" MCP SDK
+// (bundleDependencies + an override forcing @hono/node-server 2.0.11, because
+// the SDK's ^1.19.9 range was vulnerable). SDK >=1.30.0 declares
+// "^1.19.9 || ^2.0.5" and both arms audit clean, so the bundle/patch/override
+// apparatus was dropped. The tarball must now contain NO node_modules at all —
+// a pack from a pnpm-layout tree that starts bundling again would drag .pnpm
+// store internals into the artifact (measured: 3355 files).
 const staging = fs.mkdtempSync(path.join(os.tmpdir(), "gmail-mcp-package-"));
 try {
-  for (const file of ["LICENSE", "README.md", "package-lock.json", "package.json", "usage.kdl"]) {
+  for (const file of ["LICENSE", "README.md", "package.json", "usage.kdl"]) {
     fs.copyFileSync(path.join(root, file), path.join(staging, file));
   }
   fs.cpSync(dist, path.join(staging, "dist"), { recursive: true });
-
-  execFileSync(npm, ["ci", "--ignore-scripts", "--omit=dev"], {
-    cwd: staging,
-    stdio: "inherit",
-  });
-
-  const sdkPackagePath = path.join(
-    staging,
-    "node_modules",
-    "@modelcontextprotocol",
-    "sdk",
-    "package.json",
-  );
-  const sdkPackage = JSON.parse(fs.readFileSync(sdkPackagePath, "utf8")) as {
-    dependencies?: Record<string, string>;
-  };
-  if (!sdkPackage.dependencies?.["@hono/node-server"]) {
-    throw new Error("MCP SDK no longer declares @hono/node-server; review bundling policy");
-  }
-  sdkPackage.dependencies["@hono/node-server"] = "^2.0.11";
-  fs.writeFileSync(sdkPackagePath, `${JSON.stringify(sdkPackage, null, 2)}\n`);
 
   const output = execFileSync(npm, ["pack", "--dry-run", "--json", "--ignore-scripts"], {
     cwd: staging,
@@ -70,17 +56,12 @@ try {
   const allowedRoots = new Set(["LICENSE", "README.md", "package.json", "usage.kdl"]);
   const unexpected = pack.files
     .map((entry) => entry.path)
-    .filter(
-      (file) =>
-        !file.startsWith("dist/") && !file.startsWith("node_modules/") && !allowedRoots.has(file),
-    );
+    .filter((file) => !file.startsWith("dist/") && !allowedRoots.has(file));
   if (unexpected.length > 0) {
     throw new Error(`Unexpected package files found:\n${unexpected.join("\n")}`);
   }
-  for (const dependency of ["@modelcontextprotocol/sdk", "@hono/node-server"]) {
-    if (!pack.bundled.includes(dependency)) {
-      throw new Error(`Required patched dependency is not bundled: ${dependency}`);
-    }
+  if (pack.bundled.length > 0) {
+    throw new Error(`Nothing may be bundled anymore, found: ${pack.bundled.join(", ")}`);
   }
 
   const destinationFlag = process.argv.indexOf("--pack-destination");
@@ -96,7 +77,7 @@ try {
     process.stdout.write(`${path.resolve(destination, tarball)}\n`);
   } else {
     process.stdout.write(
-      `Package check passed: ${pack.files.length} files, patched MCP SDK bundled, no orphaned output.\n`,
+      `Package check passed: ${pack.files.length} files, no bundled deps, no orphaned output.\n`,
     );
   }
 } finally {

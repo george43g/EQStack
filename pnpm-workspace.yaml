@@ -15,6 +15,13 @@ onlyBuiltDependencies:
 
 overrides:
   imsg-mcp: 'link:apps/imsg-mcp'
+  # googleapis-common 8.0.2+ exact-pins google-auth-library@10.5.0, forking the
+  # GAL types against gmail-mcp's direct ^10.9.0 (two copies -> TS2769 in its
+  # typecheck). 8.0.1 declares ^10.1.0 and dedupes to a single GAL. Scoped to
+  # the direct parent; only apps/gmail-mcp depends on googleapis today. All of
+  # gmail-mcp's other former audit pins dissolved 2026-08-22 (fresh unpinned
+  # resolution audits 0 vulns — advisories fixed upstream).
+  'googleapis>googleapis-common': 8.0.1
 
 minimumReleaseAgeExclude:
   - "@george43g/*"
