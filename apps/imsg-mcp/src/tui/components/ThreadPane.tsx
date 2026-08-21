@@ -1,8 +1,9 @@
 import { chooseAnchor, lineWindow, visualWidth } from "@george43g/tui-kit";
 import { Box, Text } from "ink";
 import React, { useMemo, useRef } from "react";
-import type { Conversation, Message } from "../../types.js";
+import type { Conversation, ConversationEvent, Message } from "../../types.js";
 import { useTheme } from "../themes/ThemeContext.js";
+import { formatConversationEvent, placeEventRows } from "../thread-event-rows.js";
 import type { Mode, PendingMessage } from "../types.js";
 import { ComposeBar } from "./ComposeBar.js";
 import {
@@ -25,6 +26,10 @@ interface Props {
   selectionAnchor: number | null;
   /** Eviction gap markers — placeholders showing "N more messages — scroll to load". */
   gapMarkers: Array<{ atIdx: number; oldestId: number; newestId: number; count: number }>;
+  /** Group-system events (renames, joins/leaves) rendered as inline system
+   *  rows. Cursor-inert annotations placed by ROWID — never part of the
+   *  messages array (see thread-event-rows.ts). Groups only; empty for 1:1. */
+  events?: ConversationEvent[];
   focused: boolean;
   width: number;
   height: number;
@@ -45,6 +50,7 @@ export function ThreadPane({
   selectedMsgIdx,
   selectionAnchor,
   gapMarkers,
+  events = [],
   focused,
   width,
   height,
@@ -72,6 +78,15 @@ export function ThreadPane({
   const rawArea = height - headerH - composeH - borderH;
   const msgAreaHeight = Number.isFinite(rawArea) ? Math.max(rawArea, 3) : 3;
 
+  // Inline group-event rows, placed between messages by ROWID. Cursor-inert:
+  // the cursor, eviction, and pagination never see them. Each event costs one
+  // rendered line, charged to the message it renders before (tail events to
+  // the last message) so the window budget stays honest.
+  const eventRows = useMemo(
+    () => placeEventRows(messages, events, gapMarkers),
+    [messages, events, gapMarkers],
+  );
+
   // Compute visible window anchored on selectedMsgIdx — tui-kit `lineWindow`
   // (0.5.0), which is this pane's old walk lifted upstream: line-budget
   // windowing with a caller-supplied pure height estimator. Near the tail we
@@ -84,13 +99,20 @@ export function ThreadPane({
     const total = messages.length + pending.length;
     if (total === 0) return { visibleStart: 0, visibleEnd: 0 };
 
+    const eventLinesAt = (i: number): number => {
+      let n = eventRows.get(i)?.length ?? 0;
+      // Tail events render after the newest message — charge them to it.
+      if (i === messages.length - 1) n += eventRows.get(messages.length)?.length ?? 0;
+      return n;
+    };
     const cursor = selectedMsgIdx >= 0 ? Math.min(selectedMsgIdx, total - 1) : -1;
     const anchor = pending.length === 0 ? chooseAnchor(cursor, total) : "cursor";
     const w = lineWindow({
       itemCount: total,
       cursor,
       budgetLines: msgAreaHeight,
-      heightOf: (i) => (i < messages.length ? lineHeight(messages, i, maxBubbleW, isGroup) : 1), // pending rows are 1 line
+      heightOf: (i) =>
+        i < messages.length ? lineHeight(messages, i, maxBubbleW, isGroup) + eventLinesAt(i) : 1, // pending rows are 1 line
       anchor,
     });
     return { visibleStart: w.start, visibleEnd: w.end };
@@ -98,7 +120,7 @@ export function ThreadPane({
     // (see types.ts reducer), so depending on length is sufficient for the
     // common fast path. Content-mutating actions (SET_MESSAGES /
     // PREPEND_MESSAGES) replace the whole array, which also flips length.
-  }, [messages, pending.length, selectedMsgIdx, msgAreaHeight, maxBubbleW, isGroup]);
+  }, [messages, pending.length, selectedMsgIdx, msgAreaHeight, maxBubbleW, isGroup, eventRows]);
 
   const visibleMessages = messages.slice(visibleStart, Math.min(visibleEnd, messages.length));
 
@@ -252,6 +274,19 @@ export function ThreadPane({
                       </Box>
                     );
                   })()}
+                  {/* Inline group-event rows placed before this message. An
+                   * event from an EARLIER day than the message renders above
+                   * the date separator (it belongs to the previous day);
+                   * same-day events render under it. One line each — the
+                   * window memo charges them to this message's height. */}
+                  {eventRows
+                    .get(realIdx)
+                    ?.filter((ev) => showDateSep && isDifferentDay(ev.date, msg.date))
+                    .map((ev) => (
+                      <Box key={`ev-${ev.id}`} justifyContent="center">
+                        <Text color={theme.dateSep}>─ {formatConversationEvent(ev)} ─</Text>
+                      </Box>
+                    ))}
                   {showDateSep && (
                     // Always 1 row of breathing room above date separators so the
                     // visual rhythm is consistent — without this, separators that
@@ -261,6 +296,14 @@ export function ThreadPane({
                       <Text color={theme.dateSep}>─── {dateSeparator(msg.date)} ───</Text>
                     </Box>
                   )}
+                  {eventRows
+                    .get(realIdx)
+                    ?.filter((ev) => !(showDateSep && isDifferentDay(ev.date, msg.date)))
+                    .map((ev) => (
+                      <Box key={`ev-${ev.id}`} justifyContent="center">
+                        <Text color={theme.dateSep}>─ {formatConversationEvent(ev)} ─</Text>
+                      </Box>
+                    ))}
                   <MessageBubble
                     message={msg}
                     maxWidth={maxBubbleW}
@@ -283,6 +326,16 @@ export function ThreadPane({
                 </React.Fragment>
               );
             })}
+
+            {/* Tail events — group changes newer than the newest message
+             * (e.g. a rename that is the thread's latest activity). Only when
+             * the window actually reaches the tail. */}
+            {visibleEnd >= messages.length &&
+              eventRows.get(messages.length)?.map((ev) => (
+                <Box key={`ev-${ev.id}`} justifyContent="center">
+                  <Text color={theme.dateSep}>─ {formatConversationEvent(ev)} ─</Text>
+                </Box>
+              ))}
 
             {/* Pending messages */}
             {pending.map((pm) => (
