@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+# imsg-mcp [1.24.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.23.0...imsg-mcp-v1.24.0) (2026-08-21)
+
+
+### Features
+
+* **imsg-mcp:** inline group-event rows in the thread pane ([72c9342](https://github.com/george43g/EQStack/commit/72c93427360e76888e825ba6543b8e997e5c7f81)), closes [#106](https://github.com/george43g/EQStack/issues/106)
+
 # imsg-mcp [1.23.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.22.2...imsg-mcp-v1.23.0) (2026-08-16)
 
 
