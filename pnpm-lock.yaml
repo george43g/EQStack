@@ -52,10 +52,10 @@ importers:
   apps/gmail-mcp:
     dependencies:
       '@george43g/robustness':
-        specifier: '>=0.9.0 <1'
+        specifier: ^0.11.0
         version: 0.11.0
       '@george43g/tui-kit':
-        specifier: '>=0.4.1 <1'
+        specifier: ^0.5.1
         version: 0.5.1(@george43g/robustness@0.11.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))(react@19.2.8)
       '@inquirer/prompts':
         specifier: ^8.4.2
