@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+# imsg-mcp [1.25.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.24.0...imsg-mcp-v1.25.0) (2026-08-21)
+
+
+### Features
+
+* **imsg-mcp:** get_conversation_events MCP tool ([ac3ea61](https://github.com/george43g/EQStack/commit/ac3ea6136178f5c2ed3a26a12a239ea32545d94e)), closes [#106](https://github.com/george43g/EQStack/issues/106)
+
 # imsg-mcp [1.24.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.23.0...imsg-mcp-v1.24.0) (2026-08-21)
 
 
