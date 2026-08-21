@@ -41,7 +41,7 @@ import { SendViaModal } from "./components/SendViaModal.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { StatusBar } from "./components/StatusBar.js";
-import { nextGroupBoundary, prevGroupBoundary, ThreadPane } from "./components/ThreadPane.js";
+import { ThreadPane } from "./components/ThreadPane.js";
 import { filterMatchIndices } from "./filter.js";
 import { useDevStats } from "./hooks/useDevStats.js";
 import { useImsg } from "./hooks/useImsg.js";
@@ -1167,7 +1167,7 @@ export function App({ changeBus }: AppProps = {}) {
         if (state.focus === "sidebar") {
           selectSidebarCombined(0);
         } else {
-          dispatch({ type: "SELECT_MSG", index: 0 });
+          dispatch({ type: "NAV_MSG", intent: { kind: "set", index: 0 } });
         }
         return;
       }
@@ -1238,20 +1238,24 @@ export function App({ changeBus }: AppProps = {}) {
         selectSidebarCombined(next);
       }
     } else {
-      // Thread focus — message cursor movement
-      const count = getCount();
+      // Thread focus — message cursor motion via tui-kit navReduce intents.
+      // NO getCount() here: the reducer reads + consumes the shared numBuffer
+      // in the SAME step as the movement. Calling getCount() first would
+      // dispatch SET_NUM_BUFFER("") and clear the count before NAV_MSG's
+      // reducer ran (this render's `state` is a snapshot; the reducer isn't).
+      const halfPage = Math.floor(bodyHeight / 2);
 
       if (input === "j" || key.downArrow) {
-        dispatch({ type: "MOVE_MSG", delta: count });
+        dispatch({ type: "NAV_MSG", intent: { kind: "down" } });
       } else if (input === "k" || key.upArrow) {
-        dispatch({ type: "MOVE_MSG", delta: -count });
+        dispatch({ type: "NAV_MSG", intent: { kind: "up" } });
       } else if (input === "G") {
-        dispatch({ type: "SELECT_MSG", index: state.messages.length - 1 });
+        dispatch({ type: "NAV_MSG", intent: { kind: "bottom" } });
       } else if (input === "g") {
         if (ggPendingRef.current) {
           ggPendingRef.current = false;
           if (ggTimerRef.current) clearTimeout(ggTimerRef.current);
-          dispatch({ type: "SELECT_MSG", index: 0 });
+          dispatch({ type: "NAV_MSG", intent: { kind: "top" } });
         } else {
           ggPendingRef.current = true;
           // 350ms is the typical vim chord window — feels snappy without
@@ -1261,33 +1265,31 @@ export function App({ changeBus }: AppProps = {}) {
           }, 350);
         }
       } else if (key.ctrl && input === "d") {
-        dispatch({ type: "MOVE_MSG", delta: Math.floor(bodyHeight / 2) });
+        dispatch({ type: "NAV_MSG", intent: { kind: "pageDown" }, pageSize: halfPage });
       } else if (key.ctrl && input === "u") {
-        dispatch({ type: "MOVE_MSG", delta: -Math.floor(bodyHeight / 2) });
+        dispatch({ type: "NAV_MSG", intent: { kind: "pageUp" }, pageSize: halfPage });
       } else if ((key.ctrl && input === "f") || key.pageDown) {
-        dispatch({ type: "MOVE_MSG", delta: bodyHeight });
+        dispatch({ type: "NAV_MSG", intent: { kind: "pageDown" }, pageSize: bodyHeight });
       } else if ((key.ctrl && input === "b") || key.pageUp) {
-        dispatch({ type: "MOVE_MSG", delta: -bodyHeight });
+        dispatch({ type: "NAV_MSG", intent: { kind: "pageUp" }, pageSize: bodyHeight });
       } else if (input === "H") {
         // Jump to top of visible area (approximate)
         const visibleTop = Math.max(0, state.selectedMsgIdx - Math.floor(bodyHeight * 0.7));
-        dispatch({ type: "SELECT_MSG", index: visibleTop });
+        dispatch({ type: "NAV_MSG", intent: { kind: "set", index: visibleTop } });
       } else if (input === "L") {
         const visibleBottom = Math.min(
           state.messages.length - 1,
           state.selectedMsgIdx + Math.floor(bodyHeight * 0.3),
         );
-        dispatch({ type: "SELECT_MSG", index: visibleBottom });
+        dispatch({ type: "NAV_MSG", intent: { kind: "set", index: visibleBottom } });
       } else if (input === "M") {
         // Stay at current (middle)
       } else if (input === "}" || input === "]") {
-        // Jump to next sender group
-        const next = nextGroupBoundary(state.messages, state.selectedMsgIdx);
-        dispatch({ type: "SELECT_MSG", index: next });
+        // Jump to next sender group (boundary fn supplied to navReduce as
+        // ctx.groupBoundary inside the reducer — domain knowledge stays ours)
+        dispatch({ type: "NAV_MSG", intent: { kind: "groupJump", dir: 1 } });
       } else if (input === "{" || input === "[") {
-        // Jump to previous sender group
-        const prev = prevGroupBoundary(state.messages, state.selectedMsgIdx);
-        dispatch({ type: "SELECT_MSG", index: prev });
+        dispatch({ type: "NAV_MSG", intent: { kind: "groupJump", dir: -1 } });
       } else if (input === "o") {
         // Open attachment for selected message. Always call so the no-msg/
         // no-attachment toast fires when the user presses `o` without a
@@ -1480,7 +1482,18 @@ export function App({ changeBus }: AppProps = {}) {
     wheelAccum.current = { sidebar: 0, thread: 0 };
     const clamp = (d: number) => Math.max(-WHEEL_MAX_STEP, Math.min(WHEEL_MAX_STEP, d));
     if (sidebar !== 0) dispatch({ type: "SCROLL_SIDEBAR", delta: clamp(sidebar) });
-    if (thread !== 0) dispatch({ type: "MOVE_MSG", delta: clamp(thread) });
+    // Wheel delta rides pageUp/pageDown with pageSize = |delta|: a page
+    // intent scales by the caller-supplied step, which is exactly what a
+    // coalesced wheel burst is. (A typed count would multiply in — vim-ish
+    // and harmless for a wheel.)
+    if (thread !== 0) {
+      const step = clamp(thread);
+      dispatch({
+        type: "NAV_MSG",
+        intent: { kind: step > 0 ? "pageDown" : "pageUp" },
+        pageSize: Math.abs(step),
+      });
+    }
   }, []);
 
   useEffect(() => {
