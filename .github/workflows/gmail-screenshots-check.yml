@@ -1,0 +1,126 @@
+# Screenshot gate for apps/gmail-mcp — CHECK-ONLY (this repo's model; the
+# pre-migration repo's auto-commit-[skip ci] job was dropped: bot pushes to
+# main interleave badly with the strictly-serial release discipline here).
+# Hard gates: tapes render, outputs exist with expected dimensions. Byte drift
+# stays informational — VHS image encoders are not byte-deterministic.
+name: gmail-screenshots-check
+
+on:
+  pull_request:
+    paths:
+      - "apps/gmail-mcp/src/tui/**"
+      - "apps/gmail-mcp/fixtures/gmail/**"
+      - "apps/gmail-mcp/scripts/screenshots/**"
+      - "apps/gmail-mcp/docs/screenshots/**"
+      - ".github/workflows/gmail-screenshots-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Screenshot Check
+    # Pin the runner image (not `ubuntu-latest`): on GitHub-hosted runners this
+    # is the mechanism that pins the apt package snapshot for ttyd / ffmpeg /
+    # fonts-jetbrains-mono. Exact `apt-get install pkg=version` strings rot out
+    # of the archive on the next security update and hard-fail CI, so we pin
+    # the image and log the resolved versions instead.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Install VHS, ttyd, ffmpeg, and JetBrains Mono
+        env:
+          VHS_VERSION: "0.11.0"
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/charmbracelet/vhs/releases/download/v${VHS_VERSION}/vhs_${VHS_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin --strip-components=1 "vhs_${VHS_VERSION}_Linux_x86_64/vhs"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ttyd ffmpeg fonts-jetbrains-mono
+          fc-cache -f
+
+      - name: Record pinned tool versions
+        run: |
+          set -euo pipefail
+          echo "vhs:               $(vhs --version 2>&1 | head -1)"
+          echo "ttyd:              $(ttyd --version 2>&1 | head -1)"
+          echo "ffmpeg:            $(ffmpeg -version 2>&1 | head -1)"
+          echo "fonts-jetbrains:   $(dpkg-query -W -f='${Version}' fonts-jetbrains-mono)"
+          fc-list | grep -i 'jetbrains' >/dev/null || {
+            echo "::error::JetBrains Mono font not registered after install"; exit 1;
+          }
+
+      - name: Regenerate screenshots
+        working-directory: apps/gmail-mcp
+        run: |
+          set -euo pipefail
+          pnpm run build
+          bash scripts/screenshots/prepare-fake-editor.sh
+          mkdir -p docs/screenshots
+          for tape in scripts/screenshots/*.tape; do
+            echo "Rendering $tape"
+            vhs "$tape"
+          done
+
+      - name: Verify screenshot outputs (exist, non-empty, expected dimensions)
+        working-directory: apps/gmail-mcp
+        env:
+          EXPECTED_W: "1400"
+          EXPECTED_H: "800"
+        run: |
+          set -euo pipefail
+          expected=(
+            docs/screenshots/01-boot-inbox.png
+            docs/screenshots/02-open-thread.png
+            docs/screenshots/03-theme-picker.png
+            docs/screenshots/04-account-switcher.png
+            docs/screenshots/05-compose-flow.png
+            docs/screenshots/06-dev-stats.png
+            docs/screenshots/workflow-demo.gif
+          )
+          fail=0
+          for f in "${expected[@]}"; do
+            if [[ ! -s "$f" ]]; then
+              echo "::error::Missing or empty screenshot: $f"
+              fail=1
+              continue
+            fi
+            dims="$(ffprobe -v error -select_streams v:0 \
+              -show_entries stream=width,height -of csv=s=x:p=0 "$f")"
+            if [[ "$dims" != "${EXPECTED_W}x${EXPECTED_H}" ]]; then
+              echo "::error::$f is ${dims}, expected ${EXPECTED_W}x${EXPECTED_H}"
+              fail=1
+            else
+              echo "ok  $f (${dims})"
+            fi
+          done
+          [[ "$fail" -eq 0 ]] || { echo "Screenshot verification failed."; exit 1; }
+
+      - name: Report drift (informational)
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- apps/gmail-mcp/docs/screenshots/; then
+            echo "✓ screenshots match committed baseline"
+          else
+            echo "::warning::Screenshots drifted from baseline (byte-level; often VHS render noise). If the TUI surface changed intentionally, run 'pnpm -C apps/gmail-mcp screenshots' locally and commit the result."
+            git diff --name-only -- apps/gmail-mcp/docs/screenshots/
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gmail-mcp-screenshots
+          path: apps/gmail-mcp/docs/screenshots/
