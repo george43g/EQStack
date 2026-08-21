@@ -1,0 +1,12 @@
+[
+  {
+    "id": "FilterFullMigrations",
+    "criteria": { "subject": "migration" },
+    "action": { "addLabelIds": ["Label_10"] }
+  },
+  {
+    "id": "FilterFullReports",
+    "criteria": { "from": "reports@fixture.test", "hasAttachment": true },
+    "action": { "addLabelIds": ["Label_11", "IMPORTANT"] }
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "sendAsEmail": "user-work@fixture.test",
+    "displayName": "Work User",
+    "isDefault": true,
+    "isPrimary": true,
+    "treatAsAlias": false,
+    "verificationStatus": "accepted"
+  },
+  {
+    "sendAsEmail": "admin@catchall.fixture.test",
+    "displayName": "Admin",
+    "isDefault": false,
+    "isPrimary": false,
+    "treatAsAlias": true,
+    "verificationStatus": "accepted"
+  },
+  {
+    "sendAsEmail": "sales@catchall.fixture.test",
+    "displayName": "Sales",
+    "isDefault": false,
+    "isPrimary": false,
+    "treatAsAlias": true,
+    "verificationStatus": "accepted"
+  }
+]

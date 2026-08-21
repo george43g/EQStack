@@ -1,0 +1,23 @@
+{
+  "id": "f_msg_005",
+  "threadId": "f_thr_005",
+  "labelIds": ["SENT"],
+  "snippet": "Thanks, sending the notes now.",
+  "historyId": "2000006",
+  "internalDate": "1730445600000",
+  "payload": {
+    "mimeType": "text/plain",
+    "headers": [
+      { "name": "From", "value": "user-full@fixture.test" },
+      { "name": "To", "value": "colleague@fixture.test" },
+      { "name": "Subject", "value": "[fixture] Notes from the sync" },
+      { "name": "Date", "value": "Sat, 01 Nov 2025 09:00:00 +0000" },
+      { "name": "Message-Id", "value": "<sent-full@fixture.test>" }
+    ],
+    "body": {
+      "size": 40,
+      "data": "VGhhbmtzLCBzZW5kaW5nIHRoZSBub3RlcyBub3cuIOKAlCBmdWxsIGZpeHR1cmUgdXNlcgo="
+    }
+  },
+  "sizeEstimate": 720
+}

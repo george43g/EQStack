@@ -1,0 +1,12 @@
+[
+  { "id": "INBOX", "name": "INBOX", "type": "system", "messageListVisibility": "show", "labelListVisibility": "labelShow", "messagesTotal": 216, "messagesUnread": 4, "threadsTotal": 158, "threadsUnread": 4 },
+  { "id": "SENT", "name": "SENT", "type": "system", "messageListVisibility": "hide" },
+  { "id": "DRAFT", "name": "DRAFT", "type": "system", "messageListVisibility": "hide", "messagesTotal": 2, "threadsTotal": 2 },
+  { "id": "SPAM", "name": "SPAM", "type": "system", "messageListVisibility": "hide", "labelListVisibility": "labelHide", "messagesTotal": 1, "messagesUnread": 1 },
+  { "id": "TRASH", "name": "TRASH", "type": "system", "messageListVisibility": "hide", "labelListVisibility": "labelHide" },
+  { "id": "STARRED", "name": "STARRED", "type": "system", "messageListVisibility": "show" },
+  { "id": "IMPORTANT", "name": "IMPORTANT", "type": "system", "messageListVisibility": "hide", "labelListVisibility": "labelHide" },
+  { "id": "UNREAD", "name": "UNREAD", "type": "system", "messagesUnread": 5, "threadsUnread": 5 },
+  { "id": "Label_10", "name": "Migrations", "type": "user", "messageListVisibility": "show", "labelListVisibility": "labelShow" },
+  { "id": "Label_11", "name": "Reports", "type": "user", "messageListVisibility": "show", "labelListVisibility": "labelShow" }
+]

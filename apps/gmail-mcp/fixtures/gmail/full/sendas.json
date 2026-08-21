@@ -1,0 +1,18 @@
+[
+  {
+    "sendAsEmail": "user-full@fixture.test",
+    "displayName": "Full Fixture User",
+    "isDefault": true,
+    "isPrimary": true,
+    "treatAsAlias": false,
+    "verificationStatus": "accepted"
+  },
+  {
+    "sendAsEmail": "ops@fixture.test",
+    "displayName": "Full Fixture Ops",
+    "isDefault": false,
+    "isPrimary": false,
+    "treatAsAlias": true,
+    "verificationStatus": "accepted"
+  }
+]
