@@ -222,6 +222,16 @@ export function App({ changeBus }: AppProps = {}) {
       const msgs = await imsg.loadMessages(conv.chatIdentifier);
       recordQueryTime(performance.now() - t0);
       dispatch({ type: "SET_MESSAGES", data: msgs });
+      // Inline group-event rows (groups only). Best-effort: a failure here
+      // must never take down the message load, and 1:1 threads clear any
+      // leftover set. Placement against the fresh messages happens at render
+      // time in ThreadPane via thread-event-rows.ts.
+      try {
+        const events = conv.isGroupChat ? imsg.getConversationEvents(conv.chatIdentifier, 100) : [];
+        dispatch({ type: "SET_THREAD_EVENTS", events });
+      } catch {
+        dispatch({ type: "SET_THREAD_EVENTS", events: [] });
+      }
       dispatch({ type: "SET_LOADING", loading: false, status: "" });
     },
     [state.conversations, imsg, recordQueryTime],
@@ -1590,6 +1600,7 @@ export function App({ changeBus }: AppProps = {}) {
                 selectedMsgIdx={state.selectedMsgIdx}
                 selectionAnchor={state.selectionAnchor}
                 gapMarkers={state.gapMarkers}
+                events={state.threadEvents}
                 focused={state.focus === "thread"}
                 width={threadWidth}
                 height={bodyHeight}

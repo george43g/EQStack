@@ -6,6 +6,7 @@ import type {
   ConversationEvent,
 } from "../../types.js";
 import { useTheme } from "../themes/ThemeContext.js";
+import { formatConversationEvent } from "../thread-event-rows.js";
 
 interface Props {
   conversation: Conversation;
@@ -22,28 +23,11 @@ interface Props {
 }
 
 /**
- * One-line human rendering of a group-system event. First names keep the
- * narrow drawer readable; the actor falls back to the raw handle, and a
- * null actor is the user. Exported for tests.
+ * One-line human rendering of a group-system event — canonical copy lives in
+ * thread-event-rows.ts (shared with the thread pane's inline rows);
+ * re-exported here so existing imports and tests keep working.
  */
-export function formatConversationEvent(ev: ConversationEvent): string {
-  const first = (name: string | null, handle: string | null): string => {
-    const label = name ?? handle;
-    if (!label) return "You";
-    return label === handle ? label : (label.trim().split(/\s+/)[0] ?? label);
-  };
-  const actor = ev.actor === null ? "You" : first(ev.actorName, ev.actor);
-  switch (ev.kind) {
-    case "renamed":
-      return `${actor} renamed to “${ev.newName ?? "?"}”`;
-    case "left":
-      return `${actor} left`;
-    case "member_added":
-      return `${actor} added ${first(ev.targetName, ev.target)}`;
-    case "member_removed":
-      return `${actor} removed ${first(ev.targetName, ev.target)}`;
-  }
-}
+export { formatConversationEvent };
 
 /**
  * Collapse participant names to one entry per person, preserving order.
@@ -193,8 +177,9 @@ export function InfoDrawer({
       </Box>
 
       {/* Group changes — renames / joins / leaves, newest first. These rows
-          are item_type != 0 system messages that every message view filters
-          out, so this is the ONE place the TUI shows them. */}
+          are item_type != 0 system messages that message QUERIES filter out;
+          the thread pane now also interleaves them inline (thread-event-rows),
+          and this drawer stays the dated, at-a-glance summary. */}
       {events.length > 0 && (
         <Box flexDirection="column" paddingX={1} marginTop={1} flexShrink={0}>
           <Text color={theme.info.label} bold>

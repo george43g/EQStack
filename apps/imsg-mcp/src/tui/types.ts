@@ -72,6 +72,11 @@ export interface AppState {
   drawerAttachmentIdx: number; // for vim-style number prefix (e.g. "12j")
   showDevStats: boolean;
 
+  // Inline group-event rows for the OPEN thread (groups only; empty for 1:1).
+  // Loaded alongside messages; placed between bubbles by ROWID at render time
+  // (thread-event-rows.ts) — never merged into `messages`, so cursor math,
+  // eviction, and pagination are untouched.
+  threadEvents: ConversationEvent[];
   // Per-thread info/attachment drawer (mode: "info")
   infoStats: ChatStats | null; // message count + date range for the open thread
   infoEvents: ConversationEvent[]; // recent group renames/joins/leaves (groups only)
@@ -159,6 +164,7 @@ export type Action =
       events: ConversationEvent[];
     }
   | { type: "CLOSE_INFO_DRAWER" }
+  | { type: "SET_THREAD_EVENTS"; events: ConversationEvent[] }
   | { type: "SET_INFO_ATTACHMENT"; index: number }
   | { type: "SET_NUM_BUFFER"; value: string }
   | { type: "TOGGLE_DEV_STATS" }
@@ -225,6 +231,7 @@ export const initialState: AppState = {
   numBuffer: "",
   showDevStats: false,
   drawerAttachmentIdx: 0,
+  threadEvents: [],
   infoStats: null,
   infoEvents: [],
   infoAttachments: [],
@@ -633,8 +640,17 @@ export function reducer(state: AppState, action: Action): AppState {
             sidebarRowCount(state),
           )
         : state.sidebarScroll;
-      // Selecting a real conversation always clears module focus.
-      return { ...state, selectedIdx: idx, sidebarScroll, selectedModuleIdx: null };
+      // Selecting a real conversation always clears module focus. Thread
+      // events clear too: they are placed by ROWID against the CURRENT
+      // messages array, and a stale set from the previous thread would
+      // interleave foreign rows into the next one during the load gap.
+      return {
+        ...state,
+        selectedIdx: idx,
+        sidebarScroll,
+        selectedModuleIdx: null,
+        threadEvents: [],
+      };
     }
     case "SELECT_MSG_BY_DATE": {
       // Find the first message at or after the target date in the LIVE list.
@@ -757,6 +773,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, mode: "browse" };
     case "SET_DRAWER_ATTACHMENT":
       return { ...state, drawerAttachmentIdx: Math.max(0, action.index) };
+    case "SET_THREAD_EVENTS":
+      return { ...state, threadEvents: action.events };
     case "OPEN_INFO_DRAWER":
       return {
         ...state,
