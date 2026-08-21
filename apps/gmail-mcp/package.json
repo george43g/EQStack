@@ -1,6 +1,7 @@
 {
   "name": "@george43g/gmail-mcp",
   "version": "2.0.0",
+  "private": true,
   "description": "Gmail MCP server with CLI, TUI, console, OAuth, and multi-account support",
   "type": "module",
   "main": "dist/cli/index.js",
