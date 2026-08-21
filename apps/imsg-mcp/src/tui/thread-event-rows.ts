@@ -61,27 +61,7 @@ export function placeEventRows(
   return placed;
 }
 
-/**
- * One-line human rendering of a group-system event. First names keep narrow
- * panes readable; the actor falls back to the raw handle, and a null actor is
- * the user. (Moved from InfoDrawer so the thread pane and the drawer share
- * one copy; InfoDrawer re-exports for compatibility.)
- */
-export function formatConversationEvent(ev: ConversationEvent): string {
-  const first = (name: string | null, handle: string | null): string => {
-    const label = name ?? handle;
-    if (!label) return "You";
-    return label === handle ? label : (label.trim().split(/\s+/)[0] ?? label);
-  };
-  const actor = ev.actor === null ? "You" : first(ev.actorName, ev.actor);
-  switch (ev.kind) {
-    case "renamed":
-      return `${actor} renamed to “${ev.newName ?? "?"}”`;
-    case "left":
-      return `${actor} left`;
-    case "member_added":
-      return `${actor} added ${first(ev.targetName, ev.target)}`;
-    case "member_removed":
-      return `${actor} removed ${first(ev.targetName, ev.target)}`;
-  }
-}
+// Canonical copy now lives in CORE (src/conversation-event-format.ts) since
+// the `get_conversation_events` MCP tool shares it; re-exported here so the
+// pane, drawer, and their tests keep importing from the TUI layer.
+export { formatConversationEvent } from "../conversation-event-format.js";

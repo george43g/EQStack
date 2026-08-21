@@ -16,6 +16,7 @@ Companion skill for agents using or developing the `imsg-mcp` iMessage MCP serve
 3. Use `send_message` with `threadSlug` for existing threads, especially groups.
 4. Use `wait_for_reply` after sending when the workflow depends on a human answer.
 5. Use `wait_for_changes` to watch for new messages/reactions as typed events — across all conversations or one thread (`threadSlug`/`chatIdentifier`) — without polling.
+6. Use `get_conversation_events` to read a group's system history (renames, member adds/removes, leaves) — `get_messages` deliberately filters these rows out.
 
 ## Local machine requirements
 

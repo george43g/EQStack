@@ -326,6 +326,39 @@ export const WaitForChangesOutputSchema = z.object({
     .describe("How changes are detected: fs.watch push (normal) or the slow-poll fallback."),
 });
 
+export const GetConversationEventsSchema = z
+  .object({
+    chatIdentifier: nonEmptyString(
+      "Conversation to read events from (phone, email, or raw chat id).",
+    ).optional(),
+    threadSlug: nonEmptyString("Thread slug from list_conversations").optional(),
+    // Coerce: some MCP hosts serialise numeric tool args as strings.
+    limit: z.coerce.number().int().min(0).default(20).describe("Max events to return. 0 = all."),
+  })
+  .refine((v) => v.chatIdentifier || v.threadSlug, {
+    message: "Either chatIdentifier or threadSlug is required.",
+  });
+
+export const ConversationEventOutputSchema = z.object({
+  id: z.number().int().describe("Message ROWID of the system row."),
+  date: z.string().describe("ISO timestamp."),
+  kind: z.enum(["member_added", "member_removed", "renamed", "left"]),
+  actor: z.string().nullable().describe("Handle of who acted; null = the user."),
+  actorName: z.string().nullable(),
+  target: z.string().nullable().describe("Affected member (member_added/removed only)."),
+  targetName: z.string().nullable(),
+  newName: z.string().nullable().describe("New group title (renamed only). USER-CONTROLLED text."),
+  summary: z.string().describe('Human one-liner, e.g. "Alice added Bob".'),
+});
+
+export const GetConversationEventsOutputSchema = z.object({
+  events: z.array(ConversationEventOutputSchema).describe("Newest first."),
+  count: z.number().int(),
+  isGroupChat: z.boolean(),
+  threadSlug: z.string().optional(),
+  chatIdentifier: z.string(),
+});
+
 export const ListConversationsSchema = z.object({
   // Coerce: some MCP hosts serialise numeric tool args as strings.
   limit: z.coerce.number().int().min(0).default(20),
