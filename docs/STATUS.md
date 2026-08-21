@@ -383,10 +383,12 @@ Full design + audit: [`plans/realtime-streaming-and-api-surface.md`](../apps/ims
   at render time (`src/tui/thread-event-rows.ts`), never merged into the messages array, so
   cursor math / eviction / pagination are untouched; events in evicted gaps or before the loaded
   window are deliberately dropped (they reload with their region). Live-verified against a real
-  unnamed group incl. the tail case (newest thread row IS an event). Remaining: an MCP accessor
-  (tool additions ripple through README drift guard — batch with the next tool-surface change),
-  and live event refresh (a rename arriving while the thread is open shows on next re-select;
-  the change-watcher does not emit item_type 1/2/3 rows).
+  unnamed group incl. the tail case (newest thread row IS an event). MCP accessor: DONE (v1.25.0) —
+  `get_conversation_events` (chatIdentifier or threadSlug; newest-first; per-event `summary`;
+  `renamed` titles `<untrusted>`-wrapped in text, raw in structuredContent; formatter moved to
+  core `src/conversation-event-format.ts`). §9 group-events is COMPLETE except: live event
+  refresh (a rename arriving while the thread is open shows on next re-select; the
+  change-watcher does not emit item_type 1/2/3 rows).
 - **Rust parser hygiene (P2 privacy / P3 unify).** `native/src/attributed_body.rs` is the persisted
   "simplified initial implementation" (comment: *"A full typedstream binary parser will be added in a
   later phase"*) while TS has a structured `TypedStreamParser` — two strategies for one job.
