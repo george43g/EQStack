@@ -642,3 +642,62 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   register — inline group-event rows in the thread pane (design note: merge ConversationEvents
   into the message list rendering WITHOUT disturbing bounded-memory eviction, cursor math, or
   gap markers; that interaction is why it was deferred from #106).
+
+- **2026-08-22 — COMPACT BOUNDARY (this session's 2nd; agent: imsg reliability loop).**
+  Where this entry and any post-compact summary disagree, THIS ENTRY is correct.
+  **State:** loop healthy at a clean boundary — imsg-mcp v1.25.0 live on npm, PRs #113–#119 all
+  merged with every Release run verified (tag + `npm view`), tree clean, no mid-flight work.
+  **Constraints:** all standing constraints in the 2026-08-16 boundary entry above remain in
+  force verbatim (the /goal, the reliability-loop directive, git/signing/merge discipline,
+  privacy guardrails, §1 analytics parked). No new user instructions this leg — George's only
+  message was the fseventsd fix confirmation.
+  **Done (this leg, each anchor a merged PR on main):** #113 tsx signal-relay hardening (every
+  signalled spawn → `node --import`, dev-proxy builder `scripts/dev-proxy-cmd.ts`, DEP0190,
+  change-watcher timeout alignment; drill: SIGTERM → graceful NDJSON marker). #114 tsx-spawn
+  inventory guard (red-drilled 3 directions). #115 tui-kit 0.5.0 primitives adoption (lineWindow
+  replaced ThreadPane walk + computeSettingsWindow; allocateWidths replaced App widths;
+  splitNavChunk replaced router fan-out; found + upstream-reported the kit NaN fail-open — 65MB
+  fiber retention, fixed upstream in 0.5.1 with 3 more sites). #116 = v1.24.0 inline group-event
+  rows (cursor-inert ROWID-placed annotation rows, `src/tui/thread-event-rows.ts`; live-verified
+  on a real unnamed group incl. tail case). #117 kit starvation fix (robustness ^0.10.0 both
+  apps, tui-kit ^0.5.1; wildcard minimumReleaseAgeExclude was already in from #115). #118 =
+  v1.25.0 `get_conversation_events` MCP tool (renamed titles `<untrusted>`-wrapped in text, raw
+  in structured; formatter → core `src/conversation-event-format.ts`; live stdio smoke green).
+  #119 STATUS §9 tick. fseventsd wedge RESOLVED by George (`sudo pkill -9 fseventsd`; probe
+  delivers dir events, change-watcher 9/9 in 1.2s). Suite 1157. Peer correspondence (mcp-cli-
+  toolkit): tsx arc closed (#64/#68/#70 theirs), primitives negotiation won (no navigator —
+  primitives only; keymap stays ours, 3-of-3 consumers), 0.5.1 NaN sweep closed, starvation
+  closed; their wrong premise ("two minors behind your own feature") corrected and accepted.
+  **Open (register; evidence per line):** navReduce adoption — never attempted (kit 0.5.0 shipped
+  the ctx amendments; adopting means rewiring reducer MOVE_MSG/numBuffer/chord state). Live
+  event refresh — documented-only in STATUS §9 (watcher doesn't emit item_type 1/2/3). tui-memory
+  CI flake — 2 occurrences (local under load during #115; CI TS-only leg on #116, rerun green;
+  one shared watchdog p99 reading double-fails both tests) — de-flake on 3rd. Cosmetics: send-via
+  border clip ≤24 rows, analytics emoji 1-col shift — never attempted. voice-mcp registry
+  auth-token fallback + regional endpoint — never attempted. voice-mcp gateway WS flake — 1
+  occurrence. §2 god-file decomposition — needs George's greenlight (unchanged).
+  **Corrections:** peer's "you are two minors behind your own feature (getShutdownCause/
+  memorySampled)" — VOID: adopted at ^0.8.1 during #107/#108; they verified in our tree and
+  deleted the policy exception it had created. "MCP accessor: batch with next tool change" —
+  CLOSED: the accessor WAS the tool change (#118).
+  **Traps (this leg's generalisable ones):** an extraction can invert an ACCIDENTAL safety
+  property into a fail-open (`x <= NaN` fail-closed became `x > NaN` fail-open) — a lift needs
+  its own adversarial tests, not confidence inherited from the code it replaced; numeric
+  loop-break params need POSITIVE predicates (`x > 0`, isFinite) — negative predicates admit
+  NaN; Claude Code shells shim `grep` to ugrep with --ignore-files, so gitignored generated
+  configs vanish from sweeps (`command grep`, and shape positive controls to fail if the
+  SUSPECTED filter is active); dep bumps split across branches revert each other at the
+  pnpm-lock merge (bump atomically; re-check resolved versions from node_modules AFTER any
+  lockfile-conflict merge); an unnamed group's empty display_name makes name-filter navigation
+  select a WRONG 1:1 — filter by the opaque chat_identifier and verify "Type: Group" before
+  trusting a real-DB probe; tmux capture of real-DB panes echoes personal data — grep counts
+  and structural tokens only.
+  **Tree:** `~/repos/EQStack` main == origin/main @ 05c1e68 (#119 merge). Dirty: only the
+  standing intentionally-untracked `docs/research/*`, `docs/agent-handoff/*`,
+  `opencode.json.bak.*` (George's). No stashes, no worktrees, no background tasks, no tmux
+  sessions of this agent's.
+  **Blocked on George:** §2 decomposition greenlight. Twilio SK-key rotation (recorded
+  2026-08-16) — no rotation event observed this session; status unverified, not re-checked.
+  **Resume:** no mid-flight state. Exact next action per the /goal: navReduce adoption (the last
+  unadopted 0.5.0 primitive — pure `(state, intent) → state` transitions; ctx now carries
+  pageSize/groupBoundary/set per our amendments), or the two cosmetics if a smaller bite fits.
