@@ -6,7 +6,7 @@ Security fixes are applied to the latest `2.x` release. Older fork and upstream 
 
 ## Reporting
 
-Do not open a public issue for a suspected vulnerability. Use GitHub's **Report a vulnerability** flow in the Security tab of `george43g/gmail-mcp` so details remain private until a fix is available.
+Do not open a public issue for a suspected vulnerability. Use GitHub's **Report a vulnerability** flow in the Security tab of `george43g/EQStack` so details remain private until a fix is available.
 
 Include the affected version, reproduction steps, impact, and any suggested mitigation. Do not include real OAuth tokens, client secrets, email content, or account identifiers.
 

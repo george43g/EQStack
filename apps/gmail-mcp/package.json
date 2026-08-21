@@ -57,12 +57,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/george43g/gmail-mcp.git"
+    "url": "git+https://github.com/george43g/EQStack.git",
+    "directory": "apps/gmail-mcp"
   },
   "bugs": {
-    "url": "https://github.com/george43g/gmail-mcp/issues"
+    "url": "https://github.com/george43g/EQStack/issues"
   },
-  "homepage": "https://github.com/george43g/gmail-mcp#readme",
+  "homepage": "https://github.com/george43g/EQStack/tree/main/apps/gmail-mcp#readme",
   "publishConfig": {
     "access": "public"
   },

@@ -1,12 +1,12 @@
 # Gmail MCP
 
-[![CI](https://github.com/george43g/gmail-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/george43g/gmail-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/george43g/EQStack/actions/workflows/gmail-ci.yml/badge.svg)](https://github.com/george43g/EQStack/actions/workflows/gmail-ci.yml)
 
 A Gmail integration with 33 MCP tools, a scriptable `gmail` CLI, an interactive console, and a keyboard-driven terminal UI.
 
 This project is a history-preserving fork of [GongRzhe/Gmail-MCP-Server](https://github.com/GongRzhe/Gmail-MCP-Server). It also ports useful behavior contributed through [ArtyMcLabin/Gmail-MCP-Server](https://github.com/ArtyMcLabin/Gmail-MCP-Server). Original authors and contributors remain credited in the Git history and MIT license.
 
-![gmail TUI workflow](https://raw.githubusercontent.com/george43g/gmail-mcp/main/docs/screenshots/workflow-demo.gif)
+![gmail TUI workflow](https://raw.githubusercontent.com/george43g/EQStack/main/apps/gmail-mcp/docs/screenshots/workflow-demo.gif)
 
 ## Install
 
