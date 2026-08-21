@@ -16,7 +16,7 @@
  * Verified red both ways before merge.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { lstatSync, readFileSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -44,6 +44,21 @@ function trackedCodeFiles(): string[] {
     .filter((f) => CODE_FILE.test(f));
 }
 
+/** Read a tracked file for scanning, without dying nameless on symlinks.
+ *  A tracked symlink whose target is absent (e.g. a link to a gitignored
+ *  machine-local config — hit during the gmail migration on the app's old
+ *  .cursor/mcp.json link) executes nothing, but readFileSync follows it and
+ *  throws a bare ENOENT that names neither the file nor the violation. Scan
+ *  the link's TARGET PATH text instead of following it; a tracked regular
+ *  file missing from the worktree is still an error, now with the name. */
+function readTracked(f: string): string {
+  const p = join(REPO_ROOT, f);
+  const st = lstatSync(p, { throwIfNoEntry: false });
+  if (!st) throw new Error(`tracked file missing from worktree: ${f}`);
+  if (st.isSymbolicLink()) return readlinkSync(p, "utf8");
+  return readFileSync(p, "utf8");
+}
+
 describe("tsx spawn inventory", () => {
   const files = trackedCodeFiles();
 
@@ -55,9 +70,7 @@ describe("tsx spawn inventory", () => {
 
   it("no tracked code or config mentions .bin/tsx outside the allowlist", () => {
     const violations = files.filter(
-      (f) =>
-        !ALLOWED_BIN_TSX_MENTIONS.has(f) &&
-        readFileSync(join(REPO_ROOT, f), "utf8").includes("bin/tsx"),
+      (f) => !ALLOWED_BIN_TSX_MENTIONS.has(f) && readTracked(f).includes("bin/tsx"),
     );
     expect(
       violations,
@@ -68,9 +81,12 @@ describe("tsx spawn inventory", () => {
   it("no package.json script invokes the bare tsx CLI", () => {
     const violations: string[] = [];
     for (const f of files.filter((p) => p.endsWith("package.json"))) {
-      const pkg = JSON.parse(readFileSync(join(REPO_ROOT, f), "utf8")) as {
-        scripts?: Record<string, string>;
-      };
+      let pkg: { scripts?: Record<string, string> };
+      try {
+        pkg = JSON.parse(readTracked(f)) as typeof pkg;
+      } catch (e) {
+        throw new Error(`unparseable tracked package.json: ${f}: ${String(e)}`);
+      }
       for (const [name, cmd] of Object.entries(pkg.scripts ?? {})) {
         if (/^tsx\s|[&|;]\s*tsx\s/.test(cmd)) violations.push(`${f} → "${name}": "${cmd}"`);
       }
@@ -80,7 +96,7 @@ describe("tsx spawn inventory", () => {
 
   it("every allowlist entry is still earning its place (stale-exemption check)", () => {
     const stale = [...ALLOWED_BIN_TSX_MENTIONS.keys()].filter(
-      (f) => !readFileSync(join(REPO_ROOT, f), "utf8").includes("bin/tsx"),
+      (f) => !readTracked(f).includes("bin/tsx"),
     );
     expect(
       stale,

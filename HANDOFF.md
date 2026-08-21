@@ -701,3 +701,27 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
   **Resume:** no mid-flight state. Exact next action per the /goal: navReduce adoption (the last
   unadopted 0.5.0 primitive — pure `(state, intent) → state` transitions; ctx now carries
   pageSize/groupBoundary/set per our amendments), or the two cosmetics if a smaller bite fits.
+
+**2026-08-22 (late) — eqstack session — addendum to the entry above (append-only; that entry's
+"Resume" is superseded, its text left untouched per log rules):**
+- navReduce adoption CLOSED same day: PR #121 (merge `394f9f7`) — NAV_MSG action routes the
+  thread cursor through tui-kit `navReduce` (count read+consumed atomically in the reducer;
+  itemsReplaced never remaps the -1 follow-tail sentinel; deliberate delta: `3}` repeats group
+  jumps). Suite 1165. Kits: robustness ^0.11.0 + tui-kit ^0.5.1 both apps.
+- GMAIL MIGRATION LANDED: PR #122 (merge `1cc19a0`) — `apps/gmail-mcp` imported with full
+  history (195 filter-repo'd commits + unrelated-histories merge `d11cdb4`), 7 fixup commits by
+  the gmail session + 1 review fix (`9442365` kit pins → explicit carets per fleet policy).
+  Publishing HARD-GATED `private: true`; re-enable checklist (George, manual) in
+  apps/gmail-mcp/AGENTS.md § Release automation. Root workflows gmail-ci.yml +
+  gmail-screenshots-check.yml (check-only). Release run after merge: no-op expected (private).
+- SHARED ADVISORY SET RESOLVED (was: 5 low/37 moderate/20 high in prod trees of all 3 apps —
+  MCP SDK HTTP-transport tree, fixes quarantined by pnpm 11's default minimumReleaseAge; NOT a
+  configured policy — verified nothing in tree sets it): `pnpm audit --fix=update` on branch
+  fix/shared-advisory-quarantine — lockfile re-resolution + version-SPECIFIC one-shot
+  minimumReleaseAgeExclude entries (inert once lockfile holds the fixed versions; prunable
+  later), NO overrides added. Manifest deltas: voice `ws ^8.18.3→^8.21.3` (retained-entry
+  starvation case, credit gmail session's `pnpm -r why ws`), imsg devDep `vite ^7.3.1→^7.3.6`.
+  Post-fix: `pnpm audit --prod` = ZERO across severities; single ws@8.21.3; kit resolution
+  unchanged 0.11.0/0.5.1. REMAINING (dev-tree only, deliberately left): jsondiffpatch[mod],
+  tmp[high], ai/undici/@ai-sdk/provider-utils[low] — parents don't admit the fixed versions;
+  age out or ride future parent bumps.
