@@ -7,6 +7,7 @@ import {
   ExportMessagesOutputSchema,
   GetAttachmentOutputSchema,
   GetContactOutputSchema,
+  GetConversationEventsOutputSchema,
   GetLastSendErrorOutputSchema,
   GetLogsOutputSchema,
   GetMessagesOutputSchema,
@@ -268,6 +269,31 @@ export const TOOLS: Tool[] = [
       },
     },
     outputSchema: toOutputSchema(WaitForChangesOutputSchema),
+  },
+  {
+    name: "get_conversation_events",
+    description:
+      "Group-system events for ONE conversation: renames, members added/removed, people leaving (message-table rows with item_type 1/2/3, which get_messages deliberately filters out). Groups only in practice — a 1:1 thread returns an empty list. Newest first. Handles resolve to contact names; each event carries a ready-made `summary` line.",
+    annotations: annotations.read,
+    inputSchema: {
+      type: "object",
+      properties: {
+        chatIdentifier: {
+          type: "string",
+          description:
+            "Conversation to read events from (phone, email, or raw chat id). Merged-identity aware.",
+        },
+        threadSlug: {
+          type: "string",
+          description: "Conversation slug from list_conversations.",
+        },
+        limit: {
+          type: "number",
+          description: "Max events to return (default 20). 0 = all.",
+        },
+      },
+    },
+    outputSchema: toOutputSchema(GetConversationEventsOutputSchema),
   },
   {
     name: "list_conversations",

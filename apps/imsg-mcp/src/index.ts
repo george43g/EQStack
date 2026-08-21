@@ -41,6 +41,7 @@ import {
 } from "./config.js";
 import { rememberSearch, resolveContactSelector } from "./contact-resolver.js";
 import { normalizedPhoneVariants } from "./contacts-db.js";
+import { formatConversationEvent } from "./conversation-event-format.js";
 import { parseUserDate } from "./date-parse.js";
 import { type ChangeEvent, EventBus } from "./event-bus.js";
 import { ExportInterpretGuardError, streamExport } from "./exportStream.js";
@@ -87,6 +88,7 @@ import {
   ExportMessagesSchema,
   GetAttachmentSchema,
   GetContactSchema,
+  GetConversationEventsSchema,
   GetLogsSchema,
   GetMessagesSchema,
   GetUnreadMessagesSchema,
@@ -392,6 +394,8 @@ export class IMessageMCPServer {
         return await this.handleWaitForReply(args, signal);
       case "wait_for_changes":
         return await this.handleWaitForChanges(args, signal);
+      case "get_conversation_events":
+        return await this.handleGetConversationEvents(args);
       case "list_conversations":
         return await this.handleListConversations(args);
       case "search_messages":
@@ -1344,6 +1348,61 @@ export class IMessageMCPServer {
       ...(partial ? { timedOut: true, timeoutSeconds } : {}),
       ...scope,
       watcherMode,
+    });
+  }
+
+  private async handleGetConversationEvents(args: unknown) {
+    const { chatIdentifier, threadSlug, limit } = GetConversationEventsSchema.parse(args);
+
+    // Same slug-or-identifier resolution as wait_for_reply.
+    let identifier = chatIdentifier;
+    if (threadSlug) {
+      const slugRecord = this.db.getSlugRecord(threadSlug);
+      if (!slugRecord) {
+        return toolError(`Unknown thread slug: ${threadSlug}`, { threadSlug });
+      }
+      identifier = slugRecord.chatIdentifier;
+    }
+    const chat = await this.db.findChatByHandle(identifier!);
+    if (!chat) {
+      return toolError(`Could not find conversation for: ${threadSlug || chatIdentifier}`, {
+        threadSlug,
+        chatIdentifier,
+      });
+    }
+
+    const events = this.db.getConversationEvents(chat.chatIdentifier, resolveLimit(limit));
+
+    // A new group title is user-controlled free text — wrap it <untrusted> in
+    // the human-readable lines, exactly like message bodies. structuredContent
+    // stays raw (agents doing exact-match expect the stored string; the
+    // IMSG_WRAP_STRUCTURED_TEXT opt-in is about message narrative fields).
+    const lines = events.map((ev) => {
+      const summary = formatConversationEvent(ev, (n) => wrapUntrusted(sanitizeUserText(n) ?? "?"));
+      return `[${ev.date.toISOString().slice(0, 10)}] ${summary}`;
+    });
+    const label = chat.displayName ?? chat.chatIdentifier;
+    const header = chat.isGroupChat
+      ? `${events.length} group event${events.length === 1 ? "" : "s"} in "${label}" (newest first):`
+      : `No group events — "${label}" is a 1:1 thread (system events exist only in groups).`;
+    const text = events.length > 0 ? [header, ...lines].join("\n") : header;
+
+    return toolText(text, {
+      events: events.map((ev) => ({
+        id: ev.id,
+        date: ev.date.toISOString(),
+        kind: ev.kind,
+        actor: ev.actor,
+        actorName: ev.actorName,
+        target: ev.target,
+        targetName: ev.targetName,
+        newName: ev.newName,
+        summary: formatConversationEvent(ev),
+      })),
+      count: events.length,
+      isGroupChat: chat.isGroupChat,
+      threadSlug: chat.threadSlug,
+      chatIdentifier: chat.chatIdentifier,
     });
   }
 

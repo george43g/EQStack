@@ -85,6 +85,7 @@ Full walkthrough with screenshots: [**docs/WORKFLOWS.md**](docs/WORKFLOWS.md).
 | `send_message` | Send via Messages.app (text + attachments). |
 | `wait_for_reply` | Poll for the next reply — includes the user's own interjections from other devices. |
 | `wait_for_changes` | Long-poll typed change events (`message.new` / `reaction`) across all conversations or one thread — push-fed by the chat.db WAL watcher. |
+| `get_conversation_events` | Group-system events for one conversation — renames, members added/removed, leaves (the `item_type` rows `get_messages` filters out). Groups only; newest first; handles resolved to contact names. |
 | `export_messages` | Stream a chat to file (md/csv/json/ndjson). |
 | `search_attachments` | Find attachments by mime/date/chat. |
 | `get_attachment` | Fetch an attachment (image block / poster / audio) + optional AI interpretation (`interpret`). |
