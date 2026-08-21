@@ -254,7 +254,7 @@ export async function runConsoleCommand(
         if (!args[1]) throw new Error("Usage: humans init <contact|slug|top N>");
         if (args[1] === "top") {
           await printToolResult(client, "init_human", { top: Number(args[2] ?? 10) });
-        } else if (args[1].includes("~")) {
+        } else if (looksLikeThreadSlug(args[1])) {
           await printToolResult(client, "init_human", { threadSlug: args[1] });
         } else {
           await printToolResult(client, "init_human", { contact: args.slice(1).join(" ") });
@@ -819,7 +819,7 @@ humansCommand
     }
     const args = opts.top
       ? { top: Number(opts.top) }
-      : contact?.includes("~")
+      : looksLikeThreadSlug(contact)
         ? { threadSlug: contact }
         : { contact };
     await withClient((c) => printToolResult(c, "init_human", args));

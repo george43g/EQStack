@@ -74,7 +74,12 @@ import { synthesizeGroupName } from "./group-name.js";
 import { perf } from "./logger.js";
 import { extractChatSummaryText, isUnsentMessage } from "./plist-text.js";
 import { type SlugRecord, SlugStore } from "./slug-store.js";
-import { generateThreadSlug, isGroupChatIdentifier, isGroupGuid } from "./thread-slug.js";
+import {
+  generateThreadSlug,
+  isGroupChatIdentifier,
+  isGroupGuid,
+  looksLikeThreadSlug,
+} from "./thread-slug.js";
 import type {
   Attachment,
   Conversation,
@@ -1163,13 +1168,7 @@ export class IMessageDB {
   async findChatByHandle(handle: string): Promise<Conversation | null> {
     const chats = this.getAllChatsWithLastDate();
 
-    // Normalize the search handle
-    const normalized = handle.replace(/[\s\-()]/g, "").toLowerCase();
-
-    const matches = chats.filter((chat) => {
-      const chatNorm = chat.chat_identifier?.replace(/[\s\-()]/g, "").toLowerCase() || "";
-      return chatNorm.includes(normalized) || normalized.includes(chatNorm);
-    });
+    const matches = this.matchChatsByIdentifier(chats, handle);
 
     if (matches.length === 0) return null;
 
@@ -1385,7 +1384,7 @@ export class IMessageDB {
       const conv = bySlug.get(slug) ?? byIdentifier.get(m.chatId);
       consider(slug, {
         name: conv?.displayName ?? m.displayName ?? m.chatId,
-        threadSlug: conv?.threadSlug ?? (slug.includes("~") ? slug : null),
+        threadSlug: conv?.threadSlug ?? (looksLikeThreadSlug(slug) ? slug : null),
         chatIdentifier: conv?.chatIdentifier ?? m.chatId,
         lastMessageDate: conv?.lastMessageDate ?? m.date,
         matchType: "message",
@@ -1557,14 +1556,28 @@ export class IMessageDB {
     return key;
   }
 
-  private resolveChatsForConversation(identifier: string): ChatRow[] {
-    const chats = this.getAllChatsWithLastDate();
+  /**
+   * Strict handle→chat matching, shared by findChatByHandle and
+   * resolveChatsForConversation. Exact matches win outright: raw identifier,
+   * guid, or normalized-equal (tolerates phone punctuation/format differences
+   * without over-matching). Fuzzy fallback ONLY when nothing matched exactly,
+   * and ONLY for phone-like numbers — a SUFFIX comparison with a minimum
+   * overlap (country-code tolerance: "5551234567" ↔ "+15551234567").
+   *
+   * Bidirectional `includes` is banned here: a short shared fragment could
+   * fold in the wrong identity, and near-identical emails collided
+   * ("a@b.co" ⊂ "a@b.com"). That over-match was fixed in
+   * resolveChatsForConversation but survived in findChatByHandle until the
+   * 2026-08-22 contacts survey found it — hence the shared helper.
+   */
+  private matchChatsByIdentifier(
+    chats: ChatWithLastDate[],
+    identifier: string,
+  ): ChatWithLastDate[] {
     const normalized = identifier.replace(/[\s\-()]/g, "").toLowerCase();
     const chatNorm = (chat: ChatWithLastDate) =>
       (chat.chat_identifier ?? "").replace(/[\s\-()]/g, "").toLowerCase();
 
-    // Exact matches win outright: raw identifier, guid, or normalized-equal
-    // (tolerates phone punctuation/format differences without over-matching).
     const exactMatches = chats.filter(
       (chat) =>
         chat.chat_identifier === identifier ||
@@ -1572,23 +1585,22 @@ export class IMessageDB {
         (chat.chat_identifier != null && chatNorm(chat) === normalized),
     );
 
-    // Fuzzy fallback ONLY when nothing matched exactly, and ONLY for phone-like
-    // numbers — a SUFFIX comparison with a minimum overlap (country-code
-    // tolerance: "5551234567" ↔ "+15551234567"). The previous bidirectional
-    // `includes` over-matched: a short shared fragment could fold in the wrong
-    // identity, and near-identical emails collided ("a@b.co" ⊂ "a@b.com").
     const MIN_FUZZY_PHONE_LEN = 7;
-    const directMatches =
-      exactMatches.length > 0
-        ? exactMatches
-        : normalized.includes("@") || normalized.length < MIN_FUZZY_PHONE_LEN
-          ? []
-          : chats.filter((chat) => {
-              if (chat.chat_identifier == null) return false;
-              const cn = chatNorm(chat);
-              if (cn.length < MIN_FUZZY_PHONE_LEN || cn.includes("@")) return false;
-              return cn.endsWith(normalized) || normalized.endsWith(cn);
-            });
+    return exactMatches.length > 0
+      ? exactMatches
+      : normalized.includes("@") || normalized.length < MIN_FUZZY_PHONE_LEN
+        ? []
+        : chats.filter((chat) => {
+            if (chat.chat_identifier == null) return false;
+            const cn = chatNorm(chat);
+            if (cn.length < MIN_FUZZY_PHONE_LEN || cn.includes("@")) return false;
+            return cn.endsWith(normalized) || normalized.endsWith(cn);
+          });
+  }
+
+  private resolveChatsForConversation(identifier: string): ChatRow[] {
+    const chats = this.getAllChatsWithLastDate();
+    const directMatches = this.matchChatsByIdentifier(chats, identifier);
 
     if (directMatches.length === 0) return [];
 
