@@ -1,3 +1,4 @@
+import { applyRestore, type NavIntent, navReduce } from "@george43g/tui-kit";
 import type { InterpretConfigInput } from "../app-config.js";
 import {
   type ChatStats,
@@ -9,6 +10,7 @@ import {
   type Reaction,
 } from "../types.js";
 import { filterMatchIndices } from "./filter.js";
+import { nextGroupBoundary, prevGroupBoundary } from "./message-groups.js";
 import type { ModuleInstance } from "./modules/types.js";
 
 export type FocusPane = "sidebar" | "thread";
@@ -133,9 +135,15 @@ export type Action =
       interpretedMedia: { kind: "audio" | "image" | "video"; text: string; source: string };
     }
   | { type: "SELECT"; index: number; visibleCount?: number }
-  | { type: "SELECT_MSG"; index: number }
+  /**
+   * Thread-cursor motion via tui-kit `navReduce` — the last 0.5.x primitive
+   * from the adoption pledge. The reducer supplies the count (read + consumed
+   * atomically from the shared `numBuffer`), the clamp/sentinel/NaN
+   * discipline is the kit's, and `pageSize` comes from the caller's last
+   * layout pass (half/full page, wheel step) per the kit contract.
+   */
+  | { type: "NAV_MSG"; intent: NavIntent; pageSize?: number }
   | { type: "SELECT_MSG_BY_DATE"; date: Date }
-  | { type: "MOVE_MSG"; delta: number }
   | { type: "FOCUS"; pane: FocusPane }
   | { type: "SCROLL_SIDEBAR"; delta: number }
   | { type: "SCROLL_THREAD"; delta: number }
@@ -258,12 +266,32 @@ export const initialState: AppState = {
   settingsWarnings: [],
 };
 
-/** Clamp message cursor and ensure it's visible by adjusting scroll */
-function clampMsg(state: AppState, idx: number): Partial<AppState> {
+/**
+ * Run one thread-cursor intent through tui-kit `navReduce`.
+ *
+ * The vim count comes from the SHARED `numBuffer` (the sidebar consumes it
+ * too, via getCount() in the router) and is read + consumed HERE, in the same
+ * reducer step as the movement — the router must not pre-consume it, because
+ * a SET_NUM_BUFFER("") dispatched before NAV_MSG would clear the buffer
+ * before this reducer ran and the count would be lost.
+ *
+ * `touched` is passed as a constant and the kit's value dropped: imsg does
+ * not use the follow-until-touched restore policy (its tail behaviour is the
+ * -1 sentinel plus snap-end on load), so persisting `touched` in AppState
+ * would be dead weight.
+ */
+function navMsg(state: AppState, intent: NavIntent, pageSize = 0): Partial<AppState> {
   const total = state.messages.length;
-  if (total === 0) return { selectedMsgIdx: -1 };
-  const clamped = Math.max(0, Math.min(idx, total - 1));
-  return { selectedMsgIdx: clamped };
+  if (total === 0) return { selectedMsgIdx: -1, numBuffer: "" };
+  const parsed = Number.parseInt(state.numBuffer, 10);
+  const count = state.numBuffer && Number.isFinite(parsed) ? Math.min(parsed, 999) : null;
+  const nav = navReduce({ cursor: state.selectedMsgIdx, count, touched: true }, intent, {
+    itemCount: total,
+    pageSize,
+    groupBoundary: (from, dir) =>
+      dir > 0 ? nextGroupBoundary(state.messages, from) : prevGroupBoundary(state.messages, from),
+  });
+  return { selectedMsgIdx: nav.cursor, numBuffer: nav.count == null ? "" : String(nav.count) };
 }
 
 // ── Bounded message window ───────────────────────────────────────────────
@@ -345,19 +373,26 @@ export function boundMessagesIfNeeded(
     for (let j = start; j <= end; j++) kept.push(messages[j]);
   }
 
-  // Map old selectedMsgIdx to new index in `kept`
-  let newCursor = -1;
-  if (selectedMsgIdx >= 0) {
+  // Map old selectedMsgIdx to new index in `kept` — kit itemsReplaced with
+  // the piecewise kept-range remap. The kit contributes the two properties
+  // this path once got wrong by hand: the -1 follow-tail sentinel is never
+  // remapped (#94), and the remap's output is clamped to the new array.
+  const remap = (old: number): number => {
     let collapsedIdx = 0;
     for (const [start, end] of merged) {
-      if (selectedMsgIdx >= start && selectedMsgIdx <= end) {
-        newCursor = collapsedIdx + (selectedMsgIdx - start);
-        break;
-      }
+      if (old >= start && old <= end) return collapsedIdx + (old - start);
       collapsedIdx += end - start + 1;
     }
-    if (newCursor === -1) newCursor = 0; // cursor was in evicted region; clamp to start
-  }
+    // The eviction policy keeps a window around the cursor, so this branch is
+    // defensive: an index in an evicted region degrades to the list start
+    // (pre-adoption behaviour, preserved).
+    return 0;
+  };
+  const newCursor = navReduce(
+    { cursor: selectedMsgIdx, count: null, touched: true },
+    { kind: "itemsReplaced", remap },
+    { itemCount: kept.length, pageSize: 0 },
+  ).cursor;
 
   // Note: existingGaps from before this trim aren't re-merged; we replace.
   // In practice gaps are always recomputed from the current array shape.
@@ -472,9 +507,15 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
     case "SET_MESSAGES": {
-      // Scroll to bottom: set cursor to last message
+      // Thread contents replaced wholesale → kit restore policy "snap-end"
+      // (a conversation's resting state is its newest message). Same result
+      // as the old Math.max(0, len - 1), with the kit's clamp discipline.
       const msgs = action.data;
-      const lastIdx = Math.max(0, msgs.length - 1);
+      const lastIdx = applyRestore(
+        "snap-end",
+        { cursor: state.selectedMsgIdx, count: null, touched: true },
+        msgs.length,
+      ).cursor;
       // Set threadScroll high so the view shows the bottom
       const scrollToEnd = Math.max(0, msgs.length);
       const oldestId = oldestMessageCursor(msgs);
@@ -509,8 +550,13 @@ export function reducer(state: AppState, action: Action): AppState {
         (a, b) => a.date.getTime() - b.date.getTime(),
       );
       const shift = fresh.length;
-      const shiftedCursor =
-        state.selectedMsgIdx >= 0 ? state.selectedMsgIdx + shift : state.selectedMsgIdx;
+      // Kit itemsReplaced: the -1 follow-tail sentinel is never remapped
+      // (the property behind bug #94), and the remap's result is clamped.
+      const shiftedCursor = navReduce(
+        { cursor: state.selectedMsgIdx, count: null, touched: true },
+        { kind: "itemsReplaced", remap: (old) => old + shift },
+        { itemCount: merged.length, pageSize: 0 },
+      ).cursor;
 
       // Apply bounded-window eviction if we've grown past the cap
       const bounded = boundMessagesIfNeeded(merged, shiftedCursor, state.gapMarkers);
@@ -660,16 +706,10 @@ export function reducer(state: AppState, action: Action): AppState {
       let idx = state.messages.findIndex((m) => m.date.getTime() >= t);
       if (idx < 0) idx = state.messages.length - 1; // all older than target → last
       if (idx < 0) return state;
-      return { ...state, ...clampMsg(state, idx) };
+      return { ...state, ...navMsg(state, { kind: "set", index: idx }) };
     }
-    case "SELECT_MSG": {
-      const c = clampMsg(state, action.index);
-      return { ...state, ...c };
-    }
-    case "MOVE_MSG": {
-      const c = clampMsg(state, state.selectedMsgIdx + action.delta);
-      return { ...state, ...c };
-    }
+    case "NAV_MSG":
+      return { ...state, ...navMsg(state, action.intent, action.pageSize) };
     case "FOCUS":
       return { ...state, focus: action.pane, numBuffer: "" };
     case "SCROLL_SIDEBAR":
