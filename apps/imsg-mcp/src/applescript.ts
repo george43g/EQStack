@@ -12,8 +12,9 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
+import { redactString } from "@george43g/robustness";
 import { getImsgDbPath, isAiEnv } from "./config.js";
-import { setLastSendError } from "./logger.js";
+import { error as logError, setLastSendError } from "./logger.js";
 import { insertSentMessage } from "./mock-send-db.js";
 import type { SendMessageResult } from "./types.js";
 
@@ -72,7 +73,14 @@ async function runAppleScript(
       timeout: 30000,
     });
     if (stderr?.trim()) {
-      console.error("[osascript] stderr:", stderr);
+      // osascript quotes the failing recipient back at us ("Can't get buddy
+      // id \"alice@example.com\"…"), so this line carries a handle. Phones are
+      // redacted by the kit logger already; emails are opt-in because the
+      // email shape also matches package specifiers and git remotes — safe to
+      // enable HERE because osascript stderr is a bounded text domain that
+      // contains neither. Structured log, not console.error: stdio MCP treats
+      // stderr as the log channel, so this belongs in the NDJSON record.
+      logError("osascript_stderr", { stderr: redactString(stderr, { emails: true }) });
     }
     return stdout.trim();
   } catch (error: any) {
