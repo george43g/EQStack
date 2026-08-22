@@ -1433,18 +1433,11 @@ export class IMessageMCPServer {
     const formatted = results
       .map((conv) => {
         const slug = conv.threadSlug ?? conv.chatIdentifier;
-        let name = conv.displayName || conv.chatIdentifier;
-        // For group chats without a display name, show resolved participant names
-        if (conv.isGroupChat && !conv.displayName) {
-          const resolved = this.db.resolveParticipantNames(conv.participants);
-          const names = resolved.filter((n, i) => n !== conv.participants[i]);
-          if (names.length > 0) {
-            name =
-              names.length <= 3
-                ? names.join(", ")
-                : `${names.slice(0, 3).join(", ")} +${names.length - 3}`;
-          }
-        }
+        // Unnamed groups already arrive with a member-synthesized displayName
+        // from core (listConversations → synthesizeGroupName); the old
+        // handler-side re-synthesis diverged from it (full names, dropped
+        // unresolved handles) so text and structuredContent could disagree.
+        const name = conv.displayName || conv.chatIdentifier;
         const ident =
           conv.displayName && conv.displayName !== conv.rawIdentifier
             ? ` (${conv.rawIdentifier})`

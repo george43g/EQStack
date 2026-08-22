@@ -204,3 +204,82 @@ describe("resolveChatsForConversation over-match tightening", () => {
     }
   });
 });
+
+describe("findChatByHandle uses the same strict matcher (2026-08-22 survey find)", () => {
+  // The bidirectional-includes over-match was fixed in
+  // resolveChatsForConversation but survived in findChatByHandle — this
+  // describe pins the shared-helper fix from the OTHER entry point
+  // (get_contact threads, wait_for_reply leg lookup route through it).
+
+  it("does not return a newer shortcode chat for a full-number lookup", async () => {
+    // Old behavior: "+15551234567".includes("234567") matched BOTH chats and
+    // recency picked the shortcode — the wrong conversation, silently.
+    const { chatDb, contactDb, slugsDb } = makeChatsFixture([
+      {
+        rowid: 1,
+        identifier: "+15551234567",
+        service: "iMessage",
+        text: "full-number-msg",
+        unixSec: 1735689600,
+      },
+      {
+        rowid: 2,
+        identifier: "234567",
+        service: "SMS",
+        text: "shortcode-msg",
+        unixSec: 1735689660,
+      },
+    ]);
+    const db = new IMessageDB(chatDb, [contactDb], slugsDb);
+    try {
+      const conv = await db.findChatByHandle("+15551234567");
+      expect(conv?.chatIdentifier).toBe("+15551234567");
+      // The shortcode stays reachable by its own exact identifier.
+      const sc = await db.findChatByHandle("234567");
+      expect(sc?.chatIdentifier).toBe("234567");
+    } finally {
+      await db.close();
+    }
+  });
+
+  it("still matches country-code-less and punctuated phone variants", async () => {
+    const { chatDb, contactDb, slugsDb } = makeChatsFixture([
+      {
+        rowid: 1,
+        identifier: "+15551234567",
+        service: "iMessage",
+        text: "cc-msg",
+        unixSec: 1735689600,
+      },
+    ]);
+    const db = new IMessageDB(chatDb, [contactDb], slugsDb);
+    try {
+      expect((await db.findChatByHandle("5551234567"))?.chatIdentifier).toBe("+15551234567");
+      expect((await db.findChatByHandle("(555) 123-4567"))?.chatIdentifier).toBe("+15551234567");
+    } finally {
+      await db.close();
+    }
+  });
+
+  it("returns null for a near-identical but different email", async () => {
+    const { chatDb, contactDb, slugsDb } = makeChatsFixture([
+      {
+        rowid: 1,
+        identifier: "alice@example.co",
+        service: "iMessage",
+        text: "email-msg",
+        unixSec: 1735689600,
+      },
+    ]);
+    const db = new IMessageDB(chatDb, [contactDb], slugsDb);
+    try {
+      // Old behavior: "alice@example.com".includes("alice@example.co") → wrong chat.
+      expect(await db.findChatByHandle("alice@example.com")).toBeNull();
+      expect((await db.findChatByHandle("alice@example.co"))?.chatIdentifier).toBe(
+        "alice@example.co",
+      );
+    } finally {
+      await db.close();
+    }
+  });
+});
