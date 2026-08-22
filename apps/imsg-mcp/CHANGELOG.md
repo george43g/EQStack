@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.25.2](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.1...imsg-mcp-v1.25.2) (2026-08-22)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** redact recipient emails in osascript stderr; adopt robustness 0.12.0 ([53f67f9](https://github.com/george43g/EQStack/commit/53f67f9ae3f5b20aacee912723b7b7a1a3246026))
+
 ## imsg-mcp [1.25.1](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.0...imsg-mcp-v1.25.1) (2026-08-22)
 
 
