@@ -10,6 +10,7 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { identifierKey } from "./handle-normal.js";
 import Database, { type SqliteDatabase } from "./sqlite.js";
 
 /** Minimal chat row from the chat table. */
@@ -1549,7 +1550,7 @@ export class IMessageDB {
       const contact = this.contacts.lookupContact(chatIdentifier);
       key = contact
         ? `contact:${contact.contactId}`
-        : `identifier:${chatIdentifier.replace(/[\s\-()]/g, "").toLowerCase()}`;
+        : `identifier:${identifierKey(chatIdentifier)}`;
     }
 
     this.cachedMergeKeys.set(cacheKey, key);
@@ -1574,9 +1575,8 @@ export class IMessageDB {
     chats: ChatWithLastDate[],
     identifier: string,
   ): ChatWithLastDate[] {
-    const normalized = identifier.replace(/[\s\-()]/g, "").toLowerCase();
-    const chatNorm = (chat: ChatWithLastDate) =>
-      (chat.chat_identifier ?? "").replace(/[\s\-()]/g, "").toLowerCase();
+    const normalized = identifierKey(identifier);
+    const chatNorm = (chat: ChatWithLastDate) => identifierKey(chat.chat_identifier ?? "");
 
     const exactMatches = chats.filter(
       (chat) =>

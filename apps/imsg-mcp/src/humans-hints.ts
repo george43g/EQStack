@@ -10,7 +10,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { getHumansDirPath } from "./config.js";
-import { normalizedPhoneVariants } from "./contacts-db.js";
+import { handleKeys } from "./handle-normal.js";
 import { parseFrontmatterHandles } from "./humans-scaffold.js";
 
 export interface HumanFileRef {
@@ -46,13 +46,6 @@ export const HUMANS_INIT_HINT =
 interface IndexEntry {
   name: string;
   path: string;
-}
-
-/** Normalize a handle for overlap comparison (mirrors humans-scaffold). */
-function handleKeys(handle: string): string[] {
-  const trimmed = handle.trim();
-  if (trimmed.includes("@")) return [trimmed.toLowerCase()];
-  return normalizedPhoneVariants(trimmed);
 }
 
 function parseFrontmatterName(content: string): string | null {
