@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.25.1](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.0...imsg-mcp-v1.25.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** contact-survey bug sweep — strict handle matching everywhere ([9f277a2](https://github.com/george43g/EQStack/commit/9f277a2b6551533cbfb151a4f6060a7465dad654))
+
 # imsg-mcp [1.25.0](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.24.0...imsg-mcp-v1.25.0) (2026-08-21)
 
 
