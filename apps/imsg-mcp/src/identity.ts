@@ -8,6 +8,7 @@
  * Pure module — no I/O. Phone normalization reuses `normalizePhoneToE164`
  * (recipient.ts); emails are trimmed + lowercased.
  */
+import { normalizeEmail } from "./handle-normal.js";
 import { normalizePhoneToE164 } from "./recipient.js";
 
 export interface Identity {
@@ -33,10 +34,12 @@ function dedupe(items: string[]): string[] {
   return out;
 }
 
-/** Trim + lowercase an email address (identity-key canonical form). */
-export function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
+/** Trim + lowercase an email address (identity-key canonical form).
+ *  Re-exported from handle-normal so there is ONE implementation: this file
+ *  and contacts-db previously carried twins with swapped operation order.
+ *  Imported as well as re-exported — a bare `export {}` creates no local
+ *  binding, and this module uses it internally. */
+export { normalizeEmail };
 
 /** E.164 the phone if we can, else fall back to the trimmed original. */
 export function e164OrOriginal(phone: string, country: "AU" | "US"): string {

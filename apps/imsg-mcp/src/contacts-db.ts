@@ -12,7 +12,12 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { type ContactMatch, rankContacts } from "./contact-rank.js";
+import { normalizeEmail, phoneDigits, phoneVariants } from "./handle-normal.js";
 import Database, { type SqliteDatabase } from "./sqlite.js";
+
+/** @deprecated Import `phoneVariants` from ./handle-normal.js instead. Kept as
+ *  a named re-export so existing importers keep resolving. */
+export { phoneVariants as normalizedPhoneVariants } from "./handle-normal.js";
 
 export interface Contact {
   id: number;
@@ -30,67 +35,6 @@ export interface ContactLookup {
   contactId: number;
   displayName: string;
   label?: string;
-}
-
-/**
- * Normalize phone number for comparison (digits only, canonical form).
- * - US: strip leading 1 so 10 digits.
- * - AU/international: keep full digits (e.g. 61... for Australia).
- */
-function normalizePhoneNumber(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  // US: 11 digits starting with 1 -> drop 1
-  if (digits.length === 11 && digits.startsWith("1")) {
-    return digits.slice(1);
-  }
-  return digits;
-}
-
-/**
- * All normalized forms to use when storing a number in the map,
- * so lookups by +61..., 04..., 0... all hit.
- *
- * Exported for handle→chat matching too: Address Book cards often store local
- * formats ("0408 315 498") while chat identifiers are E.164 ("+61408315498").
- */
-export function normalizedPhoneVariants(phone: string): string[] {
-  const normalized = normalizePhoneNumber(phone);
-  const variants = new Set<string>([normalized]);
-
-  // Australia: 61 + 9 digits -> also store bare mobile digits and local 04... format
-  if (normalized.length === 11 && normalized.startsWith("61")) {
-    const localMobile = normalized.slice(2);
-    variants.add(localMobile);
-    if (localMobile.length === 9 && localMobile.startsWith("4")) {
-      variants.add(`0${localMobile}`);
-    }
-  }
-
-  // Australia: local 04... mobile -> also store bare mobile digits and 61-prefixed format
-  if (normalized.length === 10 && normalized.startsWith("04")) {
-    const mobileDigits = normalized.slice(1);
-    variants.add(mobileDigits);
-    variants.add(`61${mobileDigits}`);
-  }
-
-  // US: also store with leading 1
-  if (normalized.length === 10) {
-    variants.add(`1${normalized}`);
-  }
-  // Australia: 9 digits starting with 4 (mobile) -> also store with 61 prefix
-  if (normalized.length === 9 && normalized.startsWith("4")) {
-    variants.add(`61${normalized}`);
-    variants.add(`0${normalized}`);
-  }
-
-  return [...variants];
-}
-
-/**
- * Normalize email for comparison (lowercase, trim)
- */
-function normalizeEmail(email: string): string {
-  return email.toLowerCase().trim();
 }
 
 /** Normalize a name for cross-card equivalence: lowercase, strip diacritics, collapse whitespace. */
@@ -292,7 +236,7 @@ export class ContactsDB {
 
       for (const phone of phones) {
         if (!contact.phoneNumbers.includes(phone.number)) contact.phoneNumbers.push(phone.number);
-        for (const variant of normalizedPhoneVariants(phone.number)) {
+        for (const variant of phoneVariants(phone.number)) {
           if (!this.phoneMap.has(variant)) {
             this.phoneMap.set(variant, {
               contactId: contact.id,
@@ -335,7 +279,7 @@ export class ContactsDB {
       }
     };
     for (const number of phones) {
-      for (const variant of normalizedPhoneVariants(number)) {
+      for (const variant of phoneVariants(number)) {
         const hit = this.phoneMap.get(variant);
         if (hit) add(hit.contactId);
       }
@@ -387,7 +331,7 @@ export class ContactsDB {
     }
 
     if (/[\d+\-()\s]/.test(handle)) {
-      for (const variant of normalizedPhoneVariants(handle)) {
+      for (const variant of phoneVariants(handle)) {
         const contact = this.phoneMap.get(variant);
         if (contact) {
           return contact;
@@ -436,7 +380,7 @@ export class ContactsDB {
     const contact = this.getContact(contactId);
     if (!contact) return null;
     const handles = [
-      ...contact.phoneNumbers.map((p) => normalizePhoneNumber(p)),
+      ...contact.phoneNumbers.map((p) => phoneDigits(p)),
       ...contact.emails.map((e) => normalizeEmail(e)),
     ].filter((h) => h.length > 0);
     if (handles.length === 0) return null;

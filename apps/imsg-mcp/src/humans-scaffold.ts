@@ -20,7 +20,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { getHumansDirPath } from "./config.js";
-import { normalizedPhoneVariants } from "./contacts-db.js";
+import { handleKeys } from "./handle-normal.js";
 import { sanitizeSlugPart } from "./thread-slug.js";
 
 export interface HumanScaffoldInit {
@@ -47,13 +47,6 @@ export function computePersonSlug(name: string, taken: Set<string>): string {
     const candidate = `${base}-${n}`;
     if (!taken.has(candidate)) return candidate;
   }
-}
-
-/** Normalize a handle for overlap comparison (phones → all variants, emails → lowercase). */
-function handleKeys(handle: string): string[] {
-  const trimmed = handle.trim();
-  if (trimmed.includes("@")) return [trimmed.toLowerCase()];
-  return normalizedPhoneVariants(trimmed);
 }
 
 /**
