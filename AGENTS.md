@@ -285,6 +285,21 @@ with per-package tags. Key facts:
   fails for any reason (a flaky test, say), the `fix:`/`feat:` in the earlier PR is stranded
   unreleased with two green-looking merges. Merge, wait for the Release run to finish, then merge
   the next. (Hit on 2026-08-14: #83 + #84 four seconds apart cost the 1.21.3 publish.)
+- **Split cross-app dependency bumps into one commit per app.** msr selects release candidates by
+  **PATH, not by the scope label in the subject** — so a single `fix(imsg-mcp): … bump kit` commit
+  that also edits `apps/gmail-mcp/package.json` is a releasing `fix` for **gmail too**, and gmail's
+  changelog then describes an imsg fix. Bump each app in its own commit (`fix(imsg-mcp): …`,
+  `chore(gmail-mcp): …`) even when the version and the reasoning are identical; they can still ride
+  one PR. Found 2026-08-22 by the gmail session while checking what msr would see at re-enable:
+  `git log --oneline "@george43g/gmail-mcp-v2.0.0"..main -- apps/gmail-mcp` listed `53f67f9`
+  (the 0.12.0 bump, typed `fix`). Left in place deliberately — rewriting merged history is worse
+  than one patch release with odd notes.
+  **Do NOT "fix" this with commit-analyzer `releaseRules`** (e.g. `{"scope":"!(gmail-mcp)",
+  "release":false}` in a package's `.releaserc.json`). The mechanism is real — scope accepts globs
+  (`node_modules/@semantic-release/commit-analyzer/README.md:90-93`) — but it swaps a **visible,
+  harmless** wrong-changelog for an **invisible missed release**: an unscoped or differently-scoped
+  commit that genuinely fixes that app would be silently suppressed. Silent non-release is the
+  failure class that already cost us 1.21.3; don't buy more of it to tidy release notes.
 
 ## MCP servers (project scope)
 
