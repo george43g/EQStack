@@ -1,5 +1,4 @@
 import { execSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { allocateWidths, splitNavChunk, useMouse } from "@george43g/tui-kit";
@@ -9,7 +8,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useSyncExternalSto
 import { loadTuiConfig, resolveInterpretConfig, writeTuiConfig } from "../app-config.js";
 import { formatJumpTarget, parseUserDate } from "../date-parse.js";
 import type { ChangeEvent, EventBus } from "../event-bus.js";
-import { extensionFor, toCSV, toJSON, toMarkdown } from "../export-formats.js";
+import { extensionFor } from "../export-formats.js";
 import {
   applyInlineInterpretations,
   getInterpretRuntime,
@@ -42,6 +41,7 @@ import { SettingsPanel } from "./components/SettingsPanel.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { ThreadPane } from "./components/ThreadPane.js";
+import { exportBounds } from "./export-bounds.js";
 import { filterMatchIndices } from "./filter.js";
 import { useDevStats } from "./hooks/useDevStats.js";
 import { useImsg } from "./hooks/useImsg.js";
@@ -1413,43 +1413,53 @@ export function App({ changeBus }: AppProps = {}) {
 
   // ── Export action ──────────────────────────────────────────────────
 
-  const doExport = useCallback(() => {
-    const messagesToExport =
+  const doExport = useCallback(async () => {
+    // The visible scope decides the RANGE; the DB decides what is in it.
+    //
+    // This used to write `state.messages.slice(...)` directly to disk, which
+    // silently dropped whatever the bounded-memory window had evicted — a
+    // selection spanning an evicted gap wrote 501 of 800 messages and reported
+    // "Exported 501 msgs" with no warning. Bounds now come from the scope's
+    // first and last message and the core streaming exporter re-reads the span,
+    // so a hole in memory can never become a hole in the user's file. A gapless
+    // selection resolves to exactly the same set it always did.
+    const scope =
       state.selectionAnchor != null
         ? state.messages.slice(
             Math.min(state.selectionAnchor, state.selectedMsgIdx),
             Math.max(state.selectionAnchor, state.selectedMsgIdx) + 1,
           )
         : state.messages;
-    if (messagesToExport.length === 0) {
+    const chatIdentifier = selected?.chatIdentifier;
+    if (scope.length === 0 || !chatIdentifier) {
       dispatch({ type: "SET_STATUS", status: "Nothing to export" });
       return;
     }
+    // See export-bounds.ts for why these are widened by 1ms — it is
+    // load-bearing, not padding.
+    const bounds = exportBounds(scope);
+    if (!bounds) {
+      dispatch({ type: "SET_STATUS", status: "Nothing to export" });
+      return;
+    }
+
     const expandedPath = state.exportPath.replace(/^~/, homedir());
+    dispatch({ type: "SET_STATUS", status: "Exporting…" });
     try {
-      let content: string;
-      const header = {
-        thread: selected?.displayName ?? selected?.chatIdentifier ?? "thread",
-        participants: selected?.participants ?? [],
-        serviceType: selected?.serviceType,
-      };
-      switch (state.exportFormat) {
-        case "markdown":
-          content = toMarkdown(messagesToExport, header);
-          break;
-        case "csv":
-          content = toCSV(messagesToExport);
-          break;
-        case "json":
-          content = toJSON(messagesToExport, header);
-          break;
-      }
-      writeFileSync(expandedPath, content, "utf8");
+      const result = await imsg.exportThread({
+        chatIdentifier,
+        format: state.exportFormat,
+        outputPath: expandedPath,
+        since: bounds.since,
+        until: bounds.until,
+      });
       dispatch({ type: "EXIT_EXPORT_MODE" });
       dispatch({ type: "EXIT_SELECT_MODE" });
+      // `result.count` is what actually reached the file — report THAT, not the
+      // size of the in-memory scope, so the number never overstates the export.
       dispatch({
         type: "SET_STATUS",
-        status: `Exported ${messagesToExport.length} msgs to ${expandedPath}`,
+        status: `Exported ${result.count} msgs to ${result.savedTo}`,
       });
       setTimeout(() => dispatch({ type: "SET_STATUS", status: "" }), 4000);
     } catch (err) {
@@ -1465,6 +1475,7 @@ export function App({ changeBus }: AppProps = {}) {
     state.selectedMsgIdx,
     state.selectionAnchor,
     selected,
+    imsg,
   ]);
 
   // ── Open attachment ────────────────────────────────────────────────
