@@ -329,11 +329,37 @@ not theorised.
   `watchdog:rss_exceeded`, `stdin_eof`, …) instead of a hardcoded `"normal"` for every exit; and
   `readWatchdogState()` fills `rssMb`/`heapMb` from a live reading until the 60s sampler first
   fires, so a just-started process no longer reports 0MB.
-- **Eviction path unverified (P2).** The 5000-message hard cap's "N older messages evicted"
-  placeholder was never reached through any real UI path during the drive — worth a targeted test
-  now that the pagination and leak bugs that blocked reaching it are fixed.
-- **Date picker only accepts arrow keys (P3)** — `hjkl` does nothing there, and an unparseable
-  free-text date is silently refused with no error shown.
+- ~~**Eviction path unverified (P2).**~~ **Reached + two bugs fixed 2026-08-23 (PR #129).** Driven
+  live against the real DB with `IMSG_TUI_MSG_HARD_CAP=600`: repeated `gg` loads pushed Shara past
+  the cap and the "N older messages evicted" placeholder rendered for the first time. Reaching it
+  exposed that `gapMarkers[].atIdx` — a POSITION in `state.messages` — survived neither mutation
+  that follows eviction. (1) `PREPEND_MESSAGES` inserts older rows AHEAD of every marker, and
+  `boundMessagesIfNeeded` returns `existingGaps` untouched under the cap, so the placeholder slid
+  deeper into history on every load-older and the drift compounded — and scrolling back for more is
+  precisely what a user does next. (2) A SECOND eviction replaced the markers outright; the comment
+  claimed gaps "are always recomputed from the current array shape", which is exactly what cannot
+  work once those rows have left the array, so every earlier hole was silently forgotten and the
+  count under-reported. Markers are now re-anchored by message id across a prepend and carried
+  through a trim (remapped when the anchor survives, folded into the covering gap when it doesn't).
+  Live evidence for the carry-through: the placeholder's count accumulates 199 → 299 across
+  successive evictions instead of resetting. Same family as #94 and #87 — index bookkeeping that
+  survives one mutation but not the next applied to the same array.
+- ~~**Date picker only accepts arrow keys (P3)**~~ **Not open — closed by PR #97 (v1.21.11), this
+  line was a stale duplicate of the entry above.** Both halves verified false 2026-08-23:
+  `h`/`l`/`k`/`j` are bound alongside the arrows (`DatePicker.tsx:61-73`) and an unparseable
+  free-text date renders its error (`DateJumpModal.tsx:99-101`, pinned by
+  `tests/date-picker.test.tsx`).
+- ~~**Vim counts silently lost a digit (P1, found 2026-08-23)**~~ **fixed (PR #129).** Not on the
+  original list — found while navigating to the eviction gap. Ink delivers a fast burst or a paste
+  as ONE `useInput` call, so the router fans the chunk out per character; the digit accumulator
+  rebuilt the count from `state.numBuffer`, a RENDER SNAPSHOT that is only refreshed if React
+  happens to re-render between loop iterations. Two iterations landing in the same render both
+  appended to the same base and the later dispatch won. Measured on the real DB: 3-0-0-j typed
+  slowly moved the correct 300 rows, `"300j"` as one chunk moved **30**. One- and two-digit counts
+  survived often enough to look fine, which is why it lasted. The accumulator now writes a
+  synchronous ref; `state.numBuffer` follows for the reducer and the UI. NAV_MSG still consumes it
+  atomically in the reducer — #121 unchanged; this was the ACCUMULATE side of the same snapshot
+  hazard the consume side already documented at `App.tsx`'s thread-motion branch.
 
 ### 8c. MCP correctness — `get_messages` pagination silently skipped history
 **Found + fixed 2026-08-16 (PR #87, v1.21.4).** Not a swarm finding: spotted while reading
