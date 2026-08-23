@@ -352,9 +352,12 @@ export function boundMessagesIfNeeded(
     }
   }
 
-  // Slice + concat the kept ranges, recording gaps between them
+  // Slice + concat the kept ranges, recording gaps between them. `covers`
+  // remembers which INPUT rows each new gap swallowed, so pre-existing gaps
+  // anchored inside an evicted block can be folded into it below.
   const kept: Message[] = [];
   const gapMarkers: AppState["gapMarkers"] = [];
+  const covers: Array<{ inputStart: number; inputEnd: number; gapIdx: number }> = [];
   for (let i = 0; i < merged.length; i++) {
     const [start, end] = merged[i];
     if (i > 0) {
@@ -362,6 +365,7 @@ export function boundMessagesIfNeeded(
       const gapStart = prevEnd + 1;
       const gapEnd = start - 1;
       if (gapEnd >= gapStart) {
+        covers.push({ inputStart: gapStart, inputEnd: gapEnd, gapIdx: gapMarkers.length });
         gapMarkers.push({
           atIdx: kept.length,
           oldestId: messages[gapStart].id,
@@ -394,9 +398,53 @@ export function boundMessagesIfNeeded(
     { itemCount: kept.length, pageSize: 0 },
   ).cursor;
 
-  // Note: existingGaps from before this trim aren't re-merged; we replace.
-  // In practice gaps are always recomputed from the current array shape.
+  // Carry pre-existing gaps across this trim. They describe holes that are
+  // INVISIBLE to the range arithmetic above — those rows left `messages` on an
+  // earlier eviction — so recomputing purely from the array shape forgets every
+  // earlier hole and undercounts what the placeholder reports. Each one is
+  // either re-anchored (its anchor message survived) or folded into the new gap
+  // that swallowed its anchor. A gap anchored in the dropped HEAD (before the
+  // first kept range, which records no marker) is deliberately dropped: that
+  // history is now contiguous with the unloaded past, which the load-older
+  // cursor already describes.
+  for (const g of existingGaps) {
+    const anchorNewIdx = keptIndexOf(g.atIdx, merged);
+    if (anchorNewIdx !== null) {
+      // Anchor survived. If a new gap landed on the same anchor, the new gap's
+      // rows sit chronologically BEFORE this one (they immediately preceded the
+      // anchor in the input array; g's rows sat between them and the anchor).
+      const sameAnchor = gapMarkers.find((n) => n.atIdx === anchorNewIdx);
+      if (sameAnchor) {
+        sameAnchor.newestId = g.newestId;
+        sameAnchor.count += g.count;
+      } else {
+        gapMarkers.push({ ...g, atIdx: anchorNewIdx });
+      }
+      continue;
+    }
+    // Anchor was itself evicted: g's rows are interior to the block that
+    // swallowed it, so that block's bracketing ids already span them.
+    const cover = covers.find((c) => g.atIdx >= c.inputStart && g.atIdx <= c.inputEnd);
+    if (cover) gapMarkers[cover.gapIdx].count += g.count;
+  }
+  gapMarkers.sort((a, b) => a.atIdx - b.atIdx);
+
   return { messages: kept, selectedMsgIdx: newCursor, gapMarkers };
+}
+
+/**
+ * Index of input row `idx` in the concatenation of `ranges`, or null when that
+ * row falls in an evicted block. Mirrors the cursor `remap` above but reports
+ * the miss instead of degrading to 0 — a gap must never be re-anchored to the
+ * top of the list, which would draw the placeholder over unrelated history.
+ */
+function keptIndexOf(idx: number, ranges: Array<[number, number]>): number | null {
+  let collapsed = 0;
+  for (const [start, end] of ranges) {
+    if (idx >= start && idx <= end) return collapsed + (idx - start);
+    collapsed += end - start + 1;
+  }
+  return null;
 }
 
 /**
@@ -558,8 +606,21 @@ export function reducer(state: AppState, action: Action): AppState {
         { itemCount: merged.length, pageSize: 0 },
       ).cursor;
 
+      // `gapMarkers[].atIdx` is a POSITION in `messages` — the renderer draws
+      // the placeholder before `messages[atIdx]` — and the merge above inserts
+      // older rows AHEAD of every existing marker. Re-anchor each one to the
+      // message it actually describes, or the placeholder slides deeper into
+      // history on every load-older and the drift compounds. (Appends need no
+      // equivalent: they grow the tail, leaving earlier indices untouched.)
+      const idxById = new Map(merged.map((m, i) => [m.id, i]));
+      const reAnchored = state.gapMarkers.flatMap((g) => {
+        const anchor = state.messages[g.atIdx];
+        const atIdx = anchor === undefined ? undefined : idxById.get(anchor.id);
+        return atIdx === undefined ? [] : [{ ...g, atIdx }];
+      });
+
       // Apply bounded-window eviction if we've grown past the cap
-      const bounded = boundMessagesIfNeeded(merged, shiftedCursor, state.gapMarkers);
+      const bounded = boundMessagesIfNeeded(merged, shiftedCursor, reAnchored);
 
       // The "load older" cursor must describe what SURVIVED, not what was
       // fetched. When bounding evicts the head of the batch we just prepended,

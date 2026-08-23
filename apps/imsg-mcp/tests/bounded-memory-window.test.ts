@@ -151,3 +151,109 @@ describe("PREPEND_MESSAGES load-older cursor vs eviction", () => {
     expect(s.messageOldestLoadedId).toBe(-1);
   });
 });
+
+/**
+ * Gap markers vs later growth (found 2026-08-23 driving the eviction path
+ * STATUS §8b recorded as never reached through real UI).
+ *
+ * `gapMarkers[].atIdx` is a POSITION in `state.messages` — the renderer draws
+ * the placeholder before `messages[atIdx]` (ThreadPane.tsx:266). Any mutation
+ * that shifts indices must move the markers with them, and the very next thing
+ * a user does after tripping eviction is scroll back for more history, which
+ * prepends. The invariant each test below asserts is the semantic one: a gap
+ * stays anchored to the same LOGICAL message, whatever its index becomes.
+ */
+describe("gap markers survive later growth", () => {
+  /** Older-than-everything batch: negative ids, dates below the fakeMsgs base. */
+  function olderBatch(n: number): Message[] {
+    return fakeMsgs(n).map((m, i) => ({
+      ...m,
+      id: -(n - i),
+      guid: `old-${i}`,
+      date: new Date(i),
+    }));
+  }
+
+  function evictedState(cursorIdx = 100) {
+    const evicted = boundMessagesIfNeeded(fakeMsgs(6000), cursorIdx, []);
+    expect(evicted.gapMarkers).toHaveLength(1);
+    return {
+      ...initialState,
+      messages: evicted.messages,
+      selectedMsgIdx: evicted.selectedMsgIdx,
+      gapMarkers: evicted.gapMarkers,
+      messageOldestLoadedId: evicted.messages[0].id,
+    };
+  }
+
+  it("re-anchors the gap after a load-older prepend", () => {
+    const before = evictedState();
+    const anchorId = before.messages[before.gapMarkers[0].atIdx].id;
+
+    const s = reducer(before, {
+      type: "PREPEND_MESSAGES",
+      data: olderBatch(50),
+      oldestId: -50,
+    });
+
+    expect(s.messages).toHaveLength(before.messages.length + 50);
+    expect(s.gapMarkers).toHaveLength(1);
+    // The placeholder must still sit before the same message it described.
+    expect(s.messages[s.gapMarkers[0].atIdx].id).toBe(anchorId);
+  });
+
+  it("re-anchors across repeated prepends (the shift compounds)", () => {
+    let s = evictedState();
+    const anchorId = s.messages[s.gapMarkers[0].atIdx].id;
+
+    for (let round = 0; round < 3; round++) {
+      const batch = olderBatch(40).map((m, i) => ({
+        ...m,
+        id: -(1000 * (round + 1)) - i,
+        guid: `r${round}-${i}`,
+        date: new Date(-(1000 * (round + 1)) - i),
+      }));
+      s = reducer(s, { type: "PREPEND_MESSAGES", data: batch, oldestId: batch[0].id });
+    }
+
+    expect(s.gapMarkers).toHaveLength(1);
+    expect(s.messages[s.gapMarkers[0].atIdx].id).toBe(anchorId);
+  });
+
+  it("a live append does not move the gap (it grows the tail, not the head)", () => {
+    const before = evictedState();
+    const anchorId = before.messages[before.gapMarkers[0].atIdx].id;
+
+    const newer = fakeMsgs(3).map((m, i) => ({
+      ...m,
+      id: 90_000 + i,
+      guid: `live-${i}`,
+      date: new Date(9_000_000 + i),
+    }));
+    const s = reducer(before, { type: "APPEND_LIVE_MESSAGES", data: newer });
+
+    expect(s.gapMarkers).toHaveLength(1);
+    expect(s.messages[s.gapMarkers[0].atIdx].id).toBe(anchorId);
+  });
+
+  it("carries an existing gap through a SECOND eviction instead of forgetting it", () => {
+    const first = evictedState();
+    const firstGap = first.gapMarkers[0];
+
+    // Grow past the cap again so bounding runs a second time. Index arithmetic
+    // on the array cannot see the first hole — the rows are already gone — so
+    // recomputing gaps from the array shape alone drops it silently.
+    const huge = Array.from({ length: 5000 }, (_, i) => ({
+      ...fakeMsgs(1)[0],
+      id: -(5000 - i),
+      guid: `deep-${i}`,
+      date: new Date(-(5000 - i)),
+    }));
+    const s = reducer(first, { type: "PREPEND_MESSAGES", data: huge, oldestId: huge[0].id });
+
+    expect(s.messages.length).toBeLessThan(first.messages.length + 5000); // evicted again
+    const totalEvicted = s.gapMarkers.reduce((n, g) => n + g.count, 0);
+    // Whatever the shape, the first hole's messages must still be accounted for.
+    expect(totalEvicted).toBeGreaterThanOrEqual(firstGap.count);
+  });
+});
