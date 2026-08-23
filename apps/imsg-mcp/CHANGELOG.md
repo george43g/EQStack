@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.25.4](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.3...imsg-mcp-v1.25.4) (2026-08-23)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** TUI export no longer drops evicted messages ([dadcc8d](https://github.com/george43g/EQStack/commit/dadcc8dff290086992118522ac1119e9b6c7ebb0))
+
 ## imsg-mcp [1.25.3](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.2...imsg-mcp-v1.25.3) (2026-08-23)
 
 
