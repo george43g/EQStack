@@ -666,10 +666,31 @@ export function App({ changeBus }: AppProps = {}) {
 
   // ── Vim number prefix helper ───────────────────────────────────────
 
+  // Router-side mirror of `state.numBuffer`, written SYNCHRONOUSLY.
+  //
+  // `state.numBuffer` is a render snapshot, and the chunk fan-out below feeds
+  // several digits through the handler inside ONE render — it only sees fresh
+  // state if React happens to re-render between iterations, which it does not
+  // guarantee. Two iterations landing in the same render both appended to the
+  // same base and the later dispatch won, silently swallowing a digit: "300j"
+  // moved 30 rows (measured 2026-08-23 against the real DB; typing 3-0-0-j
+  // slowly moved the correct 300). Counts must not depend on scheduler timing,
+  // so the ref leads while digits arrive and `state.numBuffer` follows for the
+  // reducer and the UI.
+  const numBufferRef = useRef("");
+
   const getCount = useCallback((): number => {
-    const n = state.numBuffer ? Number.parseInt(state.numBuffer, 10) : 1;
+    const n = numBufferRef.current ? Number.parseInt(numBufferRef.current, 10) : 1;
+    numBufferRef.current = "";
     dispatch({ type: "SET_NUM_BUFFER", value: "" });
     return Math.max(1, Math.min(n, 999));
+  }, []);
+
+  // The reducer owns the other consume path: NAV_MSG reads + clears
+  // `numBuffer` atomically (see the note at the thread-motion branch), so the
+  // mirror follows state back down whenever a command has eaten the count.
+  useEffect(() => {
+    if (state.numBuffer === "") numBufferRef.current = "";
   }, [state.numBuffer]);
 
   // ── Keyboard ───────────────────────────────────────────────────────
@@ -1161,8 +1182,10 @@ export function App({ changeBus }: AppProps = {}) {
 
     // Number buffer for vim-style counts (e.g. "12j" to jump 12 lines)
     if (/^[0-9]$/.test(input) && !key.ctrl && !key.meta) {
-      // Don't buffer leading zeros unless building a number
-      if (input === "0" && !state.numBuffer) {
+      // Don't buffer leading zeros unless building a number. Both this test and
+      // the append below read the synchronous mirror, never the render
+      // snapshot — inside a fanned-out chunk they are not the same value.
+      if (input === "0" && !numBufferRef.current) {
         // '0' alone: go to first item (like vim)
         if (state.focus === "sidebar") {
           selectSidebarCombined(0);
@@ -1171,7 +1194,8 @@ export function App({ changeBus }: AppProps = {}) {
         }
         return;
       }
-      dispatch({ type: "SET_NUM_BUFFER", value: state.numBuffer + input });
+      numBufferRef.current += input;
+      dispatch({ type: "SET_NUM_BUFFER", value: numBufferRef.current });
       return;
     }
 
@@ -1243,6 +1267,11 @@ export function App({ changeBus }: AppProps = {}) {
       // in the SAME step as the movement. Calling getCount() first would
       // dispatch SET_NUM_BUFFER("") and clear the count before NAV_MSG's
       // reducer ran (this render's `state` is a snapshot; the reducer isn't).
+      //
+      // The router's mirror still has to be dropped HERE rather than waiting on
+      // the effect: a chunk like "3j5j" fans out inside one render, so the "5"
+      // would otherwise append to a "3" the reducer had already eaten.
+      numBufferRef.current = "";
       const halfPage = Math.floor(bodyHeight / 2);
 
       if (input === "j" || key.downArrow) {
