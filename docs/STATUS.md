@@ -329,7 +329,7 @@ not theorised.
   `watchdog:rss_exceeded`, `stdin_eof`, …) instead of a hardcoded `"normal"` for every exit; and
   `readWatchdogState()` fills `rssMb`/`heapMb` from a live reading until the 60s sampler first
   fires, so a just-started process no longer reports 0MB.
-- ~~**Eviction path unverified (P2).**~~ **Reached + two bugs fixed 2026-08-23 (PR #129).** Driven
+- ~~**Eviction path unverified (P2).**~~ **Reached + two bugs fixed 2026-08-23 (PR #130).** Driven
   live against the real DB with `IMSG_TUI_MSG_HARD_CAP=600`: repeated `gg` loads pushed Shara past
   the cap and the "N older messages evicted" placeholder rendered for the first time. Reaching it
   exposed that `gapMarkers[].atIdx` — a POSITION in `state.messages` — survived neither mutation
@@ -349,7 +349,7 @@ not theorised.
   `h`/`l`/`k`/`j` are bound alongside the arrows (`DatePicker.tsx:61-73`) and an unparseable
   free-text date renders its error (`DateJumpModal.tsx:99-101`, pinned by
   `tests/date-picker.test.tsx`).
-- ~~**Vim counts silently lost a digit (P1, found 2026-08-23)**~~ **fixed (PR #129).** Not on the
+- ~~**Vim counts silently lost a digit (P1, found 2026-08-23)**~~ **fixed (PR #130).** Not on the
   original list — found while navigating to the eviction gap. Ink delivers a fast burst or a paste
   as ONE `useInput` call, so the router fans the chunk out per character; the digit accumulator
   rebuilt the count from `state.numBuffer`, a RENDER SNAPSHOT that is only refreshed if React
