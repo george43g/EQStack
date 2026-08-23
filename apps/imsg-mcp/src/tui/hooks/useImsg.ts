@@ -99,6 +99,32 @@ export function useImsg() {
     [getDb],
   );
 
+  /**
+   * Export one thread's messages between two INCLUSIVE date bounds, streamed
+   * from the DB a page at a time by the same core path MCP `export_messages`
+   * and the CLI use.
+   *
+   * The TUI used to write `state.messages.slice(...)` straight to disk, which
+   * silently omitted anything the bounded-memory window had evicted: a visual
+   * selection spanning an evicted gap exported 501 of 800 messages and reported
+   * "Exported 501 msgs" with no warning (measured 2026-08-23). Bounds describe
+   * the range; the DB decides what is in it, so a hole in memory can no longer
+   * become a hole in the user's file.
+   */
+  const exportThread = useCallback(
+    async (opts: {
+      chatIdentifier: string;
+      format: "markdown" | "csv" | "json";
+      outputPath: string;
+      since: Date | null;
+      until: Date | null;
+    }) => {
+      const { streamExport } = await import("../../exportStream.js");
+      return streamExport({ ...opts, db: getDb(), pageSize: 1000 });
+    },
+    [getDb],
+  );
+
   /** Decoded group-system events (renames, joins/leaves) for the info drawer. */
   const getConversationEvents = useCallback(
     (chatIdentifier: string, limit = 20) => getDb().getConversationEvents(chatIdentifier, limit),
@@ -233,6 +259,7 @@ export function useImsg() {
       resolveNames,
       resolveChatLabel,
       getChatStats,
+      exportThread,
       getConversationEvents,
       listConversationAttachments,
       send,
@@ -251,6 +278,7 @@ export function useImsg() {
       resolveNames,
       resolveChatLabel,
       getChatStats,
+      exportThread,
       getConversationEvents,
       listConversationAttachments,
       send,

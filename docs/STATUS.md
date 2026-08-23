@@ -349,6 +349,32 @@ not theorised.
   `h`/`l`/`k`/`j` are bound alongside the arrows (`DatePicker.tsx:61-73`) and an unparseable
   free-text date renders its error (`DateJumpModal.tsx:99-101`, pinned by
   `tests/date-picker.test.tsx`).
+- ~~**TUI export silently dropped evicted messages (P1, found 2026-08-23)**~~ **fixed (PR #131).**
+  Third bug off the same drive, and the worst: `doExport` wrote `state.messages.slice(...)` straight
+  to disk, so the file could only hold what the bounded-memory window still had. Measured with
+  `IMSG_TUI_MSG_HARD_CAP=600` — selecting indices 100-600 (501 in memory, a 299-message gap inside
+  the range) exported **501 of 700** and reported "Exported 501 msgs". No warning, no marker, 28% of
+  the selected span missing from a user-facing deliverable. Exports now stream through the core
+  `streamExport` (the path MCP `export_messages` and the CLI already use) bounded by the selection's
+  first/last message dates: the TUI decides the RANGE, the DB decides what is in it. Status reports
+  `result.count` — what reached the file — not the in-memory scope size. **Sub-lesson worth keeping:**
+  the bounds are widened ±1ms in a dedicated pure module (`src/tui/export-bounds.ts`, 5 tests)
+  because the export query compares Mac NANOSECONDS while `dateToMacTimestamp` floors a
+  millisecond-resolution JS Date — an exact `until` excludes the last selected message. Found by
+  testing the OPPOSITE direction of the original bug (a 10-row selection exported 9); a "why is this
+  ±1?" cleanup will now fail loudly.
+- **Conversations are never evicted (P3, observed 2026-08-23, unfixed).** Messages have a hard cap
+  plus eviction and gap markers; the conversation list only ever grows — repeated `G` at the sidebar
+  end lazy-loaded to 4505 loaded rows with no upper bound and no eviction path. Bounded by reality
+  on this account, and memory still plateaus (below), so it is not urgent; it would matter on an
+  account with tens of thousands of conversations. Noted rather than fixed — the symmetric treatment
+  would be a real design decision, not a patch.
+- **Memory verdict (2026-08-23, measured, not a task):** driving 48 conversation switches + ~800
+  message jumps took RSS 93MB → 314MB as the message cache filled, then held a flat **279–314MB band
+  with no trend** across 800 further jumps — LRU sawtooth, not a leak. Dev panel at steady state:
+  47% cache hit rate, 47 entries. Warm-boot `listConversations` 737–905ms, consistent with the
+  714ms recorded above; a one-off 3070ms reading taken straight after a full monorepo `verify` was
+  cold page cache, NOT a regression — do not chase it.
 - ~~**Vim counts silently lost a digit (P1, found 2026-08-23)**~~ **fixed (PR #130).** Not on the
   original list — found while navigating to the eviction gap. Ink delivers a fast burst or a paste
   as ONE `useInput` call, so the router fans the chunk out per character; the digit accumulator
