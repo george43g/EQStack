@@ -88,7 +88,7 @@ Each of these exists today as an *ad-hoc coercion* in at least two places.
 | `PaginationSchema` (`limit`, `beforeMs`) | `mcp/server.ts:258-259`, `admin-server.ts:87-93` |
 | `ConfirmSchema` = `z.literal(true)` | `mcp/server.ts:129,434`, `admin-server.ts:138,174` |
 
-### 3 — Name map (INV-1), 13 → 12
+### 3 — Name map (INV-1), ~~13 → 12~~ **13 → 13 in B** *(corrected 2026-09-02: this table predates D-25 — B stays behaviour-neutral, so `prepare_call`/`start_call` stay split here and Phase C does the D-5 merge into `place_call` per D-38/D-53)*
 | Today (`src/mcp/server.ts`) | Phase B |
 |---|---|
 | `voice_prepare_call` (:73) + `voice_start_call` (:122) | **`call`** (merged — D-5) |
