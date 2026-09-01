@@ -1,0 +1,55 @@
+{
+  "name": "telephony-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first MCP server + telephony gateway: agent-initiated real-time phone calls via Twilio ConversationRelay, an OpenAI-compatible LLM (OpenRouter), and ElevenLabs voice.",
+  "bin": {
+    "tel": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --import tsx src/cli.ts",
+    "mcp": "node --import tsx src/cli.ts mcp",
+    "serve": "node --import tsx src/cli.ts serve",
+    "doctor": "node --import tsx src/cli.ts doctor",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "clean": "rm -rf dist coverage"
+  },
+  "dependencies": {
+    "@george43g/cli-kit": "^2.0.1",
+    "@george43g/mcp-kit": "^1.0.0",
+    "@george43g/robustness": "^0.12.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "commander": "^14.0.0",
+    "ws": "^8.21.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.6",
+    "@eqstack/biome-config": "workspace:*",
+    "@eqstack/tsconfig": "workspace:*",
+    "@eqstack/vitest-config": "workspace:*",
+    "@types/node": "^24.13.3",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.1",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
+  },
+  "keywords": [
+    "mcp",
+    "voice",
+    "telephony",
+    "telephony",
+    "twilio",
+    "conversationrelay"
+  ],
+  "author": "George G",
+  "license": "MIT"
+}

@@ -846,3 +846,126 @@ No mid-flight state: nothing staged, no half-applied edit, no running task. Cros
 record (Settled/Open/Rejected, per the updated `querying-peer-agents` skill) lives at
 `docs/agent-handoff/CONTACTS-FACTORISATION-POSITION-2026-08-22.md` — untracked, cite by absolute
 path; both peer sessions write to it.
+
+---
+
+# 2026-08-29 — checkpoint (eqstack session, pre-compaction)
+
+**Where this entry and any conversation summary disagree, THIS FILE IS CORRECT.**
+Date verified against `date` at write time (2026-08-29 04:29 AEST), not inferred from
+session age.
+
+## State
+imsg-mcp shipped v1.25.3 + v1.25.4 (both npm-verified); the voice/telephony workstream
+is fully planned and **zero lines of its code are written** — 13 planning artifacts sit
+untracked awaiting 7 George decisions.
+
+## Constraints
+Promoted verbatim, dated and attributed, to
+`apps/voice-mcp/docs/plans/two-way-calling/WORKSTREAM.md` § Constraints — do not
+re-quote them here, read them there. Newly captured this session: the licence to rewrite
+("no existing consumers… now is the time"), the deletion gate ("ask me about the feature
+we are losing… before deleting"), the TODO-ledger rule (lost customisation is
+re-implemented in the phase where the feature is *relevant*, never during adoption), the
+phase-granularity caveat, the "leave a seam" definition of good design, the instruction
+to grill on architectural questions, and one project-general rule that should outlive
+this workstream: implementation plans get a per-workstream folder with one file per phase.
+
+Standing constraint restated because it bit this session: **never `git add -A`** —
+`docs/research/*`, `docs/agent-handoff/*` and four `opencode.json.bak.*` files are
+deliberately untracked.
+
+## Done
+- **imsg-mcp v1.25.3** (PR #130, merge `24c0d9c`) — eviction gap markers drifted off their
+  anchor message; chunked vim counts silently dropped a digit (`"300j"` moved 30, measured
+  live). `npm view imsg-mcp version` → 1.25.3 at the time; tag `imsg-mcp-v1.25.3` exists.
+- **imsg-mcp v1.25.4** (PR #131, merge `4e2d595`) — TUI export wrote a silently incomplete
+  file: a selection spanning an evicted gap exported **501 of 700** messages and reported
+  "Exported 501 msgs". Now streams through core `streamExport`. Live after fix: 700.
+  `git tag -l imsg-mcp-v1.25.4` → present; `npm view imsg-mcp version` → 1.25.4.
+- **Eviction path reached through real UI for the first time** — STATUS §8b had recorded it
+  as never reached. `IMSG_TUI_MSG_HARD_CAP=600` + repeated `gg`. Suite 167 files / 1202 tests.
+- **Voice workstream planned end to end** — 13 untracked artifacts (see § Tree). Spine:
+  `WORKSTREAM.md` (17 invariants + seam map + parallelism rules),
+  `DECISIONS.md` (33 Settled with anchors / 21 Open with slug+owner / 8 Rejected).
+- **Approved plan** at `/Users/george/.claude/plans/glowing-percolating-key.md`
+  (ExitPlanMode approved; Appendix A holds the four-mode taxonomy and ElevenLabs findings).
+
+## Open
+**In the register, not here** — `apps/voice-mcp/docs/plans/two-way-calling/DECISIONS.md`
+§ Open. 21 rows, each carrying `slug · owner`; all owned by **eqstack**. Do not duplicate
+them into this file.
+
+## Corrections (earlier claims now VOID)
+- **"The dial gate is six lines."** VOID. It is in **two** places:
+  `src/domain/call-requests.ts:37-42` (prepare) **and** `src/gateway/call-service.ts:117-119`
+  (dial), the latter re-reading config by alias and taking `recipient.number` (`:156`) and
+  `recipient.recordingPolicy` (`:135`). Deleting only the first ships a phase that dies at
+  dial with *"recipient vanished from config"*.
+- **"14 MCP tools."** VOID → **13** (`grep -c registerTool src/mcp/server.ts`). The wrong
+  figure is also in `docs/plans/2026-08-24-two-way-voice-brief.md:95`, still uncorrected there.
+- **"Live text transcript is nearly free."** VOID. `turn.assistant` carries no text, only
+  `{turn, chars, interrupted}` (`session.ts:236`, `:253-258`), so the agent's side needs a
+  transcript fetch and in `llm` mode neither side's words are on the stream.
+- **"Local audio removes a paid PSTN call from every test cycle."** VOID as stated — it
+  exercises no TwiML, signature validation, STT timing or barge-in. It de-costs agent-loop
+  and UI iteration only. Still worth pulling early, on those grounds.
+- **"`apps/voice-mcp` has one commit total."** VOID → **13** at app level; my `1` was
+  `--follow` on a single file. The blame-is-7-days-wrong conclusion survives; the *tell*
+  does not — count clears voice-mcp at 13, so use the earliest commit's subject and date.
+- **`@george43g/mcp-kit@0.1.0`** is a stale pin → **1.0.0** published 2026-08-28.
+
+## Traps
+- **A measurement can be correct and its SUBJECT wrong.** Three instances in one day across
+  the fleet: `stat` on a symlink read as its target, `git log --follow` on a file read as its
+  app, `ls` on a directory read as its contents. Re-running never catches it. Ask *"what
+  exactly is this the measurement of?"*, not just *"did I measure?"*.
+- **Never grep or `cut -c` a multi-column TUI capture.** grep joins unrelated columns on one
+  terminal line; character slicing diverges from terminal cells wherever emoji appear. Cost:
+  three near-false bug reports in one session.
+- **Verify the app is alive before each keystroke batch** — once a TUI exits, stray keys hit
+  the shell.
+- **A blind mtime sweep corrupts decision records.** Dates that are *payload* ("George said X
+  on the 24th") must disagree with mtime; only "as of now" stamps are checkable.
+- **`git blame` cannot date anything under `apps/voice-mcp/`** — flattened import, earliest
+  commit `c7de878` 2026-08-09, code proven live 2026-08-02.
+
+## Tree
+`EQStack`, branch `main`, **0 ahead / 0 behind**, no tracked modifications.
+Untracked and **mine, to be committed**: `apps/voice-mcp/docs/plans/2026-08-24-two-way-voice-brief.md`,
+`apps/voice-mcp/docs/plans/two-way-calling/` (12 files), `harness-update.md`.
+Untracked and **deliberately not mine**: `docs/research/*`, `docs/agent-handoff/*`,
+four `opencode.json.bak.*`.
+
+## Blocked on you (George)
+All 7 are eqstack-owned; slugs match the register. Nothing here belongs to another session.
+`mode-names` (blocks Phase B's `CallMode`) · `number-contention` (one Twilio number = one
+inbound handler; blocks mode 2) · `tunnel-domain` (needs a one-time browser
+`cloudflared tunnel login`; `~/.cloudflared/` does not exist) · `launchagent-vs-daemon`
+(Agent reaches the keychain but dies at logout; Daemon survives logout but every secret
+resolves `null`) · `one-shot-tool-name` (`call` violates my own INV-1) ·
+`thinking-asset-host` (INV-10 wants it Settled before any public route ships) ·
+`state-dir-migration` (must land before the first launchd plist install).
+
+## Elsewhere
+- `dotfiles [edd465]` — owns `~/dotfiles/.../\_shared/evidence.md`. Landed the date rules
+  this session (`8554e8d`, `079c751`, `86e985f`) including my flattened-vs-preserved clause.
+  Theirs to carry; nothing pending back to eqstack.
+
+## Resume
+**George's instruction, verbatim: _"after compact resurface the plan and ask me each
+question"_.** So the FIRST action after compaction is not code — re-read
+`/Users/george/.claude/plans/glowing-percolating-key.md`, then walk him through the 7
+`Blocked on you` items above **one at a time**, using AskUserQuestion, in the register's
+order. Only after they are answered does Phase A begin.
+
+Mid-flight state: **none** — nothing staged, no half-applied edit, no running background
+task, no unanswered peer message. Four subagents completed and reported; their findings are
+already folded into `DECISIONS.md` (D-22…D-33) and need no re-derivation.
+
+Not yet done and deliberately deferred: the 13 planning artifacts are **uncommitted** —
+commit them path-scoped before any further work, or a crash loses the entire plan.
+
+*(Closed in the same session: committed path-scoped as `5ac4178`, signed, 1 ahead of
+`origin/main` and deliberately unpushed — George picks push-vs-PR. Verified
+`git rev-list --count origin/main..HEAD` → 1.)*
