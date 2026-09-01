@@ -68,7 +68,7 @@ jobs:
         # semantic-release per package with the package dir as cwd — so each app's
         # .releaserc.json package-relative paths (CHANGELOG.md, manifest.json,
         # scripts/, release/) and per-package tagFormat resolve. Private packages
-        # (voice-mcp, analysis, @eqstack/*) are skipped (ignorePrivate default);
+        # (telephony-mcp, analysis, @eqstack/*) are skipped (ignorePrivate default);
         # only apps/imsg-mcp publishes today. Add a published app = give it its own
         # non-private package.json + .releaserc.json and it joins automatically.
         env:

@@ -260,7 +260,7 @@ with per-package tags. Key facts:
 - **Per-package scope.** A `feat:`/`fix:` touching `apps/imsg-mcp/**` releases `imsg-mcp`; a commit
   touching only another app never does. Commit *type* still gates whether there's a release; *path*
   now gates *which* package releases.
-- **Private = skipped.** `ignorePrivate` is on by default, so `apps/voice-mcp`, `apps/analysis`, and
+- **Private = skipped.** `ignorePrivate` is on by default, so `apps/telephony-mcp`, `apps/analysis`, and
   the `packages/@eqstack/*` configs (all `private: true`) never publish.
 - **Tags are namespaced per package — set GLOBALLY, not per package.** msr **always overrides** a
   package's own `.releaserc.json` `tagFormat`, so the scheme lives in the root `release` script:

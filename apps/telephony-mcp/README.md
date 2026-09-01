@@ -1,4 +1,4 @@
-# voice-mcp
+# telephony-mcp
 
 Local-first MCP server + telephony gateway: an MCP host (Claude Code, Codex,
 any stdio client) places a real phone call to an **allowlisted** person and
@@ -12,13 +12,13 @@ ConversationRelay. The conversation is driven either by an OpenRouter LLM
 > thinking-sound loop), and the migration manifest.
 
 ```text
-MCP host ── stdio ──► voice-mcp mcp ─┐ (mutations via localhost admin API)
+MCP host ── stdio ──► tel mcp ─┐ (mutations via localhost admin API)
                                      ▼
-                voice-mcp serve  ◄── Twilio webhooks + ConversationRelay WS
+                tel serve  ◄── Twilio webhooks + ConversationRelay WS
                 │        │            (public tunnel, signature-validated)
                 │        └──► OpenRouter (streaming, abort on barge-in)
                 ▼
-   ~/Library/Application Support/voice-mcp
+   ~/Library/Application Support/telephony-mcp
    (sqlite WAL: calls/events/transcripts/FTS · AES-256-GCM recordings)
 ```
 
@@ -26,19 +26,19 @@ MCP host ── stdio ──► voice-mcp mcp ─┐ (mutations via localhost ad
 
 | Command | Purpose |
 | --- | --- |
-| `voice-mcp mcp` | stdio MCP server (stderr-only logging) |
-| `voice-mcp serve` | public Twilio listener + localhost-only admin/observability listener |
-| `voice-mcp doctor` | config / state / secret-presence / gateway health checks (offline-safe) |
-| `voice-mcp prepare <alias> --objective … [--mode llm\|direct]` | stage 1: expiring call request, nothing dialed |
-| `voice-mcp call <requestId> --yes` | stage 2: dial (REAL, PAID call) |
-| `voice-mcp say <callId> <text>` | speak text verbatim into a live call (direct-mode reply path) |
-| `voice-mcp watch` | live SSE event tail |
-| `voice-mcp history list\|show\|transcript\|search` | local call history (FTS5) |
-| `voice-mcp recording play\|export\|delete` | encrypted recordings (local playback only) |
+| `tel mcp` | stdio MCP server (stderr-only logging) |
+| `tel serve` | public Twilio listener + localhost-only admin/observability listener |
+| `tel doctor` | config / state / secret-presence / gateway health checks (offline-safe) |
+| `tel prepare <alias> --objective … [--mode llm\|direct]` | stage 1: expiring call request, nothing dialed |
+| `tel call <requestId> --yes` | stage 2: dial (REAL, PAID call) |
+| `tel say <callId> <text>` | speak text verbatim into a live call (direct-mode reply path) |
+| `tel watch` | live SSE event tail |
+| `tel history list\|show\|transcript\|search` | local call history (FTS5) |
+| `tel recording play\|export\|delete` | encrypted recordings (local playback only) |
 
 ## Configuration
 
-`~/.config/voice-mcp/config.json` (override `VOICE_MCP_CONFIG`), strictly
+`~/.config/telephony-mcp/config.json` (override `TEL_CONFIG`), strictly
 validated — see [`config.example.json`](./config.example.json). Highlights:
 
 - `recipients`: the **allowlist**. Full E.164 numbers live ONLY here; every
@@ -99,9 +99,9 @@ Chosen per call via `voice_prepare_call { mode }` (or `prepare --mode`):
 ## Development
 
 ```sh
-pnpm --filter @george43g/voice-mcp test        # 98 tests, no network, no paid calls
-pnpm --filter @george43g/voice-mcp typecheck
-mise run voice-mcp:check                        # lint + typecheck + test
+pnpm --filter telephony-mcp test               # no network, no paid calls
+pnpm --filter telephony-mcp typecheck
+pnpm --filter telephony-mcp lint               # (no mise in this repo)
 ```
 
 Tests cover: config strictness, consent matrix, redaction, request

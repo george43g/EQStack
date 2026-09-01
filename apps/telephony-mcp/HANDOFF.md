@@ -1,3 +1,7 @@
+> **2026-09-02:** this app was renamed `voice-mcp` → `telephony-mcp` (bin `tel`,
+> dir `apps/telephony-mcp`) in Phase A of the two-way-calling workstream. Entries
+> below are historical and keep the old names deliberately.
+
 # voice-mcp — handoff & migration notes
 
 > **Traveling doc.** This file lives inside `apps/voice-mcp/` so it moves with

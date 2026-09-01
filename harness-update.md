@@ -4,7 +4,7 @@
 its place.** You asked for this only if it is genuinely worth it, so the case is
 argued rather than asserted, and §4 says when to skip it.
 
-Live pilot: `apps/voice-mcp/docs/plans/two-way-calling/` (the `telephony-mcp`
+Live pilot: `apps/telephony-mcp/docs/plans/two-way-calling/` (the `telephony-mcp`
 workstream, started 2026-08-29). Everything below is running there now.
 
 ## 1. The gap — stated honestly, because it is narrower than it first looks

@@ -1,4 +1,4 @@
-# AGENTS.md — apps/voice-mcp
+# AGENTS.md — apps/telephony-mcp
 
 Scoped rules for the voice-call MCP + gateway. Root `AGENTS.md` still applies.
 
@@ -9,7 +9,7 @@ and the migration manifest (this tool is slated to move out of life-stack).
 ## Non-negotiable safety rules
 
 1. **Never place, script, or automate a real phone call without explicit,
-   current user authorization.** `voice_start_call` / `voice-mcp call` dial a
+   current user authorization.** `voice_start_call` / `tel call` dial a
    real person and cost money. Tests must use the fake adapters
    (`tests/helpers.ts`) — the default suite makes no network calls.
 2. **Never weaken the two-stage flow**: prepare (expiring request) → start
@@ -21,8 +21,8 @@ and the migration manifest (this tool is slated to move out of life-stack).
    that pin these.
 4. **Full phone numbers exist only in config.** Everything persisted or
    emitted (events, logs, MCP output, FTS) carries alias + last four. The
-   redaction layer (`src/domain/redact.ts`) guards logs — don't bypass
-   `logger`.
+   redaction layer (`redactValue` from `@george43g/robustness`, wired in
+   `src/log.ts`) guards logs — don't bypass `logger`.
 5. **Public surface stays minimal**: `/twilio/status`, `/twilio/recording`,
    `/relay/<token>` — all X-Twilio-Signature-validated. Admin, metrics, and
    SSE bind 127.0.0.1 only. Never route admin through the public listener.
@@ -45,6 +45,6 @@ and the migration manifest (this tool is slated to move out of life-stack).
   no-LLM-invocation invariant test (`tests/gateway.integration.test.ts`).
 - Reserved adapter ids (`elevenlabs-managed`, `twilio-media-streams`) parse
   but must keep refusing construction until actually implemented.
-- Narrow gate: `mise run voice-mcp:check` (lint + typecheck + tests).
+- Narrow gate: `pnpm --filter telephony-mcp lint typecheck test`.
 - Live/paid verification (tunnel install, smoke call, latency measurement) is
   gated on explicit authorization — see the ExecPlan.

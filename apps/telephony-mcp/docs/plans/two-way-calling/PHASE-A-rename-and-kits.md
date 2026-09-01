@@ -135,7 +135,10 @@ Live state, measured on this machine 2026-08-29:
    preserving `0700` on the root and `recordings/`, `0600` on files.
 4. `mv ~/.config/voice-mcp ~/.config/telephony-mcp`.
 5. Leave `src/stores/recording-store.ts:16` alone.
-6. Implement as an explicit `tel migrate-state --yes` command, **not** as silent logic inside
+6. ~~Implement as an explicit `tel migrate-state --yes` command~~ **Superseded by D-40/D-47
+   (George chose automatic):** startup-only from cli.ts before command dispatch, lock-probe +
+   WAL checkpoint, dated backup, skip-on-busy with legacy-path read fallback. Original rationale
+   preserved by startup-only + probe. NOT inside `ensureStateDir()`, per the original concern:
    `ensureStateDir()` (`src/paths.ts:24`) — an auto-migration that runs from the MCP server means it
    can fire from a host with no terminal attached, mid-call.
 7. Back up first: `cp -a` both trees to a dated folder before touching anything.
@@ -187,7 +190,7 @@ the workstream should never be re-implemented at all.
 
 ## Verification
 
-1. `pnpm --filter telephony-mcp lint typecheck test` — 95 tests / 10 files today; count must not drop.
+1. `pnpm --filter telephony-mcp lint typecheck test` — ~~95 tests / 10 files~~ **93 / 10 measured on main 2026-09-02** (the 95 was a planning-time miscount); count must not drop. Post-phase: 98 (5 migration tests added).
 2. Root `pnpm verify`.
 3. `git log --follow` on two moved files proves history followed the `git mv`.
 4. `env | grep VOICE_MCP` → currently empty on this machine (checked 2026-08-29). Re-check after any shell-profile change; a stale export silently re-points config/state.
