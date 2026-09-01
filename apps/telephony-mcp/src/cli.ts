@@ -21,7 +21,6 @@ import {
   runRepl,
 } from "@george43g/cli-kit";
 import { buildDispatcher } from "@george43g/mcp-kit";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ZodError, type z } from "zod";
 import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
 import { buildClientRegistry } from "./commands/bind-client.js";
@@ -29,7 +28,7 @@ import { deleteRecording, prepareCall } from "./commands/specs.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
 import { startGateway } from "./gateway/gateway.js";
 import { logger, setLogLevel } from "./log.js";
-import { buildMcpServer } from "./mcp/server.js";
+import { runStdioMcp } from "./mcp/server.js";
 import { migrateLegacyState } from "./migrate-state.js";
 import { configPath, dbPath, recordingsDir } from "./paths.js";
 import { EncryptedRecordingStore } from "./stores/recording-store.js";
@@ -94,9 +93,10 @@ program
   .action(async () => {
     try {
       const cfg = loadConfig();
-      const server = buildMcpServer({ cfg, admin: admin(cfg) });
-      await server.connect(new StdioServerTransport());
-      logger.info("mcp server on stdio");
+      // mcp-kit lifecycle: shutdown traps, stdin-EOF, orphan watch, watchdog,
+      // heap monitor (Phase A ledger L-5; long-poll feeds the watchdog via the
+      // dispatcher's noteActivity — pinned in tests/mcp.integration.test.ts).
+      await runStdioMcp({ cfg, admin: admin(cfg) });
     } catch (err) {
       fail(err);
     }
