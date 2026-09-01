@@ -282,11 +282,11 @@ importers:
         specifier: ^2.0.1
         version: 2.0.1(commander@14.0.3)
       '@george43g/mcp-kit':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: ^2.0.0
+        version: 2.0.0(@george43g/robustness@0.14.1)
       '@george43g/robustness':
-        specifier: ^0.12.0
-        version: 0.12.0
+        specifier: ^0.14.1
+        version: 0.14.1
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.30.0(zod@3.25.76)
@@ -1042,12 +1042,18 @@ packages:
     peerDependencies:
       commander: ^14.0.0
 
-  '@george43g/mcp-kit@1.0.0':
-    resolution: {integrity: sha512-kCgJKDIzDHvrSILgJtcPv4R1MwCfSxRDwBNYrM+kEnT0D8jBydP0s0qFTFLStdxz8JKmDFmEcQP5rSgE7f4LOA==}
+  '@george43g/mcp-kit@2.0.0':
+    resolution: {integrity: sha512-lbdwMlfPTFlT6ZREjsOO9pMFuXQSvB+SCIjwg7imDm2nY40NqYXDqgRWdXLDP8V8qoAVeR2bhvliuo5MJZGmIA==}
     engines: {node: '>=24'}
+    peerDependencies:
+      '@george43g/robustness': '>=0.11.0 <1'
 
   '@george43g/robustness@0.12.0':
     resolution: {integrity: sha512-oFne6RLHZWSVfMQCRaRocIzIgTfW822QcxyaUQzax9fyRsVcv2vbNjSDipD2jM/SaWSQppu1344En5HLuF+Ujw==}
+    engines: {node: '>=24'}
+
+  '@george43g/robustness@0.14.1':
+    resolution: {integrity: sha512-zIppHhuvNYIX/jPeUW88nyRTtOlgI9pAJIDAnEehtGIpPTjO+FT0y/Wc36hZDtcSMyg6OuQzGqnAPIcEDpmBSg==}
     engines: {node: '>=24'}
 
   '@george43g/tui-kit@0.5.1':
@@ -5203,9 +5209,9 @@ snapshots:
       commander: 14.0.3
       picocolors: 1.1.1
 
-  '@george43g/mcp-kit@1.0.0':
+  '@george43g/mcp-kit@2.0.0(@george43g/robustness@0.14.1)':
     dependencies:
-      '@george43g/robustness': 0.12.0
+      '@george43g/robustness': 0.14.1
       '@modelcontextprotocol/sdk': 1.30.0(zod@3.25.76)
       zod: 3.25.76
       zod-to-json-schema: 3.25.2(zod@3.25.76)
@@ -5214,6 +5220,8 @@ snapshots:
       - supports-color
 
   '@george43g/robustness@0.12.0': {}
+
+  '@george43g/robustness@0.14.1': {}
 
   '@george43g/tui-kit@0.5.1(@george43g/robustness@0.12.0)(@types/react@19.2.14)(ink@7.1.1(@types/react@19.2.14)(react@19.2.8))(react@19.2.8)':
     dependencies:
