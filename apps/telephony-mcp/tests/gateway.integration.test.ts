@@ -319,8 +319,10 @@ describe("full simulated call", () => {
   });
 
   it("deleting a recording requires confirmation and honors scope", async () => {
+    // ConfirmSchema (z.literal(true)) now rejects at the REST boundary — the
+    // former /confirmation/ message came from the service, behind the parse.
     await expect(admin.deleteRecording("REfake0001", "both", false)).rejects.toThrow(
-      /confirmation/,
+      /expected true/i,
     );
     const result = await admin.deleteRecording("REfake0001", "both", true);
     expect(result.deletedLocal).toBe(true);

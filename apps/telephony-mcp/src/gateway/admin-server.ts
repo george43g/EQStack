@@ -3,11 +3,34 @@
  * MCP server and CLI (both are thin clients of this API), plus
  * observability: SSE event feed and Prometheus metrics. Never reachable
  * through the tunnel; the public listener knows none of these routes.
+ *
+ * Inverted, not deleted (D-8): the seven mutating routes are a declarative
+ * table parsing with the SAME Zod schemas as every other surface
+ * (src/commands/specs.ts — INV-5/INV-6, fixing the D-31 coercion bugs), while
+ * the transport concerns the registry has no opinion about — loopback bind,
+ * long-poll cleanup, SSE redaction, error mapping, body cap, /healthz and
+ * /metrics — are kept verbatim.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { redactValue } from "@george43g/robustness";
+import { ZodError, z } from "zod";
+import {
+  AfterSeqSchema,
+  BeforeMsSchema,
+  EventLimitSchema,
+  LimitSchema,
+} from "../commands/contracts.js";
+import type { CommandSpec } from "../commands/specs.js";
+import {
+  deleteRecording,
+  endCall,
+  playDisclosure,
+  prepareCall,
+  sayOnCall,
+  setRecording,
+  startCall,
+} from "../commands/specs.js";
 import type { CallEvent } from "../domain/types.js";
-import { CALL_MODES, LEGACY_MODE_ALIASES, normalizeCallMode } from "../domain/types.js";
 import { logger } from "../log.js";
 import { VERSION } from "../version.js";
 import { type CallService, CallServiceError } from "./call-service.js";
@@ -43,6 +66,140 @@ function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   });
 }
 
+/** One line, stable shape: "<first issue path>: <message>". */
+function zodErrorMessage(err: ZodError): string {
+  const issue = err.issues[0];
+  if (!issue) return "invalid input";
+  const path = issue.path.join(".");
+  return path ? `${path}: ${issue.message}` : issue.message;
+}
+
+// ── Query-string contracts (z.coerce because query values arrive as strings;
+// non-numeric input is a 400, never a NaN that silently matches nothing) ────
+
+const ListCallsQuerySchema = z.object({
+  limit: z.coerce.number().pipe(LimitSchema).optional(),
+  beforeMs: z.coerce.number().pipe(BeforeMsSchema).optional(),
+});
+
+const EventsQuerySchema = z.object({
+  afterSeq: z.coerce.number().pipe(AfterSeqSchema).optional(),
+  limit: z.coerce.number().pipe(EventLimitSchema).optional(),
+  waitMs: z.coerce.number().optional(),
+});
+
+/** A present-but-empty query param keeps today's "absent" semantics. */
+function queryParam(url: URL, name: string): string | undefined {
+  return url.searchParams.get(name) || undefined;
+}
+
+// ── The mutating route table (Phase B step 7) ──────────────────────────────
+
+interface AdminRoute {
+  method: "POST" | "DELETE";
+  pattern: RegExp;
+  spec: CommandSpec;
+  /** Success status — 201 for the two creations, 200 elsewhere. */
+  status: 200 | 201;
+  toArgs(match: RegExpMatchArray, body: Record<string, unknown>): unknown;
+  run(service: CallService, args: never): Promise<unknown>;
+}
+
+/** Ties each row's `run` input to its spec's parsed type without casts. */
+function route<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(row: {
+  method: "POST" | "DELETE";
+  pattern: RegExp;
+  spec: CommandSpec<I, O>;
+  status: 200 | 201;
+  toArgs: (match: RegExpMatchArray, body: Record<string, unknown>) => unknown;
+  run: (service: CallService, args: z.infer<I>) => Promise<unknown>;
+}): AdminRoute {
+  return row;
+}
+
+/**
+ * The seven mutating routes as data. Each row is: match → merge path captures
+ * over the body (path wins) → `spec.input.parse` → call CallService directly
+ * (this process is the single writer — INV-9). URL shapes are unchanged so
+ * AdminClient does not fork; response codes and bodies are today's.
+ */
+const MUTATING_ROUTES: readonly AdminRoute[] = [
+  route({
+    method: "POST",
+    pattern: /^\/requests$/,
+    spec: prepareCall,
+    status: 201,
+    toArgs: (_match, body) => body,
+    run: async (service, args) => ({ request: service.prepare(args) }),
+  }),
+  route({
+    method: "POST",
+    pattern: /^\/calls$/,
+    spec: startCall,
+    status: 201,
+    toArgs: (_match, body) => body,
+    run: async (service, { requestId, confirm }) => ({
+      call: await service.start(requestId, confirm),
+    }),
+  }),
+  route({
+    method: "POST",
+    pattern: /^\/calls\/([\w-]+)\/end$/,
+    spec: endCall,
+    status: 200,
+    toArgs: (match, body) => ({ ...body, callId: match[1] }),
+    run: async (service, { callId, reason }) => {
+      await service.endCall(callId, reason ?? "operator_request");
+      return { ok: true };
+    },
+  }),
+  route({
+    method: "POST",
+    pattern: /^\/calls\/([\w-]+)\/disclosure$/,
+    spec: playDisclosure,
+    status: 200,
+    toArgs: (match) => ({ callId: match[1] }),
+    run: async (service, { callId }) => {
+      await service.playDisclosure(callId);
+      return { ok: true };
+    },
+  }),
+  route({
+    method: "POST",
+    pattern: /^\/calls\/([\w-]+)\/say$/,
+    spec: sayOnCall,
+    status: 200,
+    toArgs: (match, body) => ({ ...body, callId: match[1] }),
+    run: async (service, { callId, text }) => {
+      await service.say(callId, text);
+      return { ok: true };
+    },
+  }),
+  route({
+    method: "POST",
+    pattern: /^\/calls\/([\w-]+)\/recording$/,
+    spec: setRecording,
+    status: 200,
+    toArgs: (match, body) => ({ ...body, callId: match[1] }),
+    run: async (service, { callId, enabled }) => {
+      await service.setRecording(callId, enabled);
+      return { ok: true };
+    },
+  }),
+  route({
+    method: "DELETE",
+    pattern: /^\/recordings\/([A-Za-z0-9]+)$/,
+    spec: deleteRecording,
+    status: 200,
+    toArgs: (match, body) => ({ ...body, recordingSid: match[1] }),
+    run: (service, { recordingSid, scope, confirm }) =>
+      service.deleteRecording(recordingSid, scope, confirm),
+  }),
+];
+
+/** Command names the REST route table covers — the parity test's REST leg. */
+export const ROUTED_COMMANDS: readonly string[] = MUTATING_ROUTES.map((r) => r.spec.name);
+
 export class AdminServer {
   readonly server: Server;
 
@@ -54,6 +211,10 @@ export class AdminServer {
       this.route(req, res).catch((err) => {
         if (err instanceof CallServiceError) {
           json(res, err.httpStatus, { error: err.message });
+          return;
+        }
+        if (err instanceof ZodError) {
+          json(res, 400, { error: zodErrorMessage(err) });
           return;
         }
         logger.error("admin request failed", { error: (err as Error).message });
@@ -84,12 +245,14 @@ export class AdminServer {
       return this.handleEvents(url, res);
     }
     if (method === "GET" && path === "/calls") {
-      const beforeMs = url.searchParams.get("beforeMs");
-      const limit = url.searchParams.get("limit");
+      const { limit, beforeMs } = ListCallsQuerySchema.parse({
+        limit: queryParam(url, "limit"),
+        beforeMs: queryParam(url, "beforeMs"),
+      });
       return json(res, 200, {
         calls: this.service.store.listCalls({
-          ...(beforeMs ? { beforeMs: Number(beforeMs) } : {}),
-          ...(limit ? { limit: Number(limit) } : {}),
+          ...(beforeMs !== undefined ? { beforeMs } : {}),
+          ...(limit !== undefined ? { limit } : {}),
         }),
       });
     }
@@ -103,82 +266,41 @@ export class AdminServer {
     m = path.match(/^\/calls\/([\w-]+)\/events$/);
     if (method === "GET" && m) {
       const callId = m[1] as string;
-      const afterSeq = Number(url.searchParams.get("afterSeq") ?? 0);
-      const limit = Number(url.searchParams.get("limit") ?? 200);
-      const waitMs = Math.min(Math.max(Number(url.searchParams.get("waitMs") ?? 0), 0), 55_000);
+      const query = EventsQuerySchema.parse({
+        afterSeq: queryParam(url, "afterSeq"),
+        limit: queryParam(url, "limit"),
+        waitMs: queryParam(url, "waitMs"),
+      });
+      const afterSeq = query.afterSeq ?? 0;
+      const limit = query.limit ?? 200;
+      // Same clamp as before the inversion — out-of-range waits degrade, they don't 400.
+      const waitMs = Math.min(Math.max(query.waitMs ?? 0, 0), 55_000);
       let events = this.service.store.getEvents(callId, afterSeq, limit);
       if (events.length === 0 && waitMs > 0) {
         await this.waitForCallEvent(callId, waitMs, res);
         events = this.service.store.getEvents(callId, afterSeq, limit);
       }
-      return json(res, 200, { events });
+      // D-28/INV-11: same redaction as the SSE path.
+      return json(res, 200, redactValue({ events }));
     }
     m = path.match(/^\/calls\/([\w-]+)\/transcript$/);
     if (method === "GET" && m) {
-      return json(res, 200, { transcript: this.service.store.getTranscript(m[1] as string) });
+      // D-28/INV-11: same redaction as the SSE path.
+      return json(
+        res,
+        200,
+        redactValue({ transcript: this.service.store.getTranscript(m[1] as string) }),
+      );
     }
 
-    if (method === "POST" && path === "/requests") {
+    for (const r of MUTATING_ROUTES) {
+      if (method !== r.method) continue;
+      const match = path.match(r.pattern);
+      if (!match) continue;
       const body = await readJsonBody(req);
-      if (
-        body.mode !== undefined &&
-        (typeof body.mode !== "string" ||
-          (!(CALL_MODES as readonly string[]).includes(body.mode) &&
-            LEGACY_MODE_ALIASES[body.mode] === undefined))
-      ) {
-        return json(res, 400, { error: "mode must be direct | delegate | consult | byo-model" });
-      }
-      const request = this.service.prepare({
-        recipient: String(body.recipient ?? ""),
-        objective: String(body.objective ?? ""),
-        context: body.context === undefined ? undefined : String(body.context),
-        profile: body.profile === undefined ? undefined : String(body.profile),
-        record: body.record === undefined ? undefined : Boolean(body.record),
-        mode: body.mode === undefined ? undefined : normalizeCallMode(body.mode),
-      });
-      return json(res, 201, { request });
-    }
-    if (method === "POST" && path === "/calls") {
-      const body = await readJsonBody(req);
-      const call = await this.service.start(String(body.requestId ?? ""), body.confirm === true);
-      return json(res, 201, { call });
-    }
-    m = path.match(/^\/calls\/([\w-]+)\/end$/);
-    if (method === "POST" && m) {
-      const body = await readJsonBody(req);
-      await this.service.endCall(m[1] as string, String(body.reason ?? "operator_request"));
-      return json(res, 200, { ok: true });
-    }
-    m = path.match(/^\/calls\/([\w-]+)\/disclosure$/);
-    if (method === "POST" && m) {
-      await this.service.playDisclosure(m[1] as string);
-      return json(res, 200, { ok: true });
-    }
-    m = path.match(/^\/calls\/([\w-]+)\/say$/);
-    if (method === "POST" && m) {
-      const body = await readJsonBody(req);
-      await this.service.say(m[1] as string, String(body.text ?? ""));
-      return json(res, 200, { ok: true });
-    }
-    m = path.match(/^\/calls\/([\w-]+)\/recording$/);
-    if (method === "POST" && m) {
-      const body = await readJsonBody(req);
-      await this.service.setRecording(m[1] as string, body.enabled === true);
-      return json(res, 200, { ok: true });
-    }
-    m = path.match(/^\/recordings\/([A-Za-z0-9]+)$/);
-    if (method === "DELETE" && m) {
-      const body = await readJsonBody(req);
-      const scope = String(body.scope ?? "");
-      if (scope !== "local" && scope !== "provider" && scope !== "both") {
-        return json(res, 400, { error: "scope must be local | provider | both" });
-      }
-      const result = await this.service.deleteRecording(
-        m[1] as string,
-        scope,
-        body.confirm === true,
-      );
-      return json(res, 200, result);
+      // ZodError → 400 with "<path>: <message>" via the constructor's catch.
+      const args: unknown = r.spec.input.parse(r.toArgs(match, body));
+      return json(res, r.status, await r.run(this.service, args as never));
     }
 
     json(res, 404, { error: "not found" });
@@ -207,7 +329,8 @@ export class AdminServer {
   private handleEvents(url: URL, res: ServerResponse): void {
     const after = Number(url.searchParams.get("after") ?? 0);
     if (url.searchParams.get("poll") === "1") {
-      json(res, 200, { events: this.service.store.getGlobalEvents(after) });
+      // D-28/INV-11: the poll batch is the same data as the SSE frames — redact it too.
+      json(res, 200, redactValue({ events: this.service.store.getGlobalEvents(after) }));
       return;
     }
     res.writeHead(200, {
