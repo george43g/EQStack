@@ -102,10 +102,10 @@ export function buildMcpServer(deps: McpDeps): McpServer {
           .optional()
           .describe("Request recording on/off (subject to the recipient's recording policy)"),
         mode: z
-          .enum(["llm", "direct"])
+          .enum(["direct", "delegate", "consult", "byo-model", "llm"])
           .optional()
           .describe(
-            "Conversation driver. 'llm' (default): the configured LLM conducts the call from the objective. 'direct': YOU (the MCP host) are the conversational brain — after the call is answered, loop: voice_get_events { callId, afterSeq, waitMs: 25000 } until a turn.user event arrives, read the utterance with voice_get_transcript, then reply with voice_say. Keep replies short; a phone line is waiting.",
+            "Conversation driver. 'byo-model' (default; legacy alias 'llm'): the configured LLM conducts the call from the objective. 'direct': YOU (the MCP host) are the conversational brain — after the call is answered, loop: voice_get_events { callId, afterSeq, waitMs: 25000 } until a turn.user event arrives, read the utterance with voice_get_transcript, then reply with voice_say. Keep replies short; a phone line is waiting.",
           ),
       },
       annotations: {

@@ -21,6 +21,7 @@ import {
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
+import { CALL_MODES, LEGACY_MODE_ALIASES, normalizeCallMode } from "./domain/types.js";
 import { startGateway } from "./gateway/gateway.js";
 import { logger, setLogLevel } from "./log.js";
 import { buildMcpServer } from "./mcp/server.js";
@@ -172,7 +173,11 @@ program
   .option("--mode <mode>", "conversation driver: llm (default) | direct (host replies via say)")
   .action(async (recipient: string, opts) => {
     try {
-      if (opts.mode !== undefined && opts.mode !== "llm" && opts.mode !== "direct") {
+      if (
+        opts.mode !== undefined &&
+        !(CALL_MODES as readonly string[]).includes(opts.mode) &&
+        LEGACY_MODE_ALIASES[opts.mode] === undefined
+      ) {
         fail(new Error("--mode must be llm | direct"));
       }
       const cfg = loadConfig();
@@ -182,7 +187,7 @@ program
         ...(opts.context ? { context: opts.context } : {}),
         ...(opts.profile ? { profile: opts.profile } : {}),
         ...(opts.record !== undefined ? { record: opts.record } : {}),
-        ...(opts.mode ? { mode: opts.mode as "llm" | "direct" } : {}),
+        ...(opts.mode ? { mode: normalizeCallMode(opts.mode) } : {}),
       });
       printJson(request);
       console.error(`\nTo dial: tel call ${request.id} --yes   (REAL, PAID phone call)`);

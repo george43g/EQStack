@@ -7,6 +7,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { redactValue } from "@george43g/robustness";
 import type { CallEvent } from "../domain/types.js";
+import { CALL_MODES, LEGACY_MODE_ALIASES, normalizeCallMode } from "../domain/types.js";
 import { logger } from "../log.js";
 import { VERSION } from "../version.js";
 import { type CallService, CallServiceError } from "./call-service.js";
@@ -119,8 +120,13 @@ export class AdminServer {
 
     if (method === "POST" && path === "/requests") {
       const body = await readJsonBody(req);
-      if (body.mode !== undefined && body.mode !== "llm" && body.mode !== "direct") {
-        return json(res, 400, { error: "mode must be llm | direct" });
+      if (
+        body.mode !== undefined &&
+        (typeof body.mode !== "string" ||
+          (!(CALL_MODES as readonly string[]).includes(body.mode) &&
+            LEGACY_MODE_ALIASES[body.mode] === undefined))
+      ) {
+        return json(res, 400, { error: "mode must be direct | delegate | consult | byo-model" });
       }
       const request = this.service.prepare({
         recipient: String(body.recipient ?? ""),
@@ -128,7 +134,7 @@ export class AdminServer {
         context: body.context === undefined ? undefined : String(body.context),
         profile: body.profile === undefined ? undefined : String(body.profile),
         record: body.record === undefined ? undefined : Boolean(body.record),
-        mode: body.mode === undefined ? undefined : (body.mode as "llm" | "direct"),
+        mode: body.mode === undefined ? undefined : normalizeCallMode(body.mode),
       });
       return json(res, 201, { request });
     }

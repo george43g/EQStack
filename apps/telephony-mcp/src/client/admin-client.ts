@@ -62,7 +62,7 @@ export class AdminClient {
     context?: string | undefined;
     profile?: string | undefined;
     record?: boolean | undefined;
-    mode?: "llm" | "direct" | undefined;
+    mode?: "llm" | import("../domain/types.js").CallMode | undefined;
   }): Promise<{ request: CallRequest }> {
     return this.request("POST", "/requests", input);
   }
