@@ -965,3 +965,7 @@ already folded into `DECISIONS.md` (D-22…D-33) and need no re-derivation.
 
 Not yet done and deliberately deferred: the 13 planning artifacts are **uncommitted** —
 commit them path-scoped before any further work, or a crash loses the entire plan.
+
+*(Closed in the same session: committed path-scoped as `5ac4178`, signed, 1 ahead of
+`origin/main` and deliberately unpushed — George picks push-vs-PR. Verified
+`git rev-list --count origin/main..HEAD` → 1.)*
