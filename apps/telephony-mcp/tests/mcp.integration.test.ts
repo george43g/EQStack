@@ -1,16 +1,18 @@
 /**
- * MCP integration — the current registerTool surface end-to-end over the
- * SDK's in-memory transport, backed by a REAL gateway (fake telephony +
- * scripted LLM). Validates schemas, annotations, the two-stage approval
- * gate, idempotent retry, pagination, and concurrent history reads while a
- * call is live.
+ * MCP integration — the command-registry adapter end-to-end over the SDK's
+ * in-memory transport, backed by a REAL gateway (fake telephony + scripted
+ * LLM). Validates the golden tool-name pin, schemas, annotations, the
+ * two-stage approval gate, idempotent retry, pagination, concurrent history
+ * reads while a call is live, and the dispatcher's watchdog wiring.
  */
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { readWatchdogState } from "@george43g/robustness";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AdminClient } from "../src/client/admin-client.js";
+import { COMMAND_NAMES } from "../src/commands/specs.js";
 import type { Config } from "../src/config/schema.js";
 import { type Gateway, startGateway } from "../src/gateway/gateway.js";
 import { buildMcpServer } from "../src/mcp/server.js";
@@ -72,34 +74,19 @@ afterAll(async () => {
 });
 
 describe("tool surface", () => {
-  it("registers the full tool set with safety annotations", async () => {
+  it("serves exactly the command registry's 13 tools, with safety annotations", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(
-      [
-        "voice_prepare_call",
-        "voice_start_call",
-        "voice_end_call",
-        "voice_play_disclosure",
-        "voice_say",
-        "voice_set_recording",
-        "voice_list_calls",
-        "voice_get_call",
-        "voice_get_events",
-        "voice_get_transcript",
-        "voice_search_calls",
-        "voice_get_recording_metadata",
-        "voice_delete_recording",
-      ].sort(),
-    );
-    const start = tools.find((t) => t.name === "voice_start_call");
+    expect(COMMAND_NAMES).toHaveLength(13);
+    expect(names).toEqual([...COMMAND_NAMES].sort());
+    const start = tools.find((t) => t.name === "start_call");
     expect(start?.annotations?.destructiveHint).toBe(true);
     expect(start?.annotations?.openWorldHint).toBe(true);
     expect(start?.annotations?.idempotentHint).toBe(false);
     expect(start?.description).toMatch(/PAID/);
-    const list = tools.find((t) => t.name === "voice_list_calls");
+    const list = tools.find((t) => t.name === "list_calls");
     expect(list?.annotations?.readOnlyHint).toBe(true);
-    const del = tools.find((t) => t.name === "voice_delete_recording");
+    const del = tools.find((t) => t.name === "delete_recording");
     expect(del?.annotations?.destructiveHint).toBe(true);
   });
 
@@ -115,16 +102,16 @@ describe("tool surface", () => {
 describe("direct mode over MCP", () => {
   it("prepare accepts mode: direct and echoes it in the request", async () => {
     const result = await client.callTool({
-      name: "voice_prepare_call",
+      name: "prepare_call",
       arguments: { recipient: "george", objective: "talk directly", mode: "direct" },
     });
     const { request } = toolJson<{ request: { mode: string } }>(result);
     expect(request.mode).toBe("direct");
   });
 
-  it("voice_say without a live session is a tool error, not a crash", async () => {
+  it("say_on_call without a live session is a tool error, not a crash", async () => {
     const result = await client.callTool({
-      name: "voice_say",
+      name: "say_on_call",
       arguments: { callId: "no-such-call", text: "hello?" },
     });
     expect(result.isError).toBe(true);
@@ -137,7 +124,7 @@ describe("two-stage approval gate", () => {
 
   it("prepare returns an expiring request and dials nothing", async () => {
     const result = await client.callTool({
-      name: "voice_prepare_call",
+      name: "prepare_call",
       arguments: { recipient: "george", objective: "confirm the plumber quote" },
     });
     const { request } = toolJson<{
@@ -150,11 +137,11 @@ describe("two-stage approval gate", () => {
   });
 
   it("start_call rejects a missing/false confirm at the schema layer", async () => {
-    const missing = await client.callTool({ name: "voice_start_call", arguments: { requestId } });
+    const missing = await client.callTool({ name: "start_call", arguments: { requestId } });
     expect((missing as { isError?: boolean }).isError).toBe(true);
-    expect(toolText(missing)).toMatch(/validation|confirm/i);
+    expect(toolText(missing)).toMatch(/validation|invalid arguments|confirm/i);
     const explicit = await client.callTool({
-      name: "voice_start_call",
+      name: "start_call",
       arguments: { requestId, confirm: false },
     });
     expect((explicit as { isError?: boolean }).isError).toBe(true);
@@ -164,14 +151,14 @@ describe("two-stage approval gate", () => {
 
   it("start_call dials once; retries return the same call", async () => {
     const first = await client.callTool({
-      name: "voice_start_call",
+      name: "start_call",
       arguments: { requestId, confirm: true },
     });
     const { call } = toolJson<{ call: { id: string } }>(first);
     callId = call.id;
     expect(telephony.log.calls).toHaveLength(1);
     const retry = await client.callTool({
-      name: "voice_start_call",
+      name: "start_call",
       arguments: { requestId, confirm: true },
     });
     expect(toolJson<{ call: { id: string } }>(retry).call.id).toBe(callId);
@@ -180,27 +167,31 @@ describe("two-stage approval gate", () => {
 
   it("unknown recipients come back as tool errors, not dials", async () => {
     const result = await client.callTool({
-      name: "voice_prepare_call",
+      name: "prepare_call",
       arguments: { recipient: "stranger", objective: "x" },
     });
     expect((result as { isError?: boolean }).isError).toBe(true);
     expect(toolText(result)).toMatch(/allowlisted/);
+    expect(toolText(result)).toMatch(/Tool "prepare_call" failed/);
   });
 
   it("history reads work while the call is live (concurrent reader)", async () => {
-    const listResult = await client.callTool({ name: "voice_list_calls", arguments: {} });
+    const listResult = await client.callTool({ name: "list_calls", arguments: {} });
     const { calls } = toolJson<{ calls: Array<{ id: string; status: string }> }>(listResult);
     expect(calls.some((c) => c.id === callId)).toBe(true);
 
-    const getResult = await client.callTool({ name: "voice_get_call", arguments: { callId } });
+    const getResult = await client.callTool({ name: "get_call", arguments: { callId } });
     const got = toolJson<{ call: { id: string } }>(getResult);
     expect(got.call.id).toBe(callId);
 
     const events = await client.callTool({
-      name: "voice_get_events",
+      name: "get_call_events",
       arguments: { callId, afterSeq: 0, limit: 1 },
     });
-    const page = toolJson<{ events: Array<{ seq: number }>; nextCursor: number }>(events);
+    const page = (events as { structuredContent?: unknown }).structuredContent as {
+      events: Array<{ seq: number }>;
+      nextCursor: number;
+    };
     expect(page.events).toHaveLength(1);
     expect(page.nextCursor).toBe(page.events[0]?.seq);
   });
@@ -208,7 +199,7 @@ describe("two-stage approval gate", () => {
   it("set_recording honors consent policy over MCP", async () => {
     // live call is for a preconsented recipient; toggling off then on is allowed
     const off = await client.callTool({
-      name: "voice_set_recording",
+      name: "set_recording",
       arguments: { callId, enabled: false },
     });
     expect((off as { isError?: boolean }).isError).not.toBe(true);
@@ -216,20 +207,20 @@ describe("two-stage approval gate", () => {
   });
 
   it("end_call hangs up", async () => {
-    await client.callTool({ name: "voice_end_call", arguments: { callId, reason: "test over" } });
-    const result = await client.callTool({ name: "voice_get_call", arguments: { callId } });
+    await client.callTool({ name: "end_call", arguments: { callId, reason: "test over" } });
+    const result = await client.callTool({ name: "get_call", arguments: { callId } });
     expect(toolJson<{ call: { status: string } }>(result).call.status).toBe("completed");
   });
 
   it("delete_recording refuses without exact confirm literal", async () => {
     const refused = await client.callTool({
-      name: "voice_delete_recording",
+      name: "delete_recording",
       arguments: { recordingSid: "REx", scope: "local", confirm: false },
     });
     expect((refused as { isError?: boolean }).isError).toBe(true);
     expect(toolText(refused)).toMatch(/expected true/i);
     const bad = await client.callTool({
-      name: "voice_delete_recording",
+      name: "delete_recording",
       arguments: { recordingSid: "REmissing", scope: "local", confirm: true },
     });
     expect((bad as { isError?: boolean }).isError).toBe(true); // unknown recording
@@ -237,13 +228,13 @@ describe("two-stage approval gate", () => {
 
   it("search + transcript tools respond over MCP", async () => {
     const search = await client.callTool({
-      name: "voice_search_calls",
+      name: "search_calls",
       arguments: { query: "plumber" },
     });
     const found = toolJson<{ calls: Array<{ id: string }> }>(search);
     expect(found.calls.some((c) => c.id === callId)).toBe(true);
     const transcript = await client.callTool({
-      name: "voice_get_transcript",
+      name: "get_transcript",
       arguments: { callId },
     });
     expect(toolJson<{ transcript: unknown[] }>(transcript).transcript).toEqual([]);
@@ -254,5 +245,30 @@ describe("two-stage approval gate", () => {
     const text = (res.contents[0] as { text?: string }).text ?? "";
     expect(JSON.parse(text)).toMatchObject({ id: callId });
     expect(text).not.toContain("+61400111222");
+  });
+});
+
+describe("dispatcher watchdog wiring (verification 11.6)", () => {
+  // Liftable watchdog proof — closes Phase A Q-A3: a host parked in
+  // get_call_events long-polls must stay visible to the idle watchdog. The
+  // kit dispatcher calls noteActivity() before the handler runs, so even a
+  // quiet poll counts as activity.
+  //
+  // Copy this test into any package adopting mcp-kit's buildDispatcher. Do
+  // NOT try a partial vi.mock of @george43g/robustness with a noteActivity
+  // spy: mcp-kit is externalized by Vitest, so its dispatch.js imports
+  // robustness via Node's native ESM loader and never sees the mock (spy
+  // counts 0 — measured here 2026-09-02). Instead observe the state
+  // noteActivity() writes: both this file and mcp-kit resolve the SAME
+  // robustness module instance under pnpm, so readWatchdogState() exposes
+  // the exact lastActivityTs the idle monitor reads.
+  it("every dispatch records activity, so a long-polling host is never idle", async () => {
+    const before = readWatchdogState().lastActivityTs;
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await client.callTool({
+      name: "get_call_events",
+      arguments: { callId: "watchdog-probe" },
+    });
+    expect(readWatchdogState().lastActivityTs).toBeGreaterThan(before);
   });
 });
