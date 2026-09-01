@@ -177,14 +177,14 @@ the workstream should never be re-implemented at all.
 
 | # | Dropped / deferred | Displaced by | Re-implement in | Notes |
 |---|---|---|---|---|
-| L-1 | `errorContent()` returning bare `error.message` (`src/mcp/server.ts:44-49`) | `wrapToolError` | — (superseded, do not restore) | Bare messages are the thing INV-6 exists to stop. |
-| L-2 | Hand-rolled `printJson` (`src/cli.ts:38-40`) | cli-kit `printJson`/`printAuto` | — (superseded) | Output shape changes only under `--json`. |
-| L-3 | Version string mismatch: `package.json` `0.0.0` vs `VERSION = "0.1.0"` (`src/gateway/admin-server.ts:14`) | `buildProgram` needs one truth | **Phase A** (pick one) | `/healthz` reports `VERSION`; `AdminClient.health()` consumes it. |
+| L-1 ✅ | ~~`errorContent()` returning bare `error.message`~~ shipped via `wrapToolError` in Phase A | `wrapToolError` | — (superseded, do not restore) | Bare messages are the thing INV-6 exists to stop. |
+| L-2 ✅ | ~~Hand-rolled `printJson`~~ replaced in Phase A; `history list` renders a table in human mode | cli-kit `printJson`/`printAuto` | — (superseded) | Output shape changes only under `--json`. |
+| L-3 ✅ | ~~Version mismatch~~ closed in Phase A: truth = `package.json` (seeded 0.1.0), read once by `src/version.ts`; admin-server const deleted | `buildProgram` needs one truth | **Phase A** (done) | `/healthz` reports `VERSION`; `AdminClient.health()` consumes it. |
 | L-4 | mcp-kit dispatcher (timeout / perf `_meta` / abort / `noteActivity`) | — | **Phase B** | Needs a registry. Until then MCP tool calls have no timeout at all. |
 | L-5 | mcp-kit `startStdio` lifecycle (shutdown, stdin-EOF, orphan watch, watchdog, heap monitor) | — | **Phase B** | Deferred on purpose — see Q-A3. |
 | L-6 | mcp-kit `startHttpServer` (Streamable HTTP + bearer) | — | **Phase D/H** | D-7 puts MCP-HTTP in the daemon. |
 | L-7 | cli-kit `runRepl` console | — | **Phase G** | Console view is Phase G; the dispatcher it needs is Phase B. |
-| L-8 | cli-kit `bindEnvFlags` env↔flag binder | — | **Phase A if Q-A2 resolves, else Phase D** | Blocked on the env prefix decision. |
+| L-8 ✅ | ~~cli-kit `bindEnvFlags`~~ shipped in Phase A: all four `TEL_*` vars are flags, applied preAction with `setLogLevel` wired | — | **Phase A** (done; D-41 resolved the prefix) |
 | L-9 | `--mode llm\|direct` hand-validation (`src/cli.ts:153-155`) | Zod in the registry | **Phase B** | Duplicate of `admin-server.ts:123-125` — INV-5's exhibit A. |
 | L-10 | `--scope local\|provider\|both` hand-validation (`src/cli.ts:340-342`) | Zod in the registry | **Phase B** | Third copy of the same enum (`admin-server.ts:168`, `mcp/server.ts:432`). |
 
