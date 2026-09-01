@@ -94,6 +94,9 @@ Anchor = a SHA, a `file:line`, command output, or a dated attribution to George.
 | D-42 | **Metric names rename `voice_*` → `tel_*` in Phase A** — cheapest before Phase E multiplies series (D-27); nothing scrapes the app today (HANDOFF §5, stderr-only), so the 2026-08-02 baseline stays citable as tables in the brief | George 2026-09-02. **Closes O-14.** |
 | D-43 | **CLI one-shot: invoking is consent — no `--yes` flag**; `--dry-run` is the preview path | George 2026-09-02, mirroring the D-3 dial ruling. **Closes O-12.** |
 | D-44 | **mcp-kit pin bumps to 1.0.0 DURING Phase A**, not before — one PR carries pin + adoption so a kit regression bisects to a single commit; D-23 verified 1.0.0 is a strict superset and D-26 keeps the adoption partial (leaf helpers; dispatcher/transports wait for B) | Implementer call 2026-09-02, as O-20 assigned. **Closes O-20.** |
+| D-45 | **Resource URIs rename `voice://` → `tel://` in Phase A** (`src/mcp/server.ts:454,483,502`); no persistence depends on the scheme, hosts re-list on connect | George 2026-09-02. Closes Q-A4 |
+| D-46 | **A→B transient tool names accepted** — `mcp__telephony-mcp__voice_*` may be visible for one release window; audience is this machine only (`private: true`, INV-15). A does not wait for B | George 2026-09-02. Closes Q-A5 |
+| D-47 | **D-40 execution synthesis** — George chose *automatic* migration ("first `tel` run"), the phase file had designed an explicit `tel migrate-state --yes`; reconciled as: migration runs at process startup **before the DB opens**, from any entry point, guarded by (new dir absent ∧ old present ∧ no live process holds the DB ∧ WAL checkpointed) with a dated `cp -a` backup first. Startup-only means it can never fire mid-call; the lock probe means it skips instead of corrupting when another process is live | Implementer call 2026-09-02, honouring both D-40 and PHASE-A Step 7's hazard note |
 
 ---
 
