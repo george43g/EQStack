@@ -27,7 +27,7 @@ import { buildClientRegistry } from "./commands/bind-client.js";
 import { deleteRecording, prepareCall } from "./commands/specs.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
 import { startGateway } from "./gateway/gateway.js";
-import { logger, setLogLevel } from "./log.js";
+import { setLogLevel } from "./log.js";
 import { runStdioMcp } from "./mcp/server.js";
 import { migrateLegacyState } from "./migrate-state.js";
 import { configPath, dbPath, recordingsDir } from "./paths.js";
