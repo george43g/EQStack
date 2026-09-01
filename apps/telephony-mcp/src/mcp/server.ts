@@ -1,5 +1,5 @@
 /**
- * voice-mcp stdio MCP server.
+ * telephony-mcp stdio MCP server.
  *
  * Mutations proxy the localhost admin API (the serve process is the single
  * writer); history reads open the sqlite store read-only, so a second MCP
@@ -55,9 +55,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
   const withReadStore = <T>(fn: (store: SqliteStore) => T): T => {
     const store = openReadStore();
     if (!store) {
-      throw new Error(
-        "no call history yet (state database does not exist — run voice-mcp serve first)",
-      );
+      throw new Error("no call history yet (state database does not exist — run tel serve first)");
     }
     try {
       return fn(store);
@@ -66,7 +64,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     }
   };
 
-  const server = new McpServer({ name: "voice-mcp", version: VERSION });
+  const server = new McpServer({ name: "telephony-mcp", version: VERSION });
 
   // ── Stage 1: prepare ─────────────────────────────────────────────────────
   server.registerTool(
@@ -451,11 +449,11 @@ export function buildMcpServer(deps: McpDeps): McpServer {
   // ── Resources ────────────────────────────────────────────────────────────
   server.registerResource(
     "call",
-    new ResourceTemplate("voice://calls/{callId}", {
+    new ResourceTemplate("tel://calls/{callId}", {
       list: async () => ({
         resources: withReadStoreSafe((s) =>
           s.listCalls({ limit: 50 }).map((c) => ({
-            uri: `voice://calls/${c.id}`,
+            uri: `tel://calls/${c.id}`,
             name: `call ${c.id} (${c.recipientAlias}, ${c.status})`,
             mimeType: "application/json",
           })),
@@ -480,7 +478,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
 
   server.registerResource(
     "transcript",
-    new ResourceTemplate("voice://calls/{callId}/transcript", { list: undefined }),
+    new ResourceTemplate("tel://calls/{callId}/transcript", { list: undefined }),
     { title: "Call transcript", description: "Finalized utterances as JSON" },
     async (uri, { callId }) => ({
       contents: [
@@ -499,7 +497,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
 
   server.registerResource(
     "events",
-    new ResourceTemplate("voice://calls/{callId}/events", { list: undefined }),
+    new ResourceTemplate("tel://calls/{callId}/events", { list: undefined }),
     { title: "Call events", description: "Per-call event log as JSON" },
     async (uri, { callId }) => ({
       contents: [

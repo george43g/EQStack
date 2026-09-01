@@ -101,7 +101,7 @@ export type TelephonyConfig = z.infer<typeof TelephonySchema>;
 
 export const ServerSchema = z
   .object({
-    /** Public HTTPS base (tunnel) — REQUIRED by `voice-mcp serve` at startup. */
+    /** Public HTTPS base (tunnel) — REQUIRED by `tel serve` at startup. */
     publicBaseUrl: z.string().url().startsWith("https://").optional(),
     publicPort: z.number().int().min(1).max(65535).default(8790),
     /** Admin/observability listener binds 127.0.0.1 only — never public. */

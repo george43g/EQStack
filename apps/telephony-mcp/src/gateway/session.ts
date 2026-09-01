@@ -155,7 +155,7 @@ export class RelaySession implements LiveSession {
           firstToken = false;
           const now = this.deps.clock.nowMs();
           this.deps.metrics
-            .histogram("voice_first_model_token_ms", "End of turn → first model token")
+            .histogram("tel_first_model_token_ms", "End of turn → first model token")
             .observe(now - endOfTurnMs);
           this.service.store.upsertTiming({
             callId: this.call.id,
@@ -172,7 +172,7 @@ export class RelaySession implements LiveSession {
         if (isFirstSend) {
           const now = this.deps.clock.nowMs();
           this.deps.metrics
-            .histogram("voice_first_token_to_twilio_ms", "End of turn → first token sent to Twilio")
+            .histogram("tel_first_token_to_twilio_ms", "End of turn → first token sent to Twilio")
             .observe(now - endOfTurnMs);
           this.service.store.upsertTiming({
             callId: this.call.id,
@@ -190,7 +190,7 @@ export class RelaySession implements LiveSession {
       }
     } catch (err) {
       this.service.emit(this.call.id, "llm.error", { turn, error: (err as Error).message });
-      this.deps.metrics.counter("voice_llm_errors_total", "LLM turn failures").inc();
+      this.deps.metrics.counter("tel_llm_errors_total", "LLM turn failures").inc();
       if (!this.closed) {
         // Stop safely: apologize-and-end beats dead air on a live phone line.
         this.ws.send(endFrame({ reason: "llm_error" }));
@@ -216,7 +216,7 @@ export class RelaySession implements LiveSession {
       turn: this.turn,
       spokenChars: utteranceUntilInterrupt.length,
     });
-    this.deps.metrics.counter("voice_interruptions_total", "Barge-ins").inc();
+    this.deps.metrics.counter("tel_interruptions_total", "Barge-ins").inc();
     // Keep history faithful to what was actually HEARD, not what we generated.
     this.finalizeAssistant(this.turn, true, utteranceUntilInterrupt || this.assistantPartial);
   }

@@ -3,7 +3,7 @@
  * start, end, disclosure, recording toggle, deletion) flows through here via
  * the localhost admin API; the public listener only feeds it validated
  * Twilio callbacks. Events append to the store AND fan out to live
- * subscribers (SSE / `voice-mcp watch`).
+ * subscribers (SSE / `tel watch`).
  */
 
 import { randomUUID } from "node:crypto";

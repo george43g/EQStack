@@ -1,5 +1,5 @@
 /**
- * Gateway assembly — what `voice-mcp serve` runs: build adapters from
+ * Gateway assembly — what `tel serve` runs: build adapters from
  * config + secrets, open the single-writer store, then start the public
  * listener (Twilio only) and the localhost admin listener.
  */

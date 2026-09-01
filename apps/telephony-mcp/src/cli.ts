@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * voice-mcp CLI — three entrypoints over the same domain services:
- *   voice-mcp mcp     stdio MCP server (stderr-only logging)
- *   voice-mcp serve   public Twilio listener + localhost admin listener
- *   voice-mcp …       operator commands (doctor, prepare, call, watch,
+ * telephony-mcp CLI (`tel`) — three entrypoints over the same domain services:
+ *   tel mcp     stdio MCP server (stderr-only logging)
+ *   tel serve   public Twilio listener + localhost admin listener
+ *   tel …       operator commands (doctor, prepare, call, watch,
  *                     recording play|export|delete, history …)
  */
 import { spawn } from "node:child_process";
@@ -31,7 +31,7 @@ function admin(cfg: Config): AdminClient {
 }
 
 function fail(err: unknown): never {
-  console.error(`voice-mcp: ${(err as Error).message}`);
+  console.error(`tel: ${(err as Error).message}`);
   process.exit(1);
 }
 
@@ -40,7 +40,7 @@ function printJson(value: unknown): void {
 }
 
 const program = new Command();
-program.name("voice-mcp").description("Agent-initiated real-time phone calls (MCP + gateway)");
+program.name("tel").description("Agent-initiated real-time phone calls (MCP + gateway)");
 
 program
   .command("mcp")
@@ -163,7 +163,7 @@ program
         ...(opts.mode ? { mode: opts.mode as "llm" | "direct" } : {}),
       });
       printJson(request);
-      console.error(`\nTo dial: voice-mcp call ${request.id} --yes   (REAL, PAID phone call)`);
+      console.error(`\nTo dial: tel call ${request.id} --yes   (REAL, PAID phone call)`);
     } catch (err) {
       fail(err);
     }
@@ -172,7 +172,7 @@ program
 program
   .command("call")
   .description("Stage 2: dial a prepared request (REAL, PAID phone call — requires --yes)")
-  .argument("<requestId>", "request id from `voice-mcp prepare`")
+  .argument("<requestId>", "request id from `tel prepare`")
   .option("--yes", "explicit confirmation to dial", false)
   .action(async (requestId: string, opts: { yes: boolean }) => {
     try {
@@ -182,7 +182,7 @@ program
       const cfg = loadConfig();
       const { call } = await admin(cfg).start(requestId, true);
       printJson(call);
-      console.error(`\nWatch live: voice-mcp watch`);
+      console.error(`\nWatch live: tel watch`);
     } catch (err) {
       fail(err);
     }
@@ -297,7 +297,7 @@ recording
     try {
       const store = new EncryptedRecordingStore(recordingsDir());
       const plain = await store.load(recordingSid);
-      const dir = mkdtempSync(join(tmpdir(), "voice-mcp-play-"));
+      const dir = mkdtempSync(join(tmpdir(), "tel-play-"));
       const wav = join(dir, `${recordingSid}.wav`);
       writeFileSync(wav, plain, { mode: 0o600 });
       await new Promise<void>((resolve, reject) => {

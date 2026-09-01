@@ -8,7 +8,7 @@ import type { CallEvent, CallRecord, CallRequest, Utterance } from "../domain/ty
 export class GatewayUnavailableError extends Error {
   constructor(adminPort: number) {
     super(
-      `voice-mcp gateway is not running (nothing listening on 127.0.0.1:${adminPort}) — start it with \`voice-mcp serve\``,
+      `telephony-mcp gateway is not running (nothing listening on 127.0.0.1:${adminPort}) — start it with \`tel serve\``,
     );
   }
 }

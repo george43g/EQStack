@@ -38,7 +38,7 @@ describe("EncryptedRecordingStore", () => {
   const key = randomBytes(32);
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "voice-mcp-rec-"));
+    dir = mkdtempSync(join(tmpdir(), "tel-rec-"));
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });

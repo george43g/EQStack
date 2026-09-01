@@ -1,11 +1,11 @@
 {
-  "name": "voice-mcp",
+  "name": "telephony-mcp",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "description": "Local-first MCP server + telephony gateway: agent-initiated real-time phone calls via Twilio ConversationRelay, an OpenAI-compatible LLM (OpenRouter), and ElevenLabs voice.",
   "bin": {
-    "voice-mcp": "./dist/cli.js"
+    "tel": "./dist/cli.js"
   },
   "engines": {
     "node": ">=24"
@@ -43,6 +43,7 @@
   "keywords": [
     "mcp",
     "voice",
+    "telephony",
     "telephony",
     "twilio",
     "conversationrelay"

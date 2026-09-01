@@ -360,7 +360,7 @@ describe("full simulated call", () => {
     const metrics = await fetch(`http://127.0.0.1:${ADMIN_PORT}/metrics`);
     const text = await metrics.text();
     expect(text).toContain("voice_calls_total");
-    expect(text).toContain("voice_first_model_token_ms_bucket");
+    expect(text).toContain("tel_first_model_token_ms_bucket");
     const poll = await admin.pollGlobalEvents(0);
     expect(poll.events.length).toBeGreaterThan(5);
     // events are strictly ordered for cursor consumers

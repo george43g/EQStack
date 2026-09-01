@@ -102,12 +102,12 @@ describe("tool surface", () => {
     expect(del?.annotations?.destructiveHint).toBe(true);
   });
 
-  it("lists voice:// resources", async () => {
+  it("lists tel:// resources", async () => {
     const { resourceTemplates } = await client.listResourceTemplates();
     const uris = resourceTemplates.map((r) => r.uriTemplate);
-    expect(uris).toContain("voice://calls/{callId}");
-    expect(uris).toContain("voice://calls/{callId}/transcript");
-    expect(uris).toContain("voice://calls/{callId}/events");
+    expect(uris).toContain("tel://calls/{callId}");
+    expect(uris).toContain("tel://calls/{callId}/transcript");
+    expect(uris).toContain("tel://calls/{callId}/events");
   });
 });
 
@@ -248,8 +248,8 @@ describe("two-stage approval gate", () => {
     expect(toolJson<{ transcript: unknown[] }>(transcript).transcript).toEqual([]);
   });
 
-  it("reads a voice:// resource", async () => {
-    const res = await client.readResource({ uri: `voice://calls/${callId}` });
+  it("reads a tel:// resource", async () => {
+    const res = await client.readResource({ uri: `tel://calls/${callId}` });
     const text = (res.contents[0] as { text?: string }).text ?? "";
     expect(JSON.parse(text)).toMatchObject({ id: callId });
     expect(text).not.toContain("+61400111222");

@@ -136,7 +136,7 @@ export class PublicServer {
         params,
       )
     ) {
-      this.deps.metrics.counter("voice_rejected_callbacks_total", "Signature failures").inc();
+      this.deps.metrics.counter("tel_rejected_callbacks_total", "Signature failures").inc();
       res.writeHead(403);
       res.end();
       return;
@@ -148,7 +148,7 @@ export class PublicServer {
         await this.deps.service.handleRecordingCallback(params);
       }
       this.deps.metrics
-        .histogram("voice_callback_latency_ms", "Callback processing time")
+        .histogram("tel_callback_latency_ms", "Callback processing time")
         .observe(this.deps.clock.nowMs() - started);
       res.writeHead(204);
       res.end();

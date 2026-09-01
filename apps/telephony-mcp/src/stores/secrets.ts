@@ -8,12 +8,12 @@
  * "opkeep" on 2026-08-06 (opkeep lib/config.sh OPKEEP_SERVICE default);
  * this default was stranded on the old name until 2026-08-16, silently
  * reading a pre-re-key TWILIO_AUTH_TOKEN. Rollback / alternate cache:
- * VOICE_MCP_KEYCHAIN_SERVICE.
+ * TEL_KEYCHAIN_SERVICE.
  */
 import { execFile } from "node:child_process";
 
 const SECURITY_BIN = "/usr/bin/security";
-const KEYCHAIN_SERVICE = process.env.VOICE_MCP_KEYCHAIN_SERVICE ?? "opkeep";
+const KEYCHAIN_SERVICE = process.env.TEL_KEYCHAIN_SERVICE ?? "opkeep";
 
 export type ExecFileFn = (file: string, args: string[]) => Promise<{ stdout: string }>;
 

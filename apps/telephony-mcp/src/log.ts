@@ -9,7 +9,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 
 const LEVEL_RANK: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
-let minLevel: LogLevel = (process.env.VOICE_MCP_LOG_LEVEL as LogLevel) || "info";
+let minLevel: LogLevel = (process.env.TEL_LOG_LEVEL as LogLevel) || "info";
 
 export function setLogLevel(level: LogLevel): void {
   minLevel = level;

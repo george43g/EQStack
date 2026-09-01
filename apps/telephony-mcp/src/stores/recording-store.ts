@@ -2,7 +2,8 @@
  * Encrypted recording storage.
  *
  * File format: "VMC1" magic (4) | IV (12) | GCM tag (16) | ciphertext.
- * Key: 32 random bytes held in the macOS Keychain (service "voice-mcp",
+ * Key: 32 random bytes held in the macOS Keychain (service "voice-mcp" — FROZEN legacy
+ * identifier, see INV-13 / D-24: renaming it strands every existing recording;
  * account "recording-key", hex-encoded), created on first use. Tests inject
  * a key provider instead. Recordings are retained until explicit deletion.
  */
@@ -69,7 +70,7 @@ export function encryptRecording(key: Buffer, plain: Uint8Array): Buffer {
 
 export function decryptRecording(key: Buffer, file: Buffer): Buffer {
   if (file.length < 4 + 12 + 16 || !file.subarray(0, 4).equals(MAGIC)) {
-    throw new Error("not a voice-mcp encrypted recording (bad header)");
+    throw new Error("not a telephony-mcp encrypted recording (bad header)");
   }
   const iv = file.subarray(4, 16);
   const tag = file.subarray(16, 32);
