@@ -10,17 +10,25 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  applyEnvFromFlags,
+  bindEnvFlags,
+  buildProgram,
+  type EnvFlagBinding,
+  printAuto,
+  printJson,
+} from "@george43g/cli-kit";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { Command } from "commander";
 import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
 import { startGateway } from "./gateway/gateway.js";
-import { logger } from "./log.js";
+import { logger, setLogLevel } from "./log.js";
 import { buildMcpServer } from "./mcp/server.js";
 import { configPath, dbPath, recordingsDir } from "./paths.js";
 import { EncryptedRecordingStore } from "./stores/recording-store.js";
 import { EnvKeychainSecretProvider } from "./stores/secrets.js";
 import { SqliteStore } from "./stores/sqlite-store.js";
+import { VERSION } from "./version.js";
 
 function loadConfig(): Config {
   return loadConfigFile(configPath());
@@ -35,12 +43,25 @@ function fail(err: unknown): never {
   process.exit(1);
 }
 
-function printJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
-}
+const program = buildProgram({
+  name: "tel",
+  description: "Agent-initiated real-time phone calls (MCP + gateway)",
+  version: VERSION,
+});
 
-const program = new Command();
-program.name("tel").description("Agent-initiated real-time phone calls (MCP + gateway)");
+/** Every TEL_* env var is also a flag (cli-kit binder; ledger L-8 closed). */
+const ENV_BINDINGS: EnvFlagBinding[] = [
+  { envVar: "TEL_CONFIG", description: "Path to config.json" },
+  { envVar: "TEL_STATE_DIR", description: "State directory override" },
+  { envVar: "TEL_LOG_LEVEL", description: "Log level: debug|info|warn|error" },
+  { envVar: "TEL_KEYCHAIN_SERVICE", description: "Keychain service for secret lookups" },
+];
+bindEnvFlags(program, ENV_BINDINGS, { stripPrefixes: ["TEL_"] });
+program.hook("preAction", () => {
+  applyEnvFromFlags(program, ENV_BINDINGS, { stripPrefixes: ["TEL_"] });
+  const lvl = process.env.TEL_LOG_LEVEL;
+  if (lvl === "debug" || lvl === "info" || lvl === "warn" || lvl === "error") setLogLevel(lvl);
+});
 
 program
   .command("mcp")
@@ -243,7 +264,22 @@ history
   .description("List calls, newest first")
   .option("--limit <n>", "max rows", "20")
   .action((opts: { limit: string }) => {
-    printJson(withReadStore((s) => s.listCalls({ limit: Number(opts.limit) })));
+    const calls = withReadStore((s) => s.listCalls({ limit: Number(opts.limit) }));
+    printAuto(
+      calls,
+      {
+        head: ["id", "to", "alias", "status", "created", "ended"],
+        rows: (c) => [
+          c.id,
+          `…${c.numberSuffix}`,
+          c.recipientAlias,
+          c.status,
+          new Date(c.createdAtMs).toISOString(),
+          c.endedAtMs ? new Date(c.endedAtMs).toISOString() : "—",
+        ],
+      },
+      program.opts(),
+    );
   });
 
 history

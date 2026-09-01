@@ -5,7 +5,7 @@
  * (they resolve at runtime via SecretProvider by variable name).
  *
  * Default location: ~/.config/voice-mcp/config.json
- * (override: VOICE_MCP_CONFIG=/path/to/config.json)
+ * (override: TEL_CONFIG=/path/to/config.json)
  */
 import { readFileSync } from "node:fs";
 import { z } from "zod";

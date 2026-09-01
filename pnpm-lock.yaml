@@ -278,6 +278,12 @@ importers:
 
   apps/telephony-mcp:
     dependencies:
+      '@george43g/cli-kit':
+        specifier: ^2.0.1
+        version: 2.0.1(commander@14.0.3)
+      '@george43g/mcp-kit':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@george43g/robustness':
         specifier: ^0.12.0
         version: 0.12.0
@@ -1029,6 +1035,16 @@ packages:
   '@fastify/busboy@2.1.1':
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
     engines: {node: '>=14'}
+
+  '@george43g/cli-kit@2.0.1':
+    resolution: {integrity: sha512-vcV78yfHQSjDwgmPc5VefOnIA1U9ub8LsJPxa1+CXJBbJhsDTdLEUouH0JhVIeaAPNfhXaHIfm0xFFPZmLSimQ==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      commander: ^14.0.0
+
+  '@george43g/mcp-kit@1.0.0':
+    resolution: {integrity: sha512-kCgJKDIzDHvrSILgJtcPv4R1MwCfSxRDwBNYrM+kEnT0D8jBydP0s0qFTFLStdxz8JKmDFmEcQP5rSgE7f4LOA==}
+    engines: {node: '>=24'}
 
   '@george43g/robustness@0.12.0':
     resolution: {integrity: sha512-oFne6RLHZWSVfMQCRaRocIzIgTfW822QcxyaUQzax9fyRsVcv2vbNjSDipD2jM/SaWSQppu1344En5HLuF+Ujw==}
@@ -5180,6 +5196,22 @@ snapshots:
     optional: true
 
   '@fastify/busboy@2.1.1': {}
+
+  '@george43g/cli-kit@2.0.1(commander@14.0.3)':
+    dependencies:
+      cli-table3: 0.6.5
+      commander: 14.0.3
+      picocolors: 1.1.1
+
+  '@george43g/mcp-kit@1.0.0':
+    dependencies:
+      '@george43g/robustness': 0.12.0
+      '@modelcontextprotocol/sdk': 1.30.0(zod@3.25.76)
+      zod: 3.25.76
+      zod-to-json-schema: 3.25.2(zod@3.25.76)
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - supports-color
 
   '@george43g/robustness@0.12.0': {}
 

@@ -8,10 +8,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { redactValue } from "@george43g/robustness";
 import type { CallEvent } from "../domain/types.js";
 import { logger } from "../log.js";
+import { VERSION } from "../version.js";
 import { type CallService, CallServiceError } from "./call-service.js";
 import type { Metrics } from "./metrics.js";
-
-export const VERSION = "0.1.0";
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const text = JSON.stringify(body);

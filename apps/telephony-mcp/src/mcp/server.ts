@@ -13,14 +13,16 @@
  * scope + confirmation.
  */
 import { existsSync } from "node:fs";
+import { sanitizeContent, wrapToolError, wrapUntrusted } from "@george43g/mcp-kit";
 import { redactValue } from "@george43g/robustness";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AdminClient } from "../client/admin-client.js";
 import type { Config } from "../config/schema.js";
-import { VERSION } from "../gateway/admin-server.js";
+import type { CallEvent, Utterance } from "../domain/types.js";
 import { dbPath } from "../paths.js";
 import { SqliteStore } from "../stores/sqlite-store.js";
+import { VERSION } from "../version.js";
 
 export interface McpDeps {
   cfg: Config;
@@ -41,11 +43,23 @@ function jsonContent(value: unknown) {
   };
 }
 
-function errorContent(err: unknown) {
+function errorContent(tool: string, err: unknown) {
   return {
-    content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }],
+    content: [{ type: "text" as const, text: wrapToolError(tool, (err as Error).message) }],
     isError: true,
   };
+}
+
+/** Third-party speech exits here: strip control chars, mark callee text untrusted. */
+function cleanUtterance(u: Utterance): Utterance {
+  const text = sanitizeContent(u.text);
+  return { ...u, text: u.role === "user" ? wrapUntrusted(text) : text };
+}
+
+function cleanEvent(e: CallEvent): CallEvent {
+  return typeof e.data.text === "string"
+    ? { ...e, data: { ...e.data, text: wrapUntrusted(sanitizeContent(e.data.text)) } }
+    : e;
 }
 
 export function buildMcpServer(deps: McpDeps): McpServer {
@@ -110,7 +124,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
             "Confirm these details with the user, then call voice_start_call { requestId, confirm: true }. This will place a REAL, PAID phone call.",
         });
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_prepare_call", err);
       }
     },
   );
@@ -138,7 +152,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         const { call } = await admin.start(requestId, confirm);
         return jsonContent({ call });
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_start_call", err);
       }
     },
   );
@@ -165,7 +179,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         await admin.endCall(callId, reason);
         return jsonContent({ ok: true });
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_end_call", err);
       }
     },
   );
@@ -189,7 +203,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         await admin.playDisclosure(callId);
         return jsonContent({ ok: true });
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_play_disclosure", err);
       }
     },
   );
@@ -216,7 +230,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         await admin.say(callId, text);
         return jsonContent({ ok: true, spokenChars: text.length });
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_say", err);
       }
     },
   );
@@ -240,7 +254,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         await admin.setRecording(callId, enabled);
         return jsonContent({ ok: true, enabled });
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_set_recording", err);
       }
     },
   );
@@ -271,7 +285,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
           ),
         });
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_list_calls", err);
       }
     },
   );
@@ -303,7 +317,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
           }),
         );
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_get_call", err);
       }
     },
   );
@@ -335,13 +349,14 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     },
     async ({ callId, afterSeq, limit, waitMs }) => {
       try {
-        const events = waitMs
+        const raw = waitMs
           ? (await admin.getEvents(callId, afterSeq ?? 0, limit ?? 200, waitMs)).events
           : withReadStore((s) => s.getEvents(callId, afterSeq ?? 0, limit ?? 200));
+        const events = raw.map(cleanEvent);
         const last = events[events.length - 1];
         return jsonContent({ events, nextCursor: last ? last.seq : (afterSeq ?? 0) });
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_get_events", err);
       }
     },
   );
@@ -361,9 +376,11 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     },
     async ({ callId }) => {
       try {
-        return jsonContent({ transcript: withReadStore((s) => s.getTranscript(callId)) });
+        return jsonContent({
+          transcript: withReadStore((s) => s.getTranscript(callId)).map(cleanUtterance),
+        });
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_get_transcript", err);
       }
     },
   );
@@ -386,11 +403,11 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         return jsonContent(
           withReadStore((s) => ({
             calls: s.searchCalls(query, limit ?? 20),
-            utterances: s.searchTranscripts(query, limit ?? 20),
+            utterances: s.searchTranscripts(query, limit ?? 20).map(cleanUtterance),
           })),
         );
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_search_calls", err);
       }
     },
   );
@@ -413,7 +430,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       try {
         return jsonContent({ recordings: withReadStore((s) => s.getRecordingsForCall(callId)) });
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_get_recording_metadata", err);
       }
     },
   );
@@ -441,7 +458,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       try {
         return jsonContent(await admin.deleteRecording(recordingSid, scope, confirm));
       } catch (err) {
-        return errorContent(err);
+        return errorContent("voice_delete_recording", err);
       }
     },
   );
@@ -486,7 +503,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
           uri: uri.href,
           mimeType: "application/json",
           text: JSON.stringify(
-            redactValue(withReadStore((s) => s.getTranscript(String(callId)))),
+            redactValue(withReadStore((s) => s.getTranscript(String(callId))).map(cleanUtterance)),
             null,
             2,
           ),
@@ -505,7 +522,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
           uri: uri.href,
           mimeType: "application/json",
           text: JSON.stringify(
-            redactValue(withReadStore((s) => s.getEvents(String(callId), 0, 500))),
+            redactValue(withReadStore((s) => s.getEvents(String(callId), 0, 500)).map(cleanEvent)),
             null,
             2,
           ),

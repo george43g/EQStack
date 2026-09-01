@@ -1,6 +1,6 @@
 {
   "name": "telephony-mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Local-first MCP server + telephony gateway: agent-initiated real-time phone calls via Twilio ConversationRelay, an OpenAI-compatible LLM (OpenRouter), and ElevenLabs voice.",
@@ -23,6 +23,8 @@
     "clean": "rm -rf dist coverage"
   },
   "dependencies": {
+    "@george43g/cli-kit": "^2.0.1",
+    "@george43g/mcp-kit": "^1.0.0",
     "@george43g/robustness": "^0.12.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^14.0.0",

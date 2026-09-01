@@ -58,7 +58,7 @@ export function testConfig(overrides: Record<string, unknown> = {}): Config {
 
 export function tempStateDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "voice-mcp-test-"));
-  process.env.VOICE_MCP_STATE_DIR = dir;
+  process.env.TEL_STATE_DIR = dir;
   return dir;
 }
 

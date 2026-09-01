@@ -1,22 +1,21 @@
 /**
  * Filesystem layout.
  *
- *  config  ~/.config/voice-mcp/config.json        (human-edited; VOICE_MCP_CONFIG overrides)
+ *  config  ~/.config/voice-mcp/config.json        (human-edited; TEL_CONFIG overrides)
  *  state   ~/Library/Application Support/voice-mcp (machine state, 0700;
- *          VOICE_MCP_STATE_DIR overrides — tests point this at a temp dir)
+ *          TEL_STATE_DIR overrides — tests point this at a temp dir)
  */
 import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export function configPath(): string {
-  return process.env.VOICE_MCP_CONFIG ?? join(homedir(), ".config", "voice-mcp", "config.json");
+  return process.env.TEL_CONFIG ?? join(homedir(), ".config", "voice-mcp", "config.json");
 }
 
 export function stateDir(): string {
   return (
-    process.env.VOICE_MCP_STATE_DIR ??
-    join(homedir(), "Library", "Application Support", "voice-mcp")
+    process.env.TEL_STATE_DIR ?? join(homedir(), "Library", "Application Support", "voice-mcp")
   );
 }
 
