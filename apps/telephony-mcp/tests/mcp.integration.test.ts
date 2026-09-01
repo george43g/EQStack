@@ -57,7 +57,8 @@ beforeAll(async () => {
   const server = buildMcpServer({
     cfg,
     admin: new AdminClient(ADMIN_PORT),
-    openReadStore: () => new SqliteStore(join(stateDir, "voice-mcp.sqlite3"), { readonly: true }),
+    openReadStore: () =>
+      new SqliteStore(join(stateDir, "telephony-mcp.sqlite3"), { readonly: true }),
   });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   client = new Client({ name: "test-client", version: "0.0.0" });

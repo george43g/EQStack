@@ -24,6 +24,7 @@ import { type Config, loadConfigFile } from "./config/schema.js";
 import { startGateway } from "./gateway/gateway.js";
 import { logger, setLogLevel } from "./log.js";
 import { buildMcpServer } from "./mcp/server.js";
+import { migrateLegacyState } from "./migrate-state.js";
 import { configPath, dbPath, recordingsDir } from "./paths.js";
 import { EncryptedRecordingStore } from "./stores/recording-store.js";
 import { EnvKeychainSecretProvider } from "./stores/secrets.js";
@@ -388,5 +389,11 @@ recording
       fail(err);
     }
   });
+
+// D-40/D-47: legacy voice-mcp → telephony-mcp state migration. Startup-only,
+// before any command touches the DB; skips (with a warning) when another
+// process still holds the legacy DB, and paths.ts then falls back to reading
+// the legacy locations so nothing silently disappears.
+migrateLegacyState();
 
 program.parseAsync(process.argv).catch(fail);
