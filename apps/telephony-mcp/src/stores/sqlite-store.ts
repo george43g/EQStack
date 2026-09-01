@@ -15,7 +15,7 @@ import type {
   TurnTiming,
   Utterance,
 } from "../domain/types.js";
-import { TERMINAL_STATUSES } from "../domain/types.js";
+import { normalizeCallMode, TERMINAL_STATUSES } from "../domain/types.js";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS call_requests (
@@ -207,7 +207,7 @@ export class SqliteStore implements EventStore {
       objective: r.objective as string,
       context: (r.context as string | null) ?? null,
       profile: r.profile as string,
-      mode: (r.mode as "llm" | "direct" | undefined) ?? "llm",
+      mode: normalizeCallMode(r.mode),
       recordingEnabled: r.recording_enabled === 1,
       maxDurationSec: r.max_duration_sec as number,
       createdAtMs: r.created_at_ms as number,

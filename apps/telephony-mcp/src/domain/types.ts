@@ -67,11 +67,81 @@ export interface RecordingMeta {
 }
 
 /**
- * Who conducts the conversation: "llm" streams the configured model's replies;
- * "direct" records the callee's utterances and waits for the MCP host to
- * answer via voice_say — the host IS the conversational brain.
+ * Who conducts the conversation (D-34 taxonomy, four modes):
+ *   direct     — the MCP host IS the conversational brain: it waits for each
+ *                turn.user event and answers verbatim via say_on_call.
+ *   delegate   — a briefed ElevenLabs agent runs the whole call off-device.
+ *   consult    — delegate, plus the EL agent may call back into our MCP
+ *                mid-call and speak the answer.
+ *   byo-model  — our gateway streams a configured model's replies (today's
+ *                implemented LLM loop; the legacy persisted name is "llm").
+ *
+ * Adding a mode is adding a CALL_MODES member plus a CALL_MODE_SPECS row —
+ * never a new string comparison. Session code branches on spec predicates.
  */
-export type CallMode = "llm" | "direct";
+export const CALL_MODES = ["direct", "delegate", "consult", "byo-model"] as const;
+export type CallMode = (typeof CALL_MODES)[number];
+
+/** Legacy persisted/input values accepted for one deprecation window. */
+export const LEGACY_MODE_ALIASES: Readonly<Record<string, CallMode>> = { llm: "byo-model" };
+
+export interface CallModeSpec {
+  /** Does OUR gateway run an LLM loop for each turn? */
+  gatewayDrivesTurns: boolean;
+  /** Does the MCP host answer each turn via say_on_call? */
+  hostAnswersTurns: boolean;
+  /** Does ElevenLabs own the call leg (laptop out of the media path — INV-7)? */
+  mediaPathOffDevice: boolean;
+  /** May the call re-enter our MCP mid-turn (the consult loop)? */
+  supportsConsult: boolean;
+  /** False until the mode's phase ships; construction is refused meanwhile. */
+  implemented: boolean;
+}
+
+export const CALL_MODE_SPECS: Record<CallMode, CallModeSpec> = {
+  direct: {
+    gatewayDrivesTurns: false,
+    hostAnswersTurns: true,
+    mediaPathOffDevice: false,
+    supportsConsult: false,
+    implemented: true,
+  },
+  delegate: {
+    gatewayDrivesTurns: false,
+    hostAnswersTurns: false,
+    mediaPathOffDevice: true,
+    supportsConsult: false,
+    implemented: false,
+  },
+  consult: {
+    gatewayDrivesTurns: false,
+    hostAnswersTurns: false,
+    mediaPathOffDevice: true,
+    supportsConsult: true,
+    implemented: false,
+  },
+  "byo-model": {
+    gatewayDrivesTurns: true,
+    hostAnswersTurns: false,
+    mediaPathOffDevice: false,
+    supportsConsult: false,
+    implemented: true,
+  },
+};
+
+/**
+ * Normalize a raw persisted/input mode value: maps legacy aliases, degrades
+ * unknown values (a newer DB read by an older binary) to "byo-model" instead
+ * of type-lying via a cast. Pure — callers compare in/out to decide to warn.
+ */
+export function normalizeCallMode(raw: unknown): CallMode {
+  if (typeof raw === "string") {
+    if ((CALL_MODES as readonly string[]).includes(raw)) return raw as CallMode;
+    const alias = LEGACY_MODE_ALIASES[raw];
+    if (alias) return alias;
+  }
+  return "byo-model";
+}
 
 export interface CallRequest {
   id: string;

@@ -12,9 +12,15 @@ and the migration manifest (this tool is slated to move out of life-stack).
    current user authorization.** `voice_start_call` / `tel call` dial a
    real person and cost money. Tests must use the fake adapters
    (`tests/helpers.ts`) — the default suite makes no network calls.
-2. **Never weaken the two-stage flow**: prepare (expiring request) → start
-   (explicit `confirm: true`), idempotent retry via `startedCallId`. Any
-   change here needs tests proving no double dial.
+2. **[RETIRED 2026-09-02]** This rule read: *"Never weaken the two-stage
+   flow: prepare (expiring request) → start (explicit `confirm: true`),
+   idempotent retry via `startedCallId`. Any change here needs tests proving
+   no double dial."* RETIRED 2026-09-02 by D-5/D-25/D-38
+   (`docs/plans/two-way-calling/DECISIONS.md`) — Phase B keeps the two stages
+   (behaviour-neutral, D-25); Phase C ships the one-shot `place_call`
+   (dryRun + idempotency preserved). The invariant that SURVIVES is:
+   **dialing stays explicit, previewable, and idempotent** — and any change
+   to the dial path still needs tests proving no double dial.
 3. **Consent invariants are load-bearing** (`src/domain/consent.ts`): `never`
    is unrecordable; `manual` starts unrecorded and disclosure/recording are
    separate explicit tools that nothing invokes automatically. Keep the tests

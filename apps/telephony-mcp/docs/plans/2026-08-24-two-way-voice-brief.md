@@ -92,7 +92,7 @@ Those four are the actual project.
 | Recording consent is a **separate** concern | `src/domain/consent.ts` (entire file) |
 | `publicBaseUrl` is manual config; `serve` refuses without it | `src/config/schema.ts:105`, `src/gateway/gateway.ts:62` |
 | No tunnel automation anywhere in `src/` | grep: only comments referencing it |
-| 14 MCP tools, two-stage prepare→start | `src/mcp/server.ts` |
+| 13 MCP tools (corrected 2026-09-02, see DECISIONS D-22: `grep -c registerTool` = 13), two-stage prepare→start | `src/mcp/server.ts` |
 
 ### Measured performance (2026-08-02 smoke call, single run)
 

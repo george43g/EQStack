@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * telephony-mcp CLI (`tel`) — three entrypoints over the same domain services:
+ * telephony-mcp CLI (`tel`) — entrypoints over the same domain services:
  *   tel mcp     stdio MCP server (stderr-only logging)
  *   tel serve   public Twilio listener + localhost admin listener
+ *   tel console interactive REPL over the shared command registry
  *   tel …       operator commands (doctor, prepare, call, watch,
  *                     recording play|export|delete, history …)
  */
@@ -17,13 +18,17 @@ import {
   type EnvFlagBinding,
   printAuto,
   printJson,
+  runRepl,
 } from "@george43g/cli-kit";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { buildDispatcher } from "@george43g/mcp-kit";
+import { ZodError, type z } from "zod";
 import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
+import { buildClientRegistry } from "./commands/bind-client.js";
+import { deleteRecording, prepareCall } from "./commands/specs.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
 import { startGateway } from "./gateway/gateway.js";
-import { logger, setLogLevel } from "./log.js";
-import { buildMcpServer } from "./mcp/server.js";
+import { setLogLevel } from "./log.js";
+import { runStdioMcp } from "./mcp/server.js";
 import { migrateLegacyState } from "./migrate-state.js";
 import { configPath, dbPath, recordingsDir } from "./paths.js";
 import { EncryptedRecordingStore } from "./stores/recording-store.js";
@@ -42,6 +47,24 @@ function admin(cfg: Config): AdminClient {
 function fail(err: unknown): never {
   console.error(`tel: ${(err as Error).message}`);
   process.exit(1);
+}
+
+/**
+ * Parse assembled CLI args with a command spec's input schema (Phase B step 9:
+ * the hand-validation that was ledger rows L-9/L-10 now lives in the shared
+ * contracts). The first Zod issue surfaces through fail() as one line.
+ */
+function parseInput<T extends z.ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
+  try {
+    return schema.parse(value);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      const issue = err.issues[0];
+      const field = issue && issue.path.length > 0 ? issue.path.join(".") : "input";
+      fail(new Error(`${field}: ${issue?.message ?? "invalid input"}`));
+    }
+    throw err;
+  }
 }
 
 const program = buildProgram({
@@ -70,9 +93,36 @@ program
   .action(async () => {
     try {
       const cfg = loadConfig();
-      const server = buildMcpServer({ cfg, admin: admin(cfg) });
-      await server.connect(new StdioServerTransport());
-      logger.info("mcp server on stdio");
+      // mcp-kit lifecycle: shutdown traps, stdin-EOF, orphan watch, watchdog,
+      // heap monitor (Phase A ledger L-5; long-poll feeds the watchdog via the
+      // dispatcher's noteActivity — pinned in tests/mcp.integration.test.ts).
+      await runStdioMcp({ cfg, admin: admin(cfg) });
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+program
+  .command("console")
+  .description("Interactive REPL over the shared command registry (same tools as the MCP server)")
+  .action(async () => {
+    try {
+      const cfg = loadConfig();
+      const registry = buildClientRegistry({
+        admin: admin(cfg),
+        // Same default the MCP server uses: read-only sqlite, or null until first serve.
+        openReadStore: () =>
+          existsSync(dbPath()) ? new SqliteStore(dbPath(), { readonly: true }) : null,
+      });
+      const dispatch = buildDispatcher({ registry, engineLabel: () => "ts" });
+      await runRepl({
+        prompt: "tel> ",
+        dispatcher: {
+          listTools: () =>
+            registry.tools.map((t) => ({ name: t.name, description: t.description })),
+          callTool: (name, args) => dispatch(name, args),
+        },
+      });
     } catch (err) {
       fail(err);
     }
@@ -169,21 +219,22 @@ program
   .option("--profile <name>", "call profile")
   .option("--record", "request recording (subject to recipient policy)")
   .option("--no-record", "request no recording")
-  .option("--mode <mode>", "conversation driver: llm (default) | direct (host replies via say)")
+  .option(
+    "--mode <mode>",
+    "conversation driver: byo-model (default; legacy alias llm) | direct (host replies via say)",
+  )
   .action(async (recipient: string, opts) => {
     try {
-      if (opts.mode !== undefined && opts.mode !== "llm" && opts.mode !== "direct") {
-        fail(new Error("--mode must be llm | direct"));
-      }
-      const cfg = loadConfig();
-      const { request } = await admin(cfg).prepare({
+      const input = parseInput(prepareCall.input, {
         recipient,
         objective: opts.objective,
         ...(opts.context ? { context: opts.context } : {}),
         ...(opts.profile ? { profile: opts.profile } : {}),
         ...(opts.record !== undefined ? { record: opts.record } : {}),
-        ...(opts.mode ? { mode: opts.mode as "llm" | "direct" } : {}),
+        ...(opts.mode ? { mode: opts.mode } : {}),
       });
+      const cfg = loadConfig();
+      const { request } = await admin(cfg).prepare(input);
       printJson(request);
       console.error(`\nTo dial: tel call ${request.id} --yes   (REAL, PAID phone call)`);
     } catch (err) {
@@ -374,17 +425,13 @@ recording
   .action(async (recordingSid: string, opts: { scope: string; yes: boolean }) => {
     try {
       if (!opts.yes) fail(new Error("refusing to delete without --yes"));
-      if (!["local", "provider", "both"].includes(opts.scope)) {
-        fail(new Error("--scope must be local | provider | both"));
-      }
+      const input = parseInput(deleteRecording.input, {
+        recordingSid,
+        scope: opts.scope,
+        confirm: true,
+      });
       const cfg = loadConfig();
-      printJson(
-        await admin(cfg).deleteRecording(
-          recordingSid,
-          opts.scope as "local" | "provider" | "both",
-          true,
-        ),
-      );
+      printJson(await admin(cfg).deleteRecording(input.recordingSid, input.scope, input.confirm));
     } catch (err) {
       fail(err);
     }

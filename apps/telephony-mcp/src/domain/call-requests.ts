@@ -15,6 +15,7 @@ import { type Config, ConfigError, effectiveCallSettings } from "../config/schem
 import { ConsentError, initialRecordingState } from "./consent.js";
 import type { Clock, EventStore, IdProvider } from "./ports.js";
 import type { CallMode, CallRequest } from "./types.js";
+import { CALL_MODE_SPECS } from "./types.js";
 
 export class CallRequestError extends Error {}
 
@@ -47,6 +48,10 @@ export function prepareCallRequest(
     input.record,
     settings.profile.record,
   );
+  const mode = input.mode ?? "byo-model";
+  if (!CALL_MODE_SPECS[mode].implemented) {
+    throw new CallRequestError(`call mode '${mode}' is not implemented yet`);
+  }
   const now = clock.nowMs();
   const request: CallRequest = {
     id: ids.newId(),
@@ -55,7 +60,7 @@ export function prepareCallRequest(
     objective: input.objective,
     context: input.context ?? null,
     profile: profileName,
-    mode: input.mode ?? "llm",
+    mode,
     recordingEnabled,
     maxDurationSec: settings.maxDurationSec,
     createdAtMs: now,

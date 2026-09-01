@@ -9,6 +9,7 @@ import type { WebSocket } from "ws";
 import { endFrame, parseRelayMessage, textFrame } from "../adapters/telephony/relay-messages.js";
 import type { ChatMessage, Clock, LlmAdapter } from "../domain/ports.js";
 import type { CallMode, CallRecord } from "../domain/types.js";
+import { CALL_MODE_SPECS } from "../domain/types.js";
 import { logger } from "../log.js";
 import type { CallService, LiveSession } from "./call-service.js";
 import type { Metrics } from "./metrics.js";
@@ -28,7 +29,12 @@ export class RelaySession implements LiveSession {
   private currentAbort: AbortController | null = null;
   private assistantPartial = "";
   private closed = false;
+  /** Mutable so a later phase can hand off modes mid-call (Phase K seam). */
   private mode: CallMode;
+
+  private get modeSpec() {
+    return CALL_MODE_SPECS[this.mode];
+  }
 
   constructor(
     private ws: WebSocket,
@@ -36,7 +42,7 @@ export class RelaySession implements LiveSession {
     private service: CallService,
     private deps: SessionDeps,
   ) {
-    this.mode = service.store.getCallRequest(call.requestId)?.mode ?? "llm";
+    this.mode = service.store.getCallRequest(call.requestId)?.mode ?? "byo-model";
     const objectiveBlock = [
       `Objective of this call: ${call.objective}`,
       ...(this.requestContext()
@@ -122,7 +128,7 @@ export class RelaySession implements LiveSession {
     this.service.emit(this.call.id, "turn.user", {
       turn,
       chars: userText.length,
-      ...(this.mode === "direct" ? { text: userText } : {}),
+      ...(this.modeSpec.hostAnswersTurns ? { text: userText } : {}),
     });
     this.service.store.upsertTiming({
       callId: this.call.id,
@@ -133,8 +139,8 @@ export class RelaySession implements LiveSession {
       interruptedAtMs: null,
     });
 
-    // Direct mode: the MCP host is the brain — the reply arrives via voice_say.
-    if (this.mode === "direct") return;
+    // Host-answered modes: the MCP host is the brain — the reply arrives via say_on_call.
+    if (!this.modeSpec.gatewayDrivesTurns) return;
 
     const abort = new AbortController();
     this.currentAbort = abort;
