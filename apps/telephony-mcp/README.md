@@ -29,8 +29,7 @@ MCP host ── stdio ──► tel mcp ─┐ (mutations via localhost admin AP
 | `tel mcp` | stdio MCP server (stderr-only logging) |
 | `tel serve` | public Twilio listener + localhost-only admin/observability listener |
 | `tel doctor` | config / state / secret-presence / gateway health checks (offline-safe) |
-| `tel prepare <alias> --objective … [--mode llm\|direct]` | stage 1: expiring call request, nothing dialed |
-| `tel call <requestId> --yes` | stage 2: dial (REAL, PAID call) |
+| `tel call <to> --objective … [--mode byo-model\|direct] [--dry-run]` | place a call (REAL, PAID) — alias or any E.164; `--dry-run` previews, invoking is consent |
 | `tel say <callId> <text>` | speak text verbatim into a live call (direct-mode reply path) |
 | `tel watch` | live SSE event tail |
 | `tel history list\|show\|transcript\|search` | local call history (FTS5) |
@@ -63,25 +62,30 @@ config.
 
 ## Conversation modes
 
-Chosen per call via `voice_prepare_call { mode }` (or `prepare --mode`):
+Chosen per call via `place_call { mode }` (or `tel call --mode`):
 
-- **`llm`** (default): the configured OpenRouter model conducts the call from
-  the objective + system prompt. Sub-second warm turns.
-- **`direct`** ("walkie-talkie mode"): the gateway runs **no** LLM loop — it
-  records the callee's utterance (text inlined on the `turn.user` event) and
-  waits. The **MCP host is the brain**: long-poll
-  `voice_get_events { waitMs }` for the next `turn.user`, then reply verbatim
-  with `voice_say`. A human talks directly to the agent; per-reply latency is
-  a few seconds (one MCP round-trip + one model turn). In direct mode there is
-  no system-prompted LLM mediating what is spoken — the two-stage dial gate,
-  allowlist, redaction, and consent invariants still apply.
+- **`byo-model`** (default; legacy alias `llm`): the configured OpenRouter
+  model conducts the call from the objective + system prompt. Sub-second warm
+  turns.
+- **`direct`**: the gateway runs **no** LLM loop — it records the callee's
+  utterance (text inlined on the `turn.user` event) and waits. The **MCP host
+  is the brain**: long-poll `get_call_events { waitMs }` for the next
+  `turn.user`, then reply verbatim with `say_on_call`. A human talks directly
+  to the agent; per-reply latency is a few seconds (one MCP round-trip + one
+  model turn). In direct mode there is no system-prompted LLM mediating what
+  is spoken — redaction and consent invariants still apply.
+- **`delegate`** / **`consult`** (reserved): ElevenLabs-agent modes; refuse
+  until their phases ship.
 
 ## Safety model
 
-- **Two-stage dialing**: `voice_prepare_call` returns an expiring request;
-  `voice_start_call` needs that id + `confirm: true` and is annotated
-  paid/destructive/non-idempotent/open-world. Retries return the
-  already-created call — never a second dial.
+- **One-shot dialing, honestly annotated**: `place_call` dials any configured
+  alias or raw E.164 — invoking it IS the consent (the MCP host's permission
+  prompt is the human checkpoint; the tool is annotated paid / destructive /
+  open-world). `dryRun` previews the resolved plan without dialing. Identical
+  retries inside the dedupe window return the already-created call — never a
+  second dial — via a keyed (HMAC, per-install secret) idempotency claim.
+  Ad-hoc numbers start unrecorded (`recordingPolicy: "manual"`).
 - **Consent**: `never` recipients cannot be recorded, ever. `manual`
   recipients start unrecorded; the disclosure line
   (`voice_play_disclosure`) and recording activation
@@ -104,11 +108,11 @@ pnpm --filter telephony-mcp typecheck
 pnpm --filter telephony-mcp lint               # (no mise in this repo)
 ```
 
-Tests cover: config strictness, consent matrix, redaction, request
-expiry/idempotency, Twilio signatures, out-of-order/replayed callbacks, FTS
+Tests cover: config strictness, consent matrix, redaction, keyed
+dedupe/idempotency, Twilio signatures, out-of-order/replayed callbacks, FTS
 search, encryption round-trips, OpenRouter SSE contract (comment frames,
 interruption, mid-stream errors, fallback), a full simulated WebSocket call,
-direct-mode (no-LLM invariant, verbatim `voice_say`, `waitMs` long-poll,
+direct-mode (no-LLM invariant, verbatim `say_on_call`, `waitMs` long-poll,
 say-refused-without-session), and the MCP tool surface over the SDK's
 in-memory transport.
 

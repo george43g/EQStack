@@ -43,7 +43,7 @@
     "maxConcurrentCalls": 1,
     "defaultMaxDurationMinutes": 15,
     "hardMaxDurationMinutes": 30,
-    "callRequestTtlMinutes": 10
+    "callDedupeWindowSeconds": 120
   },
   "disclosure": {
     "text": "Just so you know, I'm an AI assistant and this call may be recorded from this point."
