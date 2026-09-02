@@ -138,6 +138,32 @@ program
     }
   });
 
+program
+  .command("timings")
+  .description("Per-leg latency percentiles from call history (Phase E report)")
+  .option("--last <n>", "how many recent calls", "50")
+  .option("--call <callId>", "scope to one call")
+  .action(async (opts: { last: string; call?: string }) => {
+    try {
+      const cfg = loadConfig();
+      const registry = buildClientRegistry({
+        admin: admin(cfg),
+        openReadStore: () =>
+          existsSync(dbPath()) ? new SqliteStore(dbPath(), { readonly: true }) : null,
+      });
+      const dispatch = buildDispatcher({ registry, engineLabel: () => "ts" });
+      const result = await dispatch("get_latency_report", {
+        lastCalls: Number(opts.last),
+        ...(opts.call ? { callId: opts.call } : {}),
+      });
+      if (result.isError)
+        fail(new Error(result.content[0]?.type === "text" ? result.content[0].text : "failed"));
+      printJson(result.structuredContent);
+    } catch (err) {
+      fail(err);
+    }
+  });
+
 const daemon = program
   .command("daemon")
   .description("Manage the launchd LaunchAgent that keeps `tel serve` running (D-9/D-37)");

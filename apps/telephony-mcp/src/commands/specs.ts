@@ -208,6 +208,36 @@ export const searchCalls = {
   annotations: READ_ONLY,
 } satisfies CommandSpec;
 
+export const getLatencyReport = {
+  name: "get_latency_report",
+  description:
+    "Per-leg latency percentiles (p50/p90/p99) over the most recent calls, split by mode: direct.pickup/think/egress/turn and byo-model.firstToken[ToTwilio]. Phase F sizes its masking bed and Phase R its response_timeout_secs from this. Optionally scope to one callId.",
+  input: z.object({
+    lastCalls: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .optional()
+      .describe("How many recent calls (default 50)"),
+    callId: CallIdSchema.optional().describe("Scope to one call"),
+  }),
+  output: z.object({
+    calls: z.number().int(),
+    turns: z.number().int(),
+    legs: z.record(
+      z.object({
+        n: z.number().int(),
+        p50: z.number(),
+        p90: z.number(),
+        p99: z.number(),
+        maxMs: z.number(),
+      }),
+    ),
+  }),
+  annotations: READ_ONLY,
+} satisfies CommandSpec;
+
 export const getRecordingMetadata = {
   name: "get_recording_metadata",
   description:
@@ -247,6 +277,7 @@ export const ALL_COMMANDS = [
   getCallEvents,
   getTranscript,
   searchCalls,
+  getLatencyReport,
   getRecordingMetadata,
   deleteRecording,
 ] as const;

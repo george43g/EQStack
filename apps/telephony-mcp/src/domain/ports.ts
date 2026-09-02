@@ -111,7 +111,8 @@ export interface EventStore {
   getRecordingsForCall(callId: string): RecordingMeta[];
   markRecordingDeleted(providerRecordingId: string, scope: "local" | "provider"): void;
 
-  upsertTiming(t: TurnTiming): void;
+  upsertTiming(t: Pick<TurnTiming, "callId" | "turn"> & Partial<TurnTiming>): void;
+  stampDeliveredIfUnset(callId: string, turn: number, ms: number): void;
   getTimings(callId: string): TurnTiming[];
 
   close(): void;

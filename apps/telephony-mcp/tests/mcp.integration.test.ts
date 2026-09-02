@@ -74,10 +74,10 @@ afterAll(async () => {
 });
 
 describe("tool surface", () => {
-  it("serves exactly the command registry's 12 tools, with safety annotations", async () => {
+  it("serves exactly the command registry's 13 tools, with safety annotations", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(COMMAND_NAMES).toHaveLength(12);
+    expect(COMMAND_NAMES).toHaveLength(13);
     expect(names).toEqual([...COMMAND_NAMES].sort());
     const place = tools.find((t) => t.name === "place_call");
     expect(place?.annotations?.destructiveHint).toBe(true);

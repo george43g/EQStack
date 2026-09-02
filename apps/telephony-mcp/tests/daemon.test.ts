@@ -3,7 +3,7 @@
  * (1-4), renderPlist snapshot (5), supervisor state machine with injected
  * spawn/fetch/clock (6-12). No tunnel, no network, no launchctl (INV-14).
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

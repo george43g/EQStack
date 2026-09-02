@@ -6,12 +6,14 @@
  * No network, no paid calls: fake telephony + scripted LLM.
  */
 import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { computeTwilioSignature } from "../src/adapters/telephony/twilio-signature.js";
 import { AdminClient } from "../src/client/admin-client.js";
 import type { Config } from "../src/config/schema.js";
 import { type Gateway, startGateway } from "../src/gateway/gateway.js";
+import { SqliteStore } from "../src/stores/sqlite-store.js";
 import {
   FakeSecrets,
   FakeTelephony,
@@ -379,6 +381,15 @@ describe("full simulated call", () => {
 
 describe("direct mode: the MCP host is the conversational brain", () => {
   let callId: string;
+  function readTimings(): Array<Record<string, number | null>> {
+    const s = new SqliteStore(join(stateDir, "telephony-mcp.sqlite3"), { readonly: true });
+    try {
+      return s.getTimings(callId) as unknown as Array<Record<string, number | null>>;
+    } finally {
+      s.close();
+    }
+  }
+
   let providerCallId: string;
   let ws: WebSocket;
   let frames: FrameCollector;
@@ -426,6 +437,29 @@ describe("direct mode: the MCP host is the conversational brain", () => {
     expect(events.some((e) => e.type === "turn.assistant" && e.data.verbatim === true)).toBe(true);
   });
 
+  it("8.1+8.2: all four Phase E marks land, ordered; a re-poll cannot move pickup", async () => {
+    const t1 = readTimings().find((x) => x.turn === 1);
+    expect(t1?.endOfTurnMs).not.toBeNull();
+    expect(t1?.deliveredToHostMs).not.toBeNull();
+    expect(t1?.replyReceivedMs).not.toBeNull();
+    expect(t1?.firstTokenToTwilioMs).not.toBeNull();
+    // Causal order holds, but two marks stamped independently (session vs the
+    // HTTP events poll) can tie or invert by ~1ms under wall clock — the phase
+    // file's own caveat. Assert the contract that matters: reply ≥ end-of-turn
+    // and the frame is sent no earlier than the reply arrived.
+    expect(t1?.firstTokenToTwilioMs ?? 0).toBeGreaterThanOrEqual(t1?.replyReceivedMs ?? 0);
+    expect(t1?.replyReceivedMs ?? 0).toBeGreaterThanOrEqual(t1?.endOfTurnMs ?? 0);
+    const before = t1?.deliveredToHostMs;
+    await admin.getEvents(callId, 0, 200); // re-poll the same events
+    const after = readTimings().find((x) => x.turn === 1)?.deliveredToHostMs;
+    expect(after).toBe(before); // COALESCE: first delivery wins
+    const { events } = await admin.getEvents(callId);
+    const timing = events.find((e) => e.type === "turn.timing");
+    expect(timing?.data.turn).toBe(1);
+    expect(timing?.data.stale).toBeUndefined();
+    expect(typeof timing?.data.totalMs).toBe("number");
+  });
+
   it("long-poll waitMs resolves as soon as the next utterance arrives", async () => {
     const { events: before } = await admin.getEvents(callId);
     const cursor = before[before.length - 1]?.seq ?? 0;
@@ -440,6 +474,32 @@ describe("direct mode: the MCP host is the conversational brain", () => {
       true,
     );
     expect(llm.requests.length).toBe(llmCallsBefore);
+  });
+
+  it("8.3: a reply after a newer prompt is attributed to the OLDER turn, stale", async () => {
+    // turn 2 is pending from the long-poll test; a third prompt arrives first
+    ws.send(JSON.stringify({ type: "prompt", voicePrompt: "Third utterance", last: true }));
+    await new Promise((r) => setTimeout(r, 100));
+    await admin.say(callId, "Sorry, answering your earlier question.");
+    const { events } = await admin.getEvents(callId);
+    const staleTiming = events.filter((e) => e.type === "turn.timing").at(-1);
+    expect(staleTiming?.data.turn).toBe(2); // the older, unanswered turn
+    expect(staleTiming?.data.stale).toBe(true);
+    expect(readTimings().find((x) => x.turn === 2)?.replyReceivedMs).not.toBeNull();
+  });
+
+  it("8.4+8.5: an unanswered turn leaves later marks null and no timing event; direct series scrape", async () => {
+    ws.send(JSON.stringify({ type: "prompt", voicePrompt: "Never answered", last: true }));
+    await new Promise((r) => setTimeout(r, 100));
+    const t4 = readTimings().find((x) => x.turn === 4);
+    expect(t4?.replyReceivedMs ?? null).toBeNull();
+    expect(t4?.firstTokenToTwilioMs ?? null).toBeNull();
+    const { events } = await admin.getEvents(callId);
+    expect(events.some((e) => e.type === "turn.timing" && e.data.turn === 4)).toBe(false);
+    const metricsText = await (await fetch(`http://127.0.0.1:${ADMIN_PORT}/metrics`)).text();
+    expect(metricsText).toContain("tel_direct_turn_ms_bucket");
+    expect(metricsText).toContain('le="20000"'); // widened buckets, not the 5000 default
+    expect(metricsText).toContain("tel_first_model_token_ms_bucket"); // llm series unchanged
   });
 
   it("say refuses once the session is gone", async () => {

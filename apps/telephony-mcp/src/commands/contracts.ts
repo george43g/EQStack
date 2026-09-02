@@ -131,6 +131,8 @@ export const TurnTimingSchema: z.ZodType<TurnTiming> = z.object({
   firstModelTokenMs: z.number().nullable(),
   firstTokenToTwilioMs: z.number().nullable(),
   interruptedAtMs: z.number().nullable(),
+  deliveredToHostMs: z.number().nullable(),
+  replyReceivedMs: z.number().nullable(),
 });
 
 export const RecordingMetaSchema: z.ZodType<RecordingMeta> = z.object({

@@ -269,6 +269,14 @@ export class AdminServer {
         await this.waitForCallEvent(callId, waitMs, res);
         events = this.service.store.getEvents(callId, afterSeq, limit);
       }
+      // Phase E: the pickup mark — the FIRST delivery of each turn.user wins
+      // (COALESCE in upsertTiming; a re-poll of the same cursor cannot move it).
+      for (const ev of events) {
+        if (ev.type === "turn.user") {
+          const parsed = z.object({ turn: z.number().int() }).safeParse(ev.data);
+          if (parsed.success) this.service.markDelivered(callId, parsed.data.turn);
+        }
+      }
       // D-28/INV-11: same redaction as the SSE path.
       return json(res, 200, redactValue({ events }));
     }

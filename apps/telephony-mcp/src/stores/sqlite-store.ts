@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS timings (
   first_model_token_ms INTEGER,
   first_token_to_twilio_ms INTEGER,
   interrupted_at_ms INTEGER,
+  delivered_to_host_ms INTEGER,
+  reply_received_ms INTEGER,
   PRIMARY KEY (call_id, turn)
 );
 CREATE TABLE IF NOT EXISTS relay_tokens (
@@ -176,6 +178,13 @@ export class SqliteStore implements EventStore {
     this.db.exec(
       "CREATE TABLE IF NOT EXISTS call_idempotency (key TEXT PRIMARY KEY, call_id TEXT NOT NULL, created_at_ms INTEGER NOT NULL)",
     );
+    for (const col of ["delivered_to_host_ms", "reply_received_ms"]) {
+      try {
+        this.db.exec(`ALTER TABLE timings ADD COLUMN ${col} INTEGER`);
+      } catch {
+        // column already exists
+      }
+    }
   }
 
   // -- call requests --------------------------------------------------------
@@ -541,26 +550,45 @@ export class SqliteStore implements EventStore {
 
   // -- timings --------------------------------------------------------------
 
-  upsertTiming(t: TurnTiming): void {
+  upsertTiming(t: Pick<TurnTiming, "callId" | "turn"> & Partial<TurnTiming>): void {
     this.db
       .prepare(
         `INSERT INTO timings (call_id, turn, end_of_turn_ms, first_model_token_ms,
-           first_token_to_twilio_ms, interrupted_at_ms)
-         VALUES (?, ?, ?, ?, ?, ?)
+           first_token_to_twilio_ms, interrupted_at_ms, delivered_to_host_ms, reply_received_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (call_id, turn) DO UPDATE SET
            end_of_turn_ms = COALESCE(excluded.end_of_turn_ms, timings.end_of_turn_ms),
            first_model_token_ms = COALESCE(excluded.first_model_token_ms, timings.first_model_token_ms),
            first_token_to_twilio_ms = COALESCE(excluded.first_token_to_twilio_ms, timings.first_token_to_twilio_ms),
-           interrupted_at_ms = COALESCE(excluded.interrupted_at_ms, timings.interrupted_at_ms)`,
+           interrupted_at_ms = COALESCE(excluded.interrupted_at_ms, timings.interrupted_at_ms),
+           delivered_to_host_ms = COALESCE(excluded.delivered_to_host_ms, timings.delivered_to_host_ms),
+           reply_received_ms = COALESCE(excluded.reply_received_ms, timings.reply_received_ms)`,
       )
       .run(
         t.callId,
         t.turn,
-        t.endOfTurnMs,
-        t.firstModelTokenMs,
-        t.firstTokenToTwilioMs,
-        t.interruptedAtMs,
+        t.endOfTurnMs ?? null,
+        t.firstModelTokenMs ?? null,
+        t.firstTokenToTwilioMs ?? null,
+        t.interruptedAtMs ?? null,
+        t.deliveredToHostMs ?? null,
+        t.replyReceivedMs ?? null,
       );
+  }
+
+  /**
+   * First-write-wins pickup stamp (Phase E). upsertTiming's
+   * COALESCE(excluded, existing) is last-write-wins for an ALWAYS-non-null
+   * value, so a re-poll would move it; this conditional UPDATE only sets the
+   * column while it is still null, atomically.
+   */
+  stampDeliveredIfUnset(callId: string, turn: number, ms: number): void {
+    this.db
+      .prepare(
+        `UPDATE timings SET delivered_to_host_ms = ?
+         WHERE call_id = ? AND turn = ? AND delivered_to_host_ms IS NULL`,
+      )
+      .run(ms, callId, turn);
   }
 
   getTimings(callId: string): TurnTiming[] {
@@ -574,6 +602,8 @@ export class SqliteStore implements EventStore {
       firstModelTokenMs: (r.first_model_token_ms as number | null) ?? null,
       firstTokenToTwilioMs: (r.first_token_to_twilio_ms as number | null) ?? null,
       interruptedAtMs: (r.interrupted_at_ms as number | null) ?? null,
+      deliveredToHostMs: (r.delivered_to_host_ms as number | null) ?? null,
+      replyReceivedMs: (r.reply_received_ms as number | null) ?? null,
     }));
   }
 
