@@ -237,7 +237,9 @@ export const SendMessageOutputSchema = z.object({
     .number()
     .int()
     .optional()
-    .describe("chat.db error code when status is 'failed' (e.g. 22 = iMessage to an SMS-only number)."),
+    .describe(
+      "chat.db error code when status is 'failed' (e.g. 22 = iMessage to an SMS-only number).",
+    ),
   attachments: z
     .array(
       z.object({
