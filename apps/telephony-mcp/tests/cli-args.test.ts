@@ -42,8 +42,8 @@ async function runCli(args: string[]): Promise<{ code: number; stdout: string; s
 }
 
 describe("cli schema validation (L-9/L-10 replaced by command specs)", () => {
-  it("prepare --mode bogus exits 1 with a one-line schema error, no stack", async () => {
-    const { code, stderr } = await runCli(["prepare", "x", "--objective", "y", "--mode", "bogus"]);
+  it("call --mode bogus exits 1 with a one-line schema error, no stack", async () => {
+    const { code, stderr } = await runCli(["call", "x", "--objective", "y", "--mode", "bogus"]);
     expect(code).toBe(1);
     expect(stderr).toMatch(/^tel: mode: /);
     expect(stderr.trim().split("\n")).toHaveLength(1);

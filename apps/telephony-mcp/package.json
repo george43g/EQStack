@@ -24,8 +24,8 @@
   },
   "dependencies": {
     "@george43g/cli-kit": "^2.0.1",
-    "@george43g/mcp-kit": "^1.0.0",
-    "@george43g/robustness": "^0.12.0",
+    "@george43g/mcp-kit": "^2.0.0",
+    "@george43g/robustness": "^0.14.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^14.0.0",
     "ws": "^8.21.3",

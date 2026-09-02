@@ -12,7 +12,8 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CallModeInputSchema } from "../src/commands/contracts.js";
-import { CallRequestError, prepareCallRequest } from "../src/domain/call-requests.js";
+import { buildCallPlan, CallRequestError, createCallRequest } from "../src/domain/call-requests.js";
+import { resolveRecipient } from "../src/domain/recipients.js";
 import {
   CALL_MODE_SPECS,
   CALL_MODES,
@@ -100,11 +101,17 @@ describe("unknown-mode degradation through sqlite (verification item 8)", () => 
     const dbPath = join(dir, "test.sqlite3");
     try {
       const store = new SqliteStore(dbPath);
-      const request = prepareCallRequest(testConfig(), store, new FixedClock(), seqIds(), {
-        recipient: "george",
-        objective: "pin unknown-mode degradation",
-        mode: "direct",
-      });
+      const cfg0 = testConfig();
+      const request = createCallRequest(
+        buildCallPlan(cfg0, resolveRecipient(cfg0, "george"), {
+          to: "george",
+          objective: "pin unknown-mode degradation",
+          mode: "direct",
+        }),
+        store,
+        new FixedClock(),
+        seqIds(),
+      );
       expect(store.getCallRequest(request.id)?.mode).toBe("direct");
       store.close();
 
@@ -126,7 +133,7 @@ describe("unknown-mode degradation through sqlite (verification item 8)", () => 
   });
 });
 
-describe("prepareCallRequest refuses unimplemented modes", () => {
+describe("buildCallPlan refuses unimplemented modes", () => {
   const cfg = testConfig();
   const clock = new FixedClock();
 
@@ -142,13 +149,9 @@ describe("prepareCallRequest refuses unimplemented modes", () => {
   }
 
   it.each(["delegate", "consult"] as const)("refuses '%s' until its phase ships", (mode) => {
-    withStore((store) => {
+    withStore(() => {
       const attempt = () =>
-        prepareCallRequest(cfg, store, clock, seqIds(), {
-          recipient: "george",
-          objective: "x",
-          mode,
-        });
+        buildCallPlan(cfg, resolveRecipient(cfg, "george"), { to: "george", objective: "x", mode });
       expect(attempt).toThrow(CallRequestError);
       expect(attempt).toThrow(/not implemented/);
     });
@@ -156,11 +159,12 @@ describe("prepareCallRequest refuses unimplemented modes", () => {
 
   it.each(["direct", "byo-model"] as const)("accepts implemented mode '%s'", (mode) => {
     withStore((store) => {
-      const request = prepareCallRequest(cfg, store, clock, seqIds(), {
-        recipient: "george",
-        objective: "x",
-        mode,
-      });
+      const request = createCallRequest(
+        buildCallPlan(cfg, resolveRecipient(cfg, "george"), { to: "george", objective: "x", mode }),
+        store,
+        clock,
+        seqIds(),
+      );
       expect(request.mode).toBe(mode);
     });
   });

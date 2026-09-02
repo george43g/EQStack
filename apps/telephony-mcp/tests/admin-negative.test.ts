@@ -123,10 +123,10 @@ afterAll(async () => {
   rmSync(stateDir, { recursive: true, force: true });
 });
 
-describe("POST /requests — prepare_call schema (D-31 bugs 1 + 2)", () => {
+describe("POST /calls — place_call schema (D-31 bugs 1 + 2)", () => {
   it("missing objective is a 400 with the Zod issue path, and no request is created", async () => {
     const before = countRows("call_requests");
-    const { status, body } = await send("POST", "/requests", { recipient: "george" });
+    const { status, body } = await send("POST", "/calls", { to: "george" });
     expect(status).toBe(400);
     expect(body.error).toBe("objective: Required");
     expect(countRows("call_requests")).toBe(before);
@@ -134,8 +134,8 @@ describe("POST /requests — prepare_call schema (D-31 bugs 1 + 2)", () => {
 
   it("empty objective is a 400 (was: silently created with objective '')", async () => {
     const before = countRows("call_requests");
-    const { status, body } = await send("POST", "/requests", {
-      recipient: "george",
+    const { status, body } = await send("POST", "/calls", {
+      to: "george",
       objective: "",
     });
     expect(status).toBe(400);
@@ -145,19 +145,20 @@ describe("POST /requests — prepare_call schema (D-31 bugs 1 + 2)", () => {
 
   it('record:"false" is a 400 (was: Boolean("false") === true turned recording ON)', async () => {
     const before = countRows("call_requests");
-    const { status, body } = await send("POST", "/requests", {
-      recipient: "george",
+    const { status, body } = await send("POST", "/calls", {
+      to: "george",
       objective: "probe record coercion",
       record: "false",
     });
     expect(status).toBe(400);
     expect(body.error).toBe("record: Expected boolean, received string");
     expect(countRows("call_requests")).toBe(before);
+    expect(telephony.log.calls).toHaveLength(0);
   });
 
   it("an unknown mode is a 400 with the enum issue", async () => {
-    const { status, body } = await send("POST", "/requests", {
-      recipient: "george",
+    const { status, body } = await send("POST", "/calls", {
+      to: "george",
       objective: "probe mode",
       mode: "walkie-talkie",
     });
@@ -166,27 +167,23 @@ describe("POST /requests — prepare_call schema (D-31 bugs 1 + 2)", () => {
   });
 });
 
-describe("POST /calls — start_call confirm gate", () => {
-  it("anything but the literal true is a 400: no dial, no call row", async () => {
-    const { request } = await admin.prepare({ recipient: "george", objective: "confirm gate" });
+describe("POST /calls — resolution is a parse, not a permission gate (INV-6)", () => {
+  it("a name that is neither alias nor E.164 is a 400: no dial, no rows", async () => {
     const before = countRows("calls");
-    for (const confirm of ["true", 1, false, null]) {
-      const { status, body } = await send("POST", "/calls", { requestId: request.id, confirm });
-      expect(status, JSON.stringify(confirm)).toBe(400);
-      expect(String(body.error)).toContain("confirm");
-    }
+    const { status, body } = await send("POST", "/calls", { to: "mum", objective: "call mum" });
+    expect(status).toBe(400);
+    expect(String(body.error)).toMatch(/neither a configured alias nor E\.164/);
     expect(countRows("calls")).toBe(before);
+    expect(countRows("call_requests")).toBe(before === 0 ? 0 : countRows("call_requests"));
     expect(telephony.log.calls).toHaveLength(0);
   });
 });
 
 describe("mutating routes on a live call", () => {
   it("dials the suite's one allowed call (the schemas still admit valid input)", async () => {
-    const { request } = await admin.prepare({
-      recipient: "george",
-      objective: "negative-path probe",
-    });
-    const { call } = await admin.start(request.id, true);
+    const placed = await admin.placeCall({ to: "george", objective: "negative-path probe" });
+    if (!("call" in placed)) throw new Error("expected a call");
+    const call = placed.call;
     callId = call.id;
     providerCallId = call.providerCallId as string;
     expect(call.recordingEnabled).toBe(true); // preconsented default
@@ -349,15 +346,15 @@ describe("KEPT VERBATIM (D-8) + D-28 redaction", () => {
 
   it("a >256KB body is rejected before JSON.parse runs", async () => {
     const before = countRows("call_requests");
-    // Valid prepare input — had it been parsed and dispatched, a request would exist.
+    // Valid place_call input — had it been parsed and dispatched, a request would exist.
     const body = JSON.stringify({
-      recipient: "george",
+      to: "george",
       objective: "big-body probe",
       context: "x".repeat(300 * 1024),
     });
     let status: number | null = null;
     try {
-      const res = await fetch(adminUrl("/requests"), {
+      const res = await fetch(adminUrl("/calls"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,

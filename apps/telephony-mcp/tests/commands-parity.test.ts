@@ -18,11 +18,10 @@ const registry = buildClientRegistry({
 });
 
 describe("command surface parity", () => {
-  it("golden pin: exactly these 13 commands exist (D-53; C renames via place_call)", () => {
+  it("golden pin: exactly these 12 commands exist (D-5/D-38: one-shot place_call)", () => {
     expect([...COMMAND_NAMES].sort()).toEqual(
       [
-        "prepare_call",
-        "start_call",
+        "place_call",
         "end_call",
         "play_disclosure",
         "say_on_call",
@@ -54,9 +53,9 @@ describe("command surface parity", () => {
     for (const name of ROUTED_COMMANDS) expect(registry.get(name)).toBeDefined();
   });
 
-  it("console/MCP listing derives from the registry (13 tools, schemas attached)", () => {
+  it("console/MCP listing derives from the registry (12 tools, schemas attached)", () => {
     const tools = registry.toMcpTools();
-    expect(tools).toHaveLength(13);
+    expect(tools).toHaveLength(12);
     for (const t of tools) {
       expect(t.inputSchema).toBeDefined();
       expect(t.description?.length ?? 0).toBeGreaterThan(0);

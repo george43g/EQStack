@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS call_requests (
   expires_at_ms INTEGER NOT NULL,
   started_call_id TEXT
 );
+CREATE TABLE IF NOT EXISTS call_idempotency (
+  key TEXT PRIMARY KEY,
+  call_id TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS calls (
   id TEXT PRIMARY KEY,
   provider_call_id TEXT UNIQUE,
@@ -168,6 +173,9 @@ export class SqliteStore implements EventStore {
     } catch {
       // column already exists
     }
+    this.db.exec(
+      "CREATE TABLE IF NOT EXISTS call_idempotency (key TEXT PRIMARY KEY, call_id TEXT NOT NULL, created_at_ms INTEGER NOT NULL)",
+    );
   }
 
   // -- call requests --------------------------------------------------------
@@ -190,7 +198,7 @@ export class SqliteStore implements EventStore {
         req.recordingEnabled ? 1 : 0,
         req.maxDurationSec,
         req.createdAtMs,
-        req.expiresAtMs,
+        0, // expires_at_ms retired in Phase C (D-5); column kept, additive-migration style
         req.startedCallId,
       );
   }
@@ -211,7 +219,6 @@ export class SqliteStore implements EventStore {
       recordingEnabled: r.recording_enabled === 1,
       maxDurationSec: r.max_duration_sec as number,
       createdAtMs: r.created_at_ms as number,
-      expiresAtMs: r.expires_at_ms as number,
       startedCallId: (r.started_call_id as string | null) ?? null,
     };
   }
@@ -352,6 +359,52 @@ export class SqliteStore implements EventStore {
       type: r.type as string,
       data: JSON.parse(r.data as string) as Record<string, unknown>,
     }));
+  }
+
+  /** Read-only dedupe lookup — runs BEFORE the concurrency check so an
+   * idempotent retry of a LIVE call returns it instead of a 409. */
+  lookupCallIdempotency(key: string, nowMs: number, windowMs: number): string | null {
+    const r = this.db
+      .prepare("SELECT call_id FROM call_idempotency WHERE key = ? AND created_at_ms > ?")
+      .get(key, nowMs - windowMs) as { call_id: string } | undefined;
+    return r?.call_id ?? null;
+  }
+
+  /**
+   * One-shot dedupe claim (Phase C step 5). Insert-before-dial: a hit inside
+   * the window returns the winner's callId and the caller MUST NOT dial.
+   * Same insert / catch-UNIQUE shape as recordProviderEvent below.
+   */
+  claimCallIdempotency(
+    key: string,
+    callId: string,
+    nowMs: number,
+    windowMs: number,
+  ): { claimed: true } | { claimed: false; existingCallId: string } {
+    this.db.prepare("DELETE FROM call_idempotency WHERE created_at_ms <= ?").run(nowMs - windowMs);
+    try {
+      this.db
+        .prepare("INSERT INTO call_idempotency (key, call_id, created_at_ms) VALUES (?, ?, ?)")
+        .run(key, callId, nowMs);
+      return { claimed: true };
+    } catch {
+      const r = this.db.prepare("SELECT call_id FROM call_idempotency WHERE key = ?").get(key) as
+        | { call_id: string }
+        | undefined;
+      if (!r) {
+        // pruned between our insert attempt and re-read — retry once
+        this.db
+          .prepare("INSERT INTO call_idempotency (key, call_id, created_at_ms) VALUES (?, ?, ?)")
+          .run(key, callId, nowMs);
+        return { claimed: true };
+      }
+      return { claimed: false, existingCallId: r.call_id };
+    }
+  }
+
+  /** Release a claim whose dial failed, so an honest retry can ring again. */
+  releaseCallIdempotency(key: string): void {
+    this.db.prepare("DELETE FROM call_idempotency WHERE key = ?").run(key);
   }
 
   recordProviderEvent(callId: string, providerKey: string): boolean {

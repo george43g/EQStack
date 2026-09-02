@@ -155,8 +155,7 @@ export interface CallRequest {
   recordingEnabled: boolean;
   maxDurationSec: number;
   createdAtMs: number;
-  expiresAtMs: number;
-  /** Set once voice_start_call dials — retries return this call instead of redialing. */
+  /** Set once the one-shot dial creates the call — retries return this call instead of redialing. */
   startedCallId: string | null;
 }
 
