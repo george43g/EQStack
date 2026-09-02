@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.25.5](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.4...imsg-mcp-v1.25.5) (2026-09-02)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** honest post-send delivery truth — status/send_method (RS-A) ([c376c94](https://github.com/george43g/EQStack/commit/c376c941459908c3607ad8198157755f84a9a304))
+
 ## imsg-mcp [1.25.4](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.3...imsg-mcp-v1.25.4) (2026-08-23)
 
 
