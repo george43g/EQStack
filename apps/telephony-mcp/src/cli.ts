@@ -27,6 +27,7 @@ import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
 import { buildClientRegistry } from "./commands/bind-client.js";
 import { deleteRecording, placeCall } from "./commands/specs.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
+import { renderCallHeader, renderNote, renderTurn } from "./console/render.js";
 import {
   defaultLaunchctl,
   expandHome,
@@ -36,6 +37,8 @@ import {
   plistSpecFromConfig,
   renderPlist,
 } from "./daemon/launchd.js";
+import { initialState, reduce } from "./events/call-model.js";
+import { streamEvents } from "./events/event-feed.js";
 import { startGateway } from "./gateway/gateway.js";
 import { setLogLevel } from "./log.js";
 import { runStdioMcp } from "./mcp/server.js";
@@ -469,21 +472,69 @@ program
 
 program
   .command("watch")
-  .description("Tail live events from the gateway (SSE)")
+  .description("Watch live events — rendered by default, --format json|raw for pipes")
   .option("--after <id>", "start after global event id", "0")
-  .action(async (opts: { after: string }) => {
+  .option("--format <fmt>", "pretty | json | raw (default: pretty on a TTY, json when piped)")
+  .action(async (opts: { after: string; format?: string }) => {
+    const cfg = loadConfig();
+    const fmt = opts.format ?? (process.stdout.isTTY ? "pretty" : "json");
+    if (fmt === "raw") {
+      // Byte-identical to the pre-Phase-G pump so `tel watch | jq` keeps working.
+      try {
+        const res = await fetch(
+          `http://127.0.0.1:${cfg.server.adminPort}/events?after=${Number(opts.after)}`,
+          { headers: { Accept: "text/event-stream" } },
+        ).catch(() => {
+          throw new GatewayUnavailableError(cfg.server.adminPort);
+        });
+        if (!res.body) fail(new Error("no event stream"));
+        const decoder = new TextDecoder();
+        for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+          process.stdout.write(decoder.decode(chunk, { stream: true }));
+        }
+      } catch (err) {
+        fail(err);
+      }
+      return;
+    }
+    const state = initialState();
     try {
-      const cfg = loadConfig();
-      const res = await fetch(
-        `http://127.0.0.1:${cfg.server.adminPort}/events?after=${Number(opts.after)}`,
-        { headers: { Accept: "text/event-stream" } },
-      ).catch(() => {
-        throw new GatewayUnavailableError(cfg.server.adminPort);
-      });
-      if (!res.body) fail(new Error("no event stream"));
-      const decoder = new TextDecoder();
-      for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-        process.stdout.write(decoder.decode(chunk, { stream: true }));
+      for await (const ev of streamEvents({
+        adminPort: cfg.server.adminPort,
+        after: Number(opts.after),
+      })) {
+        reduce(state, ev);
+        if (fmt === "json") {
+          console.log(JSON.stringify(ev));
+          continue;
+        }
+        const call = state.calls.get(ev.callId);
+        if (!call) continue;
+        if (ev.type === "call.created") console.log(renderCallHeader(call));
+        else if (ev.type === "turn.user") {
+          const t = call.turns.find(
+            (x) => x.turn === (ev.data.turn as number) && x.speaker === "callee",
+          );
+          if (t) for (const line of renderTurn(t)) console.log(line);
+        } else if (
+          ev.type === "turn.assistant" ||
+          ev.type === "turn.interrupted" ||
+          ev.type === "turn.timing" ||
+          ev.type.startsWith("thinking.")
+        ) {
+          const t = call.turns.find(
+            (x) => x.turn === (ev.data.turn as number) && x.speaker === "agent",
+          );
+          if (t) for (const line of renderTurn(t)) console.log(line);
+        } else if (
+          ev.type.startsWith("call.") ||
+          ev.type.startsWith("recording.") ||
+          ev.type === "disclosure.played" ||
+          ev.type === "llm.error" ||
+          ev.type === "llm.fallback"
+        ) {
+          console.log(renderNote(ev.callId, ev.type.replace(/^call\./, "")));
+        }
       }
     } catch (err) {
       fail(err);

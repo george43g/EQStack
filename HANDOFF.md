@@ -969,3 +969,66 @@ commit them path-scoped before any further work, or a crash loses the entire pla
 *(Closed in the same session: committed path-scoped as `5ac4178`, signed, 1 ahead of
 `origin/main` and deliberately unpushed — George picks push-vs-PR. Verified
 `git rev-list --count origin/main..HEAD` → 1.)*
+
+---
+
+# 2026-09-02 — checkpoint (eqstack session, telephony Pass 1 A–E+G shipped)
+
+**Where this entry and any conversation summary disagree, THIS FILE IS CORRECT.**
+
+## State
+telephony-mcp (renamed from voice-mcp in Phase A) has Pass 1 phases **A, B, C, D, E
+merged to main; G open as PR #138**. Only **Phase F (thinking sound) remains and is
+BLOCKED** on a paid measurement call (D-62). All merges verified no-op Release runs
+(private:true holds). imsg-mcp untouched by this arc; its resilient-send plan is PR #133 (merged, docs-only).
+
+## Done (each merged, Release no-op verified)
+- **PR #132 Phase A** (`5ac4178`-era): voice-mcp→telephony-mcp rename, bin `tel`, `TEL_*`,
+  `tel://` URIs, `tel_*` metrics, mcp-kit/cli-kit leaf adoption, **live state migration
+  executed** (backup at `~/Library/Application Support/voice-mcp-backup-2026-09-01`).
+- **PR #134 Phase B**: typed command registry, every surface a thin adapter, CallMode
+  spec table (D-34), 3 real bugs fixed (D-31), redaction asymmetry closed (D-28). Built
+  via 4 parallel Fable worktree agents.
+- **PR #135 Phase C**: open dialing — both dial gates deleted, one-shot `place_call`
+  (no confirm, D-55), HMAC keyed dedupe, INV-11 leak byte-scan passes.
+- **PR #136 Phase D**: named-tunnel supervisor + launchd LaunchAgent; runbook
+  `docs/TUNNEL_SETUP.md`.
+- **PR #137 Phase E**: direct-mode latency instrumentation, `tel_direct_*` histograms,
+  `get_latency_report` + `tel timings`, bug D-60 (COALESCE last-write-wins) fixed.
+- **PR #138 Phase G** (open, CI running): SSE parse/feed/model/render seam + `tel watch`
+  rewrite. Layers 1–2 terminal-dep-free for the future TUI/SPA.
+- Decision register current through **D-63**; telephony suite **177/177**.
+
+## Blocked on you (George) — the register (DECISIONS.md O-rows) is authoritative
+- `phase-e-measurement` — **gates Phase F**: one paid ~20-turn direct-mode call to fill
+  `tel_direct_turn_ms` p50/p90 (D-30 go/no-go: F starts only if p50 > ~1.5s, think-dominant).
+- `tunnel-provisioning` (O-23) — one-time cloudflared setup, runbook in the repo.
+- `recording-decrypt-proof` — `node dist/cli.js recording play REf1b9…` proves the Keychain
+  key survived Phase A's migration; before deleting the backup dir.
+- `mcp-json-tracking`, `backup-cleanup`, `max-concurrent-calls` (O-13), plus long-standing
+  imsg items (contacts arc, Twilio SK rotation).
+
+## Traps this session (one line each)
+- **`git add -A` swept untracked `docs/research`/`docs/agent-handoff` into staging** (Phase E).
+  Caught + reset before commit. Standing rule: stage explicit paths, never `-A`, in this repo.
+- **Backticks in `git commit -m` are shell command-substitution in zsh** — `` `tel watch | jq` ``
+  in Phase G's message body executed and left a gap. Use `-F <file>` or avoid backticks.
+- **`upsertTiming` COALESCE(excluded, existing) is LAST-write-wins for an always-non-null
+  value**, not first-write (D-60). The phase file's assumption was wrong.
+- **Worktree agents branch from `main`, not the feature branch** — reset to the intended
+  base before building (all 4 Phase B lanes hit this).
+- Phase E built on the merged phase-d branch (no fresh branch) — commit was fine, PR diff
+  clean because D merged via a merge commit, but cut the branch first next time.
+
+## Tree
+On `feat/telephony-mcp-phase-g` (1 ahead of origin/main = the Phase G commit `aec1be7`,
+pushed, PR #138). Untracked and DELIBERATELY excluded: `docs/research/*`,
+`docs/agent-handoff/*`, `opencode.json.bak.*`. Machine-local `.mcp.json`/`.codex/config.toml`
+carry the telephony-mcp rename (gitignored, not committable).
+
+## Resume
+Await #138 CI → merge → Release no-op. Then Pass 1 is complete bar F (George-gated).
+Next non-blocked backlog: imsg **RS-A** (2s post-send delivery poll, additive
+`delivered/failed/pending` + `send_method`) — the fork flagged it unblocked for parallel
+work; or Later phases H–N/P–V (sketched, not detailed). No mid-flight state: nothing
+staged, no half-applied edit.
