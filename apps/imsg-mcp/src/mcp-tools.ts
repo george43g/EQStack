@@ -184,7 +184,7 @@ export const TOOLS: Tool[] = [
   {
     name: "send_message",
     description:
-      "Send an iMessage or SMS. Use recipient for 1-on-1 or threadSlug for existing threads, including groups. Optional `attachments` is an array of absolute file paths sent as follow-up messages (1-on-1 only — Messages.app does not reliably accept file sends to group chats).",
+      "Send an iMessage or SMS. Use recipient for 1-on-1 or threadSlug for existing threads, including groups. The response carries honest delivery truth from a bounded post-send chat.db poll: `status` is delivered | failed | pending and `sendMethod` is the pathway actually used — a `pending` status means delivery is UNCONFIRMED, do not assume it landed. Optional `attachments` is an array of absolute file paths sent as follow-up messages (1-on-1 only — Messages.app does not reliably accept file sends to group chats).",
     annotations: annotations.send,
     inputSchema: {
       type: "object",

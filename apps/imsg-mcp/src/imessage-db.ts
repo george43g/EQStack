@@ -1,3 +1,4 @@
+import type { DeliveryRow } from "./delivery-status.js";
 /**
  * iMessage Database Reader
  *
@@ -2312,6 +2313,45 @@ export class IMessageDB {
       this.columnCache.set(table, cols);
     }
     return cols.has(column);
+  }
+
+  /**
+   * Poll one sent message's delivery-relevant columns by ROWID (RS-A). Column-
+   * tolerant: is_sent / is_finished / was_downgraded are absent on reduced
+   * fixtures and older macOS, guarded via hasColumn. Returns null if the ROWID
+   * is not (yet) present. Read-only, no side effects.
+   */
+  getDeliveryRow(rowId: number): DeliveryRow | null {
+    const hasSent = this.hasColumn("message", "is_sent");
+    const hasFinished = this.hasColumn("message", "is_finished");
+    const hasDowngraded = this.hasColumn("message", "was_downgraded");
+    const sql = `SELECT
+        m.error AS error,
+        m.is_delivered AS is_delivered,
+        ${hasSent ? "m.is_sent" : "NULL"} AS is_sent,
+        ${hasFinished ? "m.is_finished" : "NULL"} AS is_finished,
+        ${hasDowngraded ? "m.was_downgraded" : "NULL"} AS was_downgraded,
+        m.service AS service
+      FROM message m WHERE m.ROWID = ?`;
+    const r = this.raw.prepare(sql).get(rowId) as
+      | {
+          error: number | null;
+          is_delivered: number | null;
+          is_sent: number | null;
+          is_finished: number | null;
+          was_downgraded: number | null;
+          service: string | null;
+        }
+      | undefined;
+    if (!r) return null;
+    return {
+      error: r.error,
+      isDelivered: r.is_delivered != null ? Boolean(r.is_delivered) : null,
+      isSent: r.is_sent != null ? Boolean(r.is_sent) : null,
+      isFinished: r.is_finished != null ? Boolean(r.is_finished) : null,
+      wasDowngraded: r.was_downgraded != null ? Boolean(r.was_downgraded) : null,
+      service: r.service,
+    };
   }
 
   /** Max ROWID currently in the message table — used as a cache key. */

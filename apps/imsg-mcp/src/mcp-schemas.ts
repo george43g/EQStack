@@ -221,6 +221,23 @@ export const SendMessageOutputSchema = z.object({
     .describe(
       "True when the sent message was observed in chat.db before returning — lastMessageId then points exactly at the sent message.",
     ),
+  status: z
+    .enum(["delivered", "failed", "pending"])
+    .optional()
+    .describe(
+      "Honest delivery truth from a bounded post-send chat.db poll (RS-A). 'delivered' = confirmed; 'failed' = a synchronous send error (errorCode set); 'pending' = not confirmed in the window — do NOT assume delivered, re-check before relying on it.",
+    ),
+  sendMethod: z
+    .string()
+    .optional()
+    .describe(
+      "The pathway Messages.app actually used (iMessage | SMS), with a downgrade annotation when an iMessage fell back to SMS.",
+    ),
+  errorCode: z
+    .number()
+    .int()
+    .optional()
+    .describe("chat.db error code when status is 'failed' (e.g. 22 = iMessage to an SMS-only number)."),
   attachments: z
     .array(
       z.object({

@@ -43,6 +43,11 @@ import { rememberSearch, resolveContactSelector } from "./contact-resolver.js";
 import { normalizedPhoneVariants } from "./contacts-db.js";
 import { formatConversationEvent } from "./conversation-event-format.js";
 import { parseUserDate } from "./date-parse.js";
+import { type DeliveryStatus, deriveDeliveryStatus } from "./delivery-status.js";
+
+const PENDING_DISCLAIMER =
+  "Delivery not confirmed within the poll window. Do NOT assume delivered — re-check with get_messages or wait_for_reply before relying on delivery.";
+
 import { type ChangeEvent, EventBus } from "./event-bus.js";
 import { ExportInterpretGuardError, streamExport } from "./exportStream.js";
 import { rankFuzzy } from "./fuzzy.js";
@@ -963,6 +968,7 @@ export class IMessageMCPServer {
       );
       let lastMessageId: number | undefined;
       let sendConfirmed = false;
+      let delivery: DeliveryStatus | undefined;
 
       if (chat) {
         // Register the send's fingerprint (echo suppression for
@@ -979,6 +985,9 @@ export class IMessageMCPServer {
         const confirmed = await this.confirmSendLanded(chat.chatIdentifier, echo);
         lastMessageId = confirmed.lastMessageId;
         sendConfirmed = confirmed.confirmed;
+        if (lastMessageId !== undefined) {
+          delivery = await this.pollDeliveryStatus(lastMessageId);
+        }
       }
 
       const attSummary =
@@ -986,8 +995,11 @@ export class IMessageMCPServer {
           ? `\nAttachments: ${attachmentResults.filter((a) => a.success).length}/${attachmentResults.length} delivered`
           : "";
 
+      const deliveryLine = delivery
+        ? `\nDelivery: ${delivery.state} (${delivery.sendMethod})${delivery.note ? ` — ${delivery.note}` : ""}`
+        : "";
       return toolText(
-        `Message sent to ${resolvedTarget} at ${result.timestamp?.toLocaleString()}${chat ? `\nThread: ${chat.threadSlug}` : ""}${lastMessageId ? `\nLast message ID: ${lastMessageId} (use with wait_for_reply)` : ""}${attSummary}`,
+        `Message sent to ${resolvedTarget} at ${result.timestamp?.toLocaleString()}${chat ? `\nThread: ${chat.threadSlug}` : ""}${lastMessageId ? `\nLast message ID: ${lastMessageId} (use with wait_for_reply)` : ""}${deliveryLine}${attSummary}`,
         {
           success: true,
           target: resolvedTarget,
@@ -995,6 +1007,10 @@ export class IMessageMCPServer {
           threadSlug: chat?.threadSlug,
           lastMessageId,
           sendConfirmed,
+          // RS-A additive fields (RS-INV-1) — existing fields above are unchanged.
+          status: delivery?.state,
+          sendMethod: delivery?.sendMethod,
+          errorCode: delivery?.errorCode,
           attachments: attachmentResults.length > 0 ? attachmentResults : undefined,
         },
       );
@@ -1046,6 +1062,31 @@ export class IMessageMCPServer {
     }
     const lastMsg = await this.db.getLastMessage(chatIdentifier);
     return { lastMessageId: lastMsg?.id, confirmed: false };
+  }
+
+  /**
+   * RS-A: after the sent ROWID is pinned, poll chat.db for its delivery truth
+   * (error / is_delivered / service / was_downgraded) up to a bounded window.
+   * Returns the honest three-state status the moment it resolves, or `pending`
+   * at timeout — an immediate delivered/failed reports inline, a slow one
+   * refuses to claim delivery (RS-INV-2). Column-tolerant via getDeliveryRow.
+   */
+  private async pollDeliveryStatus(rowId: number): Promise<DeliveryStatus> {
+    const pollMs = Math.max(20, Number(process.env.IMSG_DELIVERY_POLL_MS) || 150);
+    const timeoutMs = Math.max(pollMs, Number(process.env.IMSG_DELIVERY_TIMEOUT_MS) || 2000);
+    const deadline = Date.now() + timeoutMs;
+    let last: DeliveryStatus | null = null;
+    for (;;) {
+      const row = this.db.getDeliveryRow(rowId);
+      if (row) {
+        const status = deriveDeliveryStatus(row);
+        last = status;
+        if (status.state !== "pending") return status; // resolved — report now
+      }
+      if (Date.now() >= deadline) break;
+      await sleep(pollMs);
+    }
+    return last ?? { state: "pending", sendMethod: "unknown", note: PENDING_DISCLAIMER };
   }
 
   private async handleWaitForReply(args: unknown, signal?: AbortSignal): Promise<any> {
