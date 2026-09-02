@@ -74,16 +74,17 @@ afterAll(async () => {
 });
 
 describe("tool surface", () => {
-  it("serves exactly the command registry's 13 tools, with safety annotations", async () => {
+  it("serves exactly the command registry's 12 tools, with safety annotations", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(COMMAND_NAMES).toHaveLength(13);
+    expect(COMMAND_NAMES).toHaveLength(12);
     expect(names).toEqual([...COMMAND_NAMES].sort());
-    const start = tools.find((t) => t.name === "start_call");
-    expect(start?.annotations?.destructiveHint).toBe(true);
-    expect(start?.annotations?.openWorldHint).toBe(true);
-    expect(start?.annotations?.idempotentHint).toBe(false);
-    expect(start?.description).toMatch(/PAID/);
+    const place = tools.find((t) => t.name === "place_call");
+    expect(place?.annotations?.destructiveHint).toBe(true);
+    expect(place?.annotations?.openWorldHint).toBe(true);
+    // genuinely idempotent inside the dedupe window (D-5)
+    expect(place?.annotations?.idempotentHint).toBe(true);
+    expect(place?.description).toMatch(/PAID/);
     const list = tools.find((t) => t.name === "list_calls");
     expect(list?.annotations?.readOnlyHint).toBe(true);
     const del = tools.find((t) => t.name === "delete_recording");
@@ -100,13 +101,14 @@ describe("tool surface", () => {
 });
 
 describe("direct mode over MCP", () => {
-  it("prepare accepts mode: direct and echoes it in the request", async () => {
+  it("place_call dryRun accepts mode: direct and echoes it in the plan", async () => {
     const result = await client.callTool({
-      name: "prepare_call",
-      arguments: { recipient: "george", objective: "talk directly", mode: "direct" },
+      name: "place_call",
+      arguments: { to: "george", objective: "talk directly", mode: "direct", dryRun: true },
     });
-    const { request } = toolJson<{ request: { mode: string } }>(result);
-    expect(request.mode).toBe("direct");
+    const { plan } = toolJson<{ plan: { mode: string } }>(result);
+    expect(plan.mode).toBe("direct");
+    expect(telephony.log.calls).toHaveLength(0);
   });
 
   it("say_on_call without a live session is a tool error, not a crash", async () => {
@@ -118,61 +120,47 @@ describe("direct mode over MCP", () => {
   });
 });
 
-describe("two-stage approval gate", () => {
-  let requestId: string;
+describe("one-shot place_call (D-5/D-55: no confirm — invoking is consent)", () => {
   let callId: string;
 
-  it("prepare returns an expiring request and dials nothing", async () => {
+  it("dryRun previews and dials nothing; the plan never carries the number", async () => {
     const result = await client.callTool({
-      name: "prepare_call",
-      arguments: { recipient: "george", objective: "confirm the plumber quote" },
+      name: "place_call",
+      arguments: { to: "george", objective: "confirm the plumber quote", dryRun: true },
     });
-    const { request } = toolJson<{
-      request: { id: string; numberSuffix: string; expiresAtMs: number };
-    }>(result);
-    requestId = request.id;
-    expect(request.numberSuffix).toBe("1222");
+    const { plan } = toolJson<{ plan: { numberSuffix: string } }>(result);
+    expect(plan.numberSuffix).toBe("1222");
     expect(telephony.log.calls).toHaveLength(0);
     expect(toolText(result)).not.toContain("+61400111222");
   });
 
-  it("start_call rejects a missing/false confirm at the schema layer", async () => {
-    const missing = await client.callTool({ name: "start_call", arguments: { requestId } });
-    expect((missing as { isError?: boolean }).isError).toBe(true);
-    expect(toolText(missing)).toMatch(/validation|invalid arguments|confirm/i);
-    const explicit = await client.callTool({
-      name: "start_call",
-      arguments: { requestId, confirm: false },
-    });
-    expect((explicit as { isError?: boolean }).isError).toBe(true);
-    expect(toolText(explicit)).toMatch(/expected true/i);
-    expect(telephony.log.calls).toHaveLength(0);
-  });
-
-  it("start_call dials once; retries return the same call", async () => {
+  it("place_call dials once; identical retries return the same call, deduped", async () => {
     const first = await client.callTool({
-      name: "start_call",
-      arguments: { requestId, confirm: true },
+      name: "place_call",
+      arguments: { to: "george", objective: "confirm the plumber quote" },
     });
     const { call } = toolJson<{ call: { id: string } }>(first);
     callId = call.id;
     expect(telephony.log.calls).toHaveLength(1);
     const retry = await client.callTool({
-      name: "start_call",
-      arguments: { requestId, confirm: true },
+      name: "place_call",
+      arguments: { to: "george", objective: "confirm the plumber quote" },
     });
-    expect(toolJson<{ call: { id: string } }>(retry).call.id).toBe(callId);
+    const retried = toolJson<{ call: { id: string }; deduped: boolean }>(retry);
+    expect(retried.call.id).toBe(callId);
+    expect(retried.deduped).toBe(true);
     expect(telephony.log.calls).toHaveLength(1);
   });
 
-  it("unknown recipients come back as tool errors, not dials", async () => {
+  it("an unresolvable name is a parse error, not a dial (INV-6 — no allowlist)", async () => {
     const result = await client.callTool({
-      name: "prepare_call",
-      arguments: { recipient: "stranger", objective: "x" },
+      name: "place_call",
+      arguments: { to: "stranger", objective: "x" },
     });
     expect((result as { isError?: boolean }).isError).toBe(true);
-    expect(toolText(result)).toMatch(/allowlisted/);
-    expect(toolText(result)).toMatch(/Tool "prepare_call" failed/);
+    expect(toolText(result)).toMatch(/neither a configured alias nor E\.164/);
+    expect(toolText(result)).toMatch(/Tool "place_call" failed/);
+    expect(telephony.log.calls).toHaveLength(1); // unchanged from the dial above
   });
 
   it("history reads work while the call is live (concurrent reader)", async () => {

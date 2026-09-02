@@ -164,14 +164,16 @@ describe("full simulated call", () => {
   let providerCallId: string;
   let relayToken: string;
 
-  it("prepare → start dials via the adapter with redacted state", async () => {
-    const { request } = await admin.prepare({
-      recipient: "george",
+  it("one-shot place_call dials via the adapter with redacted state", async () => {
+    const placed = await admin.placeCall({
+      to: "george",
       objective: "confirm dinner plans",
       context: "Friday 7pm, vegetarian",
     });
-    expect(request.numberSuffix).toBe("1222");
-    const { call } = await admin.start(request.id, true);
+    if (!("call" in placed)) throw new Error("expected a dialed call");
+    const call = placed.call;
+    expect(call.numberSuffix).toBe("1222");
+    expect(placed.deduped).toBe(false);
     callId = call.id;
     providerCallId = call.providerCallId as string;
     expect(providerCallId).toMatch(/^CAfake/);
@@ -182,15 +184,20 @@ describe("full simulated call", () => {
     expect(spec?.relayWsUrl).toMatch(/^wss:\/\/gw\.test\.invalid\/relay\/[A-Za-z0-9]+$/);
     relayToken = spec?.relayWsUrl.split("/relay/")[1] as string;
 
-    // retry with the same request id → same call, no second dial
-    const again = await admin.start(request.id, true);
+    // identical retry inside the dedupe window → same call, no second dial
+    const again = await admin.placeCall({
+      to: "george",
+      objective: "confirm dinner plans",
+      context: "Friday 7pm, vegetarian",
+    });
+    if (!("call" in again)) throw new Error("expected a call");
     expect(again.call.id).toBe(callId);
+    expect(again.deduped).toBe(true);
     expect(telephony.log.calls).toHaveLength(1);
   });
 
   it("enforces the concurrency cap while a call is active", async () => {
-    const { request } = await admin.prepare({ recipient: "friend", objective: "x" });
-    await expect(admin.start(request.id, true)).rejects.toThrow(/concurrency/);
+    await expect(admin.placeCall({ to: "friend", objective: "x" })).rejects.toThrow(/concurrency/);
   });
 
   it("status callbacks advance the call; duplicates and out-of-order are dropped", async () => {
@@ -342,16 +349,15 @@ describe("full simulated call", () => {
   });
 
   it("frees the concurrency slot after the call ends", async () => {
-    const { request } = await admin.prepare({ recipient: "friend", objective: "quick check-in" });
-    const { call } = await admin.start(request.id, true);
-    expect(call.recordingEnabled).toBe(false); // manual policy starts unrecorded
-    await admin.endCall(call.id, "cleanup");
+    const placed = await admin.placeCall({ to: "friend", objective: "quick check-in" });
+    if (!("call" in placed)) throw new Error("expected a call");
+    expect(placed.call.recordingEnabled).toBe(false); // manual policy starts unrecorded
+    await admin.endCall(placed.call.id, "cleanup");
   });
 
   it("a failed dial marks the call failed and surfaces the error", async () => {
     telephony.failNextCreate = "ConversationRelay not enabled on this account";
-    const { request } = await admin.prepare({ recipient: "george", objective: "x" });
-    await expect(admin.start(request.id, true)).rejects.toThrow(/dial failed/);
+    await expect(admin.placeCall({ to: "george", objective: "x" })).rejects.toThrow(/dial failed/);
     const calls = (await admin.listCalls({ limit: 5 })).calls;
     expect(
       calls.some((c) => c.status === "failed" && c.endReason?.includes("ConversationRelay")),
@@ -361,7 +367,7 @@ describe("full simulated call", () => {
   it("exposes metrics and SSE-pollable events on the admin listener only", async () => {
     const metrics = await fetch(`http://127.0.0.1:${ADMIN_PORT}/metrics`);
     const text = await metrics.text();
-    expect(text).toContain("voice_calls_total");
+    expect(text).toContain("tel_calls_total");
     expect(text).toContain("tel_first_model_token_ms_bucket");
     const poll = await admin.pollGlobalEvents(0);
     expect(poll.events.length).toBeGreaterThan(5);
@@ -380,13 +386,13 @@ describe("direct mode: the MCP host is the conversational brain", () => {
 
   it("records the utterance, inlines its text in turn.user, and never calls the LLM", async () => {
     llmCallsBefore = llm.requests.length;
-    const { request } = await admin.prepare({
-      recipient: "george",
+    const placed = await admin.placeCall({
+      to: "george",
       objective: "talk to George directly",
       mode: "direct",
     });
-    expect(request.mode).toBe("direct");
-    const { call } = await admin.start(request.id, true);
+    if (!("call" in placed)) throw new Error("expected a call");
+    const call = placed.call;
     callId = call.id;
     providerCallId = call.providerCallId as string;
     const spec = telephony.log.calls[telephony.log.calls.length - 1];
