@@ -56,10 +56,11 @@ export class Metrics {
     return c;
   }
 
-  histogram(name: string, help = ""): Histogram {
+  /** Buckets apply on first creation only — keyed on the bare name (no labels). */
+  histogram(name: string, help = "", buckets?: number[]): Histogram {
     let h = this.histograms.get(name);
     if (!h) {
-      h = new Histogram(name, help);
+      h = new Histogram(name, help, buckets);
       this.histograms.set(name, h);
     }
     return h;

@@ -1,5 +1,6 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { tempStateDir } from "../../tests/helpers.js";
 import type { CallRecord } from "../domain/types.js";
@@ -186,5 +187,31 @@ describe("SqliteStore", () => {
     expect(store.getCallIdForRelayToken("tokabc")).toBe("c1");
     expect(store.getRelayTokenForCall("c1")).toBe("tokabc");
     expect(store.getCallIdForRelayToken("nope")).toBeNull();
+  });
+
+  it("8.6: migrates a pre-Phase-E DB — adds the two columns, old rows read null", () => {
+    // Build a timings table WITHOUT the new columns, then let SqliteStore migrate it.
+    const bare = new DatabaseSync(join(dir, "bare.sqlite3"));
+    bare.exec(
+      `CREATE TABLE timings (call_id TEXT NOT NULL, turn INTEGER NOT NULL,
+         end_of_turn_ms INTEGER, first_model_token_ms INTEGER,
+         first_token_to_twilio_ms INTEGER, interrupted_at_ms INTEGER,
+         PRIMARY KEY (call_id, turn));
+       INSERT INTO timings (call_id, turn, end_of_turn_ms) VALUES ('old', 1, 500);`,
+    );
+    bare.close();
+    const migrated = new SqliteStore(join(dir, "bare.sqlite3"));
+    try {
+      const rows = migrated.getTimings("old");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.endOfTurnMs).toBe(500);
+      expect(rows[0]?.deliveredToHostMs).toBeNull();
+      expect(rows[0]?.replyReceivedMs).toBeNull();
+      // and the new column is writable post-migration
+      migrated.stampDeliveredIfUnset("old", 1, 700);
+      expect(migrated.getTimings("old")[0]?.deliveredToHostMs).toBe(700);
+    } finally {
+      migrated.close();
+    }
   });
 });

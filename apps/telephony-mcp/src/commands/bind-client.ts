@@ -13,6 +13,7 @@ import { makeRegistry, sanitizeContent, wrapUntrusted } from "@george43g/mcp-kit
 import { redactValue } from "@george43g/robustness";
 import type { z } from "zod";
 import type { AdminClient } from "../client/admin-client.js";
+import { buildLatencyReport } from "../domain/latency-report.js";
 import type { CallEvent, Utterance } from "../domain/types.js";
 import type { SqliteStore } from "../stores/sqlite-store.js";
 import type { CommandSpec } from "./specs.js";
@@ -21,6 +22,7 @@ import {
   endCall,
   getCall,
   getCallEvents,
+  getLatencyReport,
   getRecordingMetadata,
   getTranscript,
   listCalls,
@@ -130,6 +132,18 @@ export function buildClientDefinitions(deps: CommandDeps): AnyToolDefinition[] {
         calls: s.searchCalls(query, limit ?? 20),
         utterances: s.searchTranscripts(query, limit ?? 20).map(cleanUtterance),
       })),
+    ),
+    bind(getLatencyReport, async ({ lastCalls, callId }) =>
+      withReadStore((s) => {
+        const calls = callId
+          ? [s.getCall(callId)].flatMap((c) => (c ? [c] : []))
+          : s.listCalls({ limit: lastCalls ?? 50 });
+        const rows = calls.flatMap((c) => {
+          const mode = s.getCallRequest(c.requestId)?.mode ?? "byo-model";
+          return s.getTimings(c.id).map((timing) => ({ timing, mode }));
+        });
+        return buildLatencyReport(rows, calls.length);
+      }),
     ),
     bind(getRecordingMetadata, async ({ callId }) => ({
       recordings: withReadStore((s) => s.getRecordingsForCall(callId)),

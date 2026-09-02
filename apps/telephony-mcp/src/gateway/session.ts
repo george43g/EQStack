@@ -32,6 +32,14 @@ export class RelaySession implements LiveSession {
   /** Mutable so a later phase can hand off modes mid-call (Phase K seam). */
   private mode: CallMode;
 
+  /**
+   * Direct-mode turn awaiting the host's reply (Phase E step 2). sendText
+   * stamps against THIS turn, not this.turn — a late reply after a newer
+   * prompt must be attributed to the old turn (marked stale) or think-time
+   * lies optimistically. Cleared on reply, interrupt, and socket close.
+   */
+  private pendingDirect: { turn: number; endOfTurnMs: number } | null = null;
+
   private get modeSpec() {
     return CALL_MODE_SPECS[this.mode];
   }
@@ -137,10 +145,18 @@ export class RelaySession implements LiveSession {
       firstModelTokenMs: null,
       firstTokenToTwilioMs: null,
       interruptedAtMs: null,
+      deliveredToHostMs: null,
+      replyReceivedMs: null,
     });
 
     // Host-answered modes: the MCP host is the brain — the reply arrives via say_on_call.
-    if (!this.modeSpec.gatewayDrivesTurns) return;
+    if (!this.modeSpec.gatewayDrivesTurns) {
+      // Keep the FIRST unanswered turn: a late reply is attributed to the turn
+      // the host was actually answering (flagged stale), never to a newer one
+      // — misattribution would understate think-time, the optimistic lie.
+      this.pendingDirect ??= { turn, endOfTurnMs };
+      return;
+    }
 
     const abort = new AbortController();
     this.currentAbort = abort;
@@ -217,11 +233,14 @@ export class RelaySession implements LiveSession {
       firstModelTokenMs: null,
       firstTokenToTwilioMs: null,
       interruptedAtMs: now,
+      deliveredToHostMs: null,
+      replyReceivedMs: null,
     });
     this.service.emit(this.call.id, "turn.interrupted", {
       turn: this.turn,
       spokenChars: utteranceUntilInterrupt.length,
     });
+    this.pendingDirect = null;
     this.deps.metrics.counter("tel_interruptions_total", "Barge-ins").inc();
     // Keep history faithful to what was actually HEARD, not what we generated.
     this.finalizeAssistant(this.turn, true, utteranceUntilInterrupt || this.assistantPartial);
@@ -241,12 +260,82 @@ export class RelaySession implements LiveSession {
     });
     this.service.emit(this.call.id, "turn.assistant", { turn, chars: text.length, interrupted });
     this.assistantPartial = "";
+    if (this.modeSpec.gatewayDrivesTurns && !interrupted) this.emitTurnTiming(turn, false);
+  }
+
+  /** One event shape for both modes (Phase E step 6) — Phase G parses this. */
+  private emitTurnTiming(turn: number, stale: boolean): void {
+    const row = this.service.store.getTimings(this.call.id).find((x) => x.turn === turn);
+    if (!row || row.endOfTurnMs === null) return;
+    const reply = row.replyReceivedMs ?? row.firstModelTokenMs;
+    const egressAt = row.firstTokenToTwilioMs;
+    if (reply === null || egressAt === null) return; // no reply → no event (8.4)
+    const pickupMs =
+      row.deliveredToHostMs !== null ? row.deliveredToHostMs - row.endOfTurnMs : null;
+    const thinkMs = row.deliveredToHostMs !== null ? reply - row.deliveredToHostMs : null;
+    this.service.emit(this.call.id, "turn.timing", {
+      turn,
+      mode: this.mode,
+      endOfTurnMs: row.endOfTurnMs,
+      ...(pickupMs !== null ? { pickupMs } : {}),
+      ...(thinkMs !== null ? { thinkMs } : {}),
+      egressMs: egressAt - reply,
+      totalMs: egressAt - row.endOfTurnMs,
+      ...(stale ? { stale: true } : {}),
+    });
   }
 
   /** Manual disclosure / operator interjection / direct-mode reply — spoken verbatim. */
   async sendText(text: string): Promise<void> {
     this.currentAbort?.abort();
+    // Phase E step 3: read the field, don't cache a boolean — Phase K makes
+    // mode mutable. The host IS the model, so replyReceived doubles as
+    // firstModelToken; replyReceivedMs keeps the llm column single-meaning.
+    const pending = this.modeSpec.hostAnswersTurns ? this.pendingDirect : null;
+    const replyReceivedMs = pending ? this.deps.clock.nowMs() : null;
     this.ws.send(textFrame(text, true));
+    if (pending && replyReceivedMs !== null) {
+      const sentMs = this.deps.clock.nowMs();
+      const stale = pending.turn !== this.turn;
+      this.service.store.upsertTiming({
+        callId: this.call.id,
+        turn: pending.turn,
+        firstModelTokenMs: replyReceivedMs,
+        replyReceivedMs,
+        firstTokenToTwilioMs: sentMs,
+      });
+      const row = this.service.store.getTimings(this.call.id).find((x) => x.turn === pending.turn);
+      if (!stale && row) {
+        const DIRECT_BUCKETS = [250, 500, 1000, 2000, 3000, 5000, 8000, 12000, 20000];
+        const m = this.deps.metrics;
+        if (row.deliveredToHostMs !== null && row.endOfTurnMs !== null) {
+          m.histogram(
+            "tel_direct_pickup_ms",
+            "turn.user appended → handed to a host",
+            DIRECT_BUCKETS,
+          ).observe(row.deliveredToHostMs - row.endOfTurnMs);
+          m.histogram(
+            "tel_direct_think_ms",
+            "handed to host → reply received",
+            DIRECT_BUCKETS,
+          ).observe(replyReceivedMs - row.deliveredToHostMs);
+        }
+        m.histogram(
+          "tel_direct_egress_ms",
+          "reply received → frame on the wire",
+          DIRECT_BUCKETS,
+        ).observe(sentMs - replyReceivedMs);
+        if (row.endOfTurnMs !== null) {
+          m.histogram(
+            "tel_direct_turn_ms",
+            "end of turn → reply on the wire",
+            DIRECT_BUCKETS,
+          ).observe(sentMs - row.endOfTurnMs);
+        }
+      }
+      this.emitTurnTiming(pending.turn, stale);
+      this.pendingDirect = null;
+    }
     this.history.push({ role: "assistant", content: text });
     this.service.store.addUtterance({
       callId: this.call.id,

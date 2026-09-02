@@ -203,6 +203,16 @@ export class CallService {
     }
   }
 
+  /**
+   * Phase E step 4: stamp turn.user delivery to a polling host. COALESCE in
+   * upsertTiming ⇒ only the FIRST delivery counts; a re-poll cannot move it.
+   * Caveat (O-22): this measures *a* host taking the event, not *the* host —
+   * fine single-agent, wrong multi-host; first poller wins for now.
+   */
+  markDelivered(callId: string, turn: number): void {
+    this.store.stampDeliveredIfUnset(callId, turn, this.clock.nowMs());
+  }
+
   /** Belt-and-braces cap alongside Twilio's TimeLimit. */
   private armDurationTimer(callId: string, maxDurationSec: number): void {
     const timer = setTimeout(

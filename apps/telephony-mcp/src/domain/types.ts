@@ -166,4 +166,8 @@ export interface TurnTiming {
   firstModelTokenMs: number | null;
   firstTokenToTwilioMs: number | null;
   interruptedAtMs: number | null;
+  /** Direct mode: turn.user handed to a polling host (first delivery wins). */
+  deliveredToHostMs: number | null;
+  /** Direct mode: the host's say_on_call reply reached the gateway. */
+  replyReceivedMs: number | null;
 }
