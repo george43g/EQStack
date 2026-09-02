@@ -165,7 +165,19 @@ reference in AGENTS.md resolves; `--self-test` proves it can fail.
 **Deferred to George (consult, not force — per the audit):**
 - **Structural re-cut** of root AGENTS.md into a thin four-app *map* with imsg
   internals relocated (the skill: scope by risk divergence, not directory shape;
-  the root doubling as imsg's guide is *why* it drifted). Bigger, opinionated.
+  the root doubling as imsg's guide is *why* it drifted). Bigger, opinionated —
+  George's call on shape. **dotfiles' recommendation (2026-09-03):** root → a
+  four-app map; imsg's operational internals (fixtures, env wiring, sync scripts)
+  move to `apps/imsg-mcp/docs/` and are LINKED from the map — **no new
+  `apps/imsg-mcp/AGENTS.md`**. Rationale: that material is operational detail, not
+  a divergent *safety* boundary, so a scoped instruction file would be the ceremony
+  the rule warns against and would rot the same way. That leaves exactly two earned
+  scoped files (telephony, gmail). Verified in passing: the repo-local `.agents/`
+  holds only the one stale, non-canonical `skills/imsg-mcp-dev/SKILL.md` (gitignored,
+  link already removed); the canonical imsg skill is tracked at
+  `apps/imsg-mcp/skills/imsg-mcp/SKILL.md`, so nothing load-bearing is invisible to
+  a fresh clone. The `~/.agents/humans/` references are a user-home runtime path,
+  not this dir.
 - **F6 · gmail migration record durability**: `apps/gmail-mcp/HANDOFF.md` and
   `docs/agent-handoff/GMAIL-MCP-PREMIGRATION-HANDOFF.md` are byte-identical
   (md5 `c8e932fa…`) and **both gitignored** — the record survives on this laptop
