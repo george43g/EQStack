@@ -9,10 +9,10 @@
  *                        calls CallService directly (the serve process is the
  *                        single writer — INV-9)
  *
- * Phase B is behaviour-neutral (D-25): `prepare_call` + `start_call` stay two
- * commands with today's semantics; Phase C merges them into `place_call`
- * (D-38) and widens the recipient to E.164 (D-3). Names here already follow
- * INV-1/D-2: no prefix, self-describing.
+ * Phase C merged `prepare_call`+`start_call` into the one-shot `place_call`
+ * (D-5/D-38/D-55): any E.164 dials (D-3), dryRun previews, the keyed dedupe
+ * claim replaces the TTL'd two-stage flow. Names follow INV-1/D-2: no
+ * prefix, self-describing.
  */
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -22,8 +22,8 @@ import {
   CallEventSchema,
   CallIdSchema,
   CallModeInputSchema,
+  CallPlanSchema,
   CallRecordSchema,
-  CallRequestSchema,
   ConfirmSchema,
   EndReasonSchema,
   EventLimitSchema,
@@ -32,7 +32,6 @@ import {
   RecordingMetaSchema,
   RecordingScopeSchema,
   RecordingSidSchema,
-  RequestIdSchema,
   SayTextSchema,
   SearchQuerySchema,
   TurnTimingSchema,
@@ -59,12 +58,12 @@ const READ_ONLY: ToolAnnotations = {
   openWorldHint: false,
 };
 
-export const prepareCall = {
-  name: "prepare_call",
+export const placeCall = {
+  name: "place_call",
   description:
-    "Resolve an allowlisted recipient alias and create an EXPIRING call request. Returns the request id plus what would happen (number suffix, purpose, profile, max duration, recording state). Nothing is dialed. Pass the request id to start_call with explicit confirmation to actually place the call.",
+    "Place a REAL, PAID phone call to a REAL person. `to` is a configured recipient alias OR any raw E.164 number (+<country><number>) — dialing is not gated (aliases are nicknames + defaults, never permissions). Ad-hoc numbers start unrecorded (recordingPolicy 'manual'). Use dryRun: true to preview the resolved plan without dialing. Identical retries inside the dedupe window return the already-created call instead of dialing twice.",
   input: z.object({
-    recipient: z.string().describe("Allowlisted recipient alias from config (not a phone number)"),
+    to: z.string().min(1).describe("Configured recipient alias OR raw E.164, e.g. +61400000000"),
     objective: ObjectiveSchema,
     context: z.string().optional().describe("Optional extra context from the initiating agent"),
     profile: z.string().optional().describe("Call profile name (default: 'default')"),
@@ -73,26 +72,29 @@ export const prepareCall = {
       .optional()
       .describe("Request recording on/off (subject to the recipient's recording policy)"),
     mode: CallModeInputSchema.optional(),
+    dryRun: z
+      .boolean()
+      .optional()
+      .describe("Preview the resolved plan; nothing is persisted or dialed"),
+    idempotencyKey: z
+      .string()
+      .min(8)
+      .max(64)
+      .optional()
+      .describe("Override the derived dedupe key so retries across host restarts stay safe"),
   }),
-  output: z.object({ request: CallRequestSchema, nextStep: z.string() }),
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: false,
-  },
-} satisfies CommandSpec;
-
-export const startCall = {
-  name: "start_call",
-  description:
-    "Dial the prepared call request. Requires the request id from prepare_call and confirm: true. This places a REAL PAID phone call to a REAL person. Retrying with the same request id returns the already-created call instead of dialing twice.",
-  input: z.object({ requestId: RequestIdSchema, confirm: ConfirmSchema }),
-  output: z.object({ call: CallRecordSchema }),
+  // Single object shape: MCP outputSchema must be a top-level object, so the
+  // dryRun/dialed variants share one schema with optional halves.
+  output: z.object({
+    dryRun: z.boolean(),
+    plan: CallPlanSchema.optional(),
+    call: CallRecordSchema.optional(),
+    deduped: z.boolean().optional(),
+  }),
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,
-    idempotentHint: false,
+    idempotentHint: true,
     openWorldHint: true,
   },
 } satisfies CommandSpec;
@@ -235,8 +237,7 @@ export const deleteRecording = {
 
 /** Every command, in listing order. The golden pin test asserts these names. */
 export const ALL_COMMANDS = [
-  prepareCall,
-  startCall,
+  placeCall,
   endCall,
   playDisclosure,
   sayOnCall,

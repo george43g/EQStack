@@ -24,11 +24,10 @@ import type { CommandSpec } from "../commands/specs.js";
 import {
   deleteRecording,
   endCall,
+  placeCall,
   playDisclosure,
-  prepareCall,
   sayOnCall,
   setRecording,
-  startCall,
 } from "../commands/specs.js";
 import type { CallEvent } from "../domain/types.js";
 import { logger } from "../log.js";
@@ -118,7 +117,7 @@ function route<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(row: {
 }
 
 /**
- * The seven mutating routes as data. Each row is: match → merge path captures
+ * The six mutating routes as data. Each row is: match → merge path captures
  * over the body (path wins) → `spec.input.parse` → call CallService directly
  * (this process is the single writer — INV-9). URL shapes are unchanged so
  * AdminClient does not fork; response codes and bodies are today's.
@@ -126,21 +125,11 @@ function route<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(row: {
 const MUTATING_ROUTES: readonly AdminRoute[] = [
   route({
     method: "POST",
-    pattern: /^\/requests$/,
-    spec: prepareCall,
-    status: 201,
-    toArgs: (_match, body) => body,
-    run: async (service, args) => ({ request: service.prepare(args) }),
-  }),
-  route({
-    method: "POST",
     pattern: /^\/calls$/,
-    spec: startCall,
+    spec: placeCall,
     status: 201,
     toArgs: (_match, body) => body,
-    run: async (service, { requestId, confirm }) => ({
-      call: await service.start(requestId, confirm),
-    }),
+    run: async (service, args) => service.placeCall(args),
   }),
   route({
     method: "POST",

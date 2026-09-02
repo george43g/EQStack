@@ -3,7 +3,7 @@
  * MCP server and CLI. A refused connection means the gateway isn't running,
  * which is a first-class, user-fixable condition.
  */
-import type { CallEvent, CallRecord, CallRequest, Utterance } from "../domain/types.js";
+import type { CallEvent, CallRecord, Utterance } from "../domain/types.js";
 
 export class GatewayUnavailableError extends Error {
   constructor(adminPort: number) {
@@ -56,19 +56,20 @@ export class AdminClient {
     return this.request("GET", "/healthz");
   }
 
-  prepare(input: {
-    recipient: string;
+  placeCall(input: {
+    to: string;
     objective: string;
     context?: string | undefined;
     profile?: string | undefined;
     record?: boolean | undefined;
-    mode?: "llm" | import("../domain/types.js").CallMode | undefined;
-  }): Promise<{ request: CallRequest }> {
-    return this.request("POST", "/requests", input);
-  }
-
-  start(requestId: string, confirm: boolean): Promise<{ call: CallRecord }> {
-    return this.request("POST", "/calls", { requestId, confirm });
+    mode?: import("../domain/types.js").CallMode | undefined;
+    dryRun?: boolean | undefined;
+    idempotencyKey?: string | undefined;
+  }): Promise<
+    | { dryRun: true; plan: import("../domain/call-requests.js").CallPlan }
+    | { dryRun: false; call: CallRecord; deduped: boolean }
+  > {
+    return this.request("POST", "/calls", input);
   }
 
   endCall(callId: string, reason?: string): Promise<{ ok: boolean }> {

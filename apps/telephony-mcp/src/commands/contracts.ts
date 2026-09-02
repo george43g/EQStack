@@ -9,6 +9,7 @@
  */
 import { z } from "zod";
 import { RecordingPolicySchema } from "../config/schema.js";
+import type { CallPlan } from "../domain/call-requests.js";
 import type {
   CallEvent,
   CallRecord,
@@ -101,7 +102,6 @@ export const CallRequestSchema: z.ZodType<CallRequest> = z.object({
   recordingEnabled: z.boolean(),
   maxDurationSec: z.number(),
   createdAtMs: z.number(),
-  expiresAtMs: z.number(),
   startedCallId: z.string().nullable(),
 });
 
@@ -143,4 +143,18 @@ export const RecordingMetaSchema: z.ZodType<RecordingMeta> = z.object({
   deletedLocal: z.boolean(),
   deletedProvider: z.boolean(),
   createdAtMs: z.number(),
+});
+
+export const CallPlanSchema: z.ZodType<CallPlan> = z.object({
+  recipientAlias: z.string(),
+  numberSuffix: z.string(),
+  displayName: z.string().nullable(),
+  source: z.enum(["config", "adhoc"]),
+  objective: z.string(),
+  context: z.string().nullable(),
+  profile: z.string(),
+  mode: CallModeSchema,
+  recordingEnabled: z.boolean(),
+  recordingPolicy: RecordingPolicySchema,
+  maxDurationSec: z.number(),
 });

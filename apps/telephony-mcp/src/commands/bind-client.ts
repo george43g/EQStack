@@ -24,12 +24,11 @@ import {
   getRecordingMetadata,
   getTranscript,
   listCalls,
+  placeCall,
   playDisclosure,
-  prepareCall,
   sayOnCall,
   searchCalls,
   setRecording,
-  startCall,
 } from "./specs.js";
 
 export interface CommandDeps {
@@ -82,18 +81,7 @@ export function buildClientDefinitions(deps: CommandDeps): AnyToolDefinition[] {
   };
 
   return [
-    bind(prepareCall, async (input) => {
-      const { request } = await admin.prepare(input);
-      return {
-        request,
-        nextStep:
-          "Confirm these details with the user, then call start_call { requestId, confirm: true }. This will place a REAL, PAID phone call.",
-      };
-    }),
-    bind(startCall, async ({ requestId, confirm }) => {
-      const { call } = await admin.start(requestId, confirm);
-      return { call };
-    }),
+    bind(placeCall, async (input) => admin.placeCall(input)),
     bind(endCall, async ({ callId, reason }) => {
       await admin.endCall(callId, reason);
       return { ok: true as const };

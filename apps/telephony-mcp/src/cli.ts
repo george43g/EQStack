@@ -4,7 +4,7 @@
  *   tel mcp     stdio MCP server (stderr-only logging)
  *   tel serve   public Twilio listener + localhost admin listener
  *   tel console interactive REPL over the shared command registry
- *   tel …       operator commands (doctor, prepare, call, watch,
+ *   tel …       operator commands (doctor, call, watch,
  *                     recording play|export|delete, history …)
  */
 import { spawn } from "node:child_process";
@@ -24,7 +24,7 @@ import { buildDispatcher } from "@george43g/mcp-kit";
 import { ZodError, type z } from "zod";
 import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
 import { buildClientRegistry } from "./commands/bind-client.js";
-import { deleteRecording, prepareCall } from "./commands/specs.js";
+import { deleteRecording, placeCall } from "./commands/specs.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
 import { startGateway } from "./gateway/gateway.js";
 import { setLogLevel } from "./log.js";
@@ -166,8 +166,8 @@ program
       );
       push(
         "recipients",
-        Object.keys(cfg.recipients).length > 0,
-        `${Object.keys(cfg.recipients).length} allowlisted`,
+        true, // informational since Phase C (INV-2): aliases are nicknames, not permissions
+        `${Object.keys(cfg.recipients).length} configured (aliases optional — any E.164 dials)`,
       );
     } catch (err) {
       push("config", false, (err as Error).message);
@@ -211,9 +211,9 @@ program
   });
 
 program
-  .command("prepare")
-  .description("Stage 1: create an expiring call request (nothing is dialed)")
-  .argument("<recipient>", "allowlisted recipient alias")
+  .command("call")
+  .description("Place a phone call (REAL, PAID) — alias or any E.164; --dry-run previews")
+  .argument("<to>", "configured recipient alias OR raw E.164, e.g. +61400000000")
   .requiredOption("--objective <text>", "what the call should achieve")
   .option("--context <text>", "extra context for the LLM")
   .option("--profile <name>", "call profile")
@@ -223,39 +223,25 @@ program
     "--mode <mode>",
     "conversation driver: byo-model (default; legacy alias llm) | direct (host replies via say)",
   )
-  .action(async (recipient: string, opts) => {
+  .option("--dry-run", "preview the resolved plan without dialing", false)
+  .option("--idempotency-key <key>", "override the derived dedupe key")
+  .action(async (to: string, opts) => {
     try {
-      const input = parseInput(prepareCall.input, {
-        recipient,
+      // D-43: invoking is consent — no --yes. --dry-run is the preview path.
+      const input = parseInput(placeCall.input, {
+        to,
         objective: opts.objective,
         ...(opts.context ? { context: opts.context } : {}),
         ...(opts.profile ? { profile: opts.profile } : {}),
         ...(opts.record !== undefined ? { record: opts.record } : {}),
         ...(opts.mode ? { mode: opts.mode } : {}),
+        ...(opts.dryRun ? { dryRun: true } : {}),
+        ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
       });
       const cfg = loadConfig();
-      const { request } = await admin(cfg).prepare(input);
-      printJson(request);
-      console.error(`\nTo dial: tel call ${request.id} --yes   (REAL, PAID phone call)`);
-    } catch (err) {
-      fail(err);
-    }
-  });
-
-program
-  .command("call")
-  .description("Stage 2: dial a prepared request (REAL, PAID phone call — requires --yes)")
-  .argument("<requestId>", "request id from `tel prepare`")
-  .option("--yes", "explicit confirmation to dial", false)
-  .action(async (requestId: string, opts: { yes: boolean }) => {
-    try {
-      if (!opts.yes) {
-        fail(new Error("refusing to dial without --yes (this places a real, paid phone call)"));
-      }
-      const cfg = loadConfig();
-      const { call } = await admin(cfg).start(requestId, true);
-      printJson(call);
-      console.error(`\nWatch live: tel watch`);
+      const result = await admin(cfg).placeCall(input);
+      printJson(result);
+      if (!("plan" in result)) console.error(`\nWatch live: tel watch`);
     } catch (err) {
       fail(err);
     }
