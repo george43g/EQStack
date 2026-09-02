@@ -7,6 +7,7 @@
 import { OpenAiCompatibleLlm } from "../adapters/llm/openai-compatible.js";
 import { buildTelephonyAdapter } from "../adapters/telephony/registry.js";
 import type { Config } from "../config/schema.js";
+import { TunnelSupervisor } from "../daemon/supervisor.js";
 import type { Clock, LlmAdapter, SecretProvider } from "../domain/ports.js";
 import { systemClock } from "../domain/ports.js";
 import { logger } from "../log.js";
@@ -42,6 +43,8 @@ export async function buildLlmAdapter(
 export interface Gateway {
   service: CallService;
   metrics: Metrics;
+  /** Present when tunnel.enabled — serve parents cloudflared (D-c). */
+  tunnel: TunnelSupervisor | null;
   close(): Promise<void>;
 }
 
@@ -82,6 +85,29 @@ export async function startGateway(
   const metrics = new Metrics();
   const service = new CallService(cfg, store, telephony, recordings, clock, undefined, metrics);
 
+  // D-d: the tunnel starts degraded-tolerant — a tunnel that never becomes
+  // ready leaves the gateway up and reporting, it does not abort serve.
+  let tunnel: TunnelSupervisor | null = null;
+  if (cfg.tunnel.enabled) {
+    const { spawn } = await import("node:child_process");
+    tunnel = new TunnelSupervisor(cfg.tunnel, {
+      spawn: (bin, args, opts) => {
+        const child = spawn(bin, args, { env: { ...process.env, ...opts.env }, stdio: "ignore" });
+        return {
+          pid: child.pid,
+          kill: (signal?: NodeJS.Signals) => child.kill(signal),
+          once: (event: "exit", listener: (code: number | null, signal: string | null) => void) =>
+            void child.once(event, listener),
+        };
+      },
+      fetchImpl: opts.fetchImpl ?? fetch,
+      clock,
+      secrets,
+      stateDir: ensureStateDir(),
+    });
+    void tunnel.start();
+  }
+
   const publicServer = new PublicServer({ cfg, service, llm, twilioAuthToken, metrics, clock });
   const adminServer = new AdminServer(service, metrics);
   await publicServer.listen(cfg.server.publicPort);
@@ -91,12 +117,15 @@ export async function startGateway(
     adminPort: cfg.server.adminPort,
     telephony: telephony.id,
     llm: llm.id,
+    tunnel: tunnel ? "supervised" : "external",
   });
 
   return {
     service,
     metrics,
+    tunnel,
     close: async () => {
+      await tunnel?.stop();
       service.shutdown();
       await publicServer.close();
       await adminServer.close();

@@ -22,7 +22,10 @@
     "stability": 0.7,
     "similarity": 0.8,
     "language": "en-AU",
-    "transcription": { "provider": "Deepgram", "model": "flux" }
+    "transcription": {
+      "provider": "Deepgram",
+      "model": "flux"
+    }
   },
   "recipients": {
     "example-person": {
@@ -47,5 +50,13 @@
   },
   "disclosure": {
     "text": "Just so you know, I'm an AI assistant and this call may be recorded from this point."
+  },
+  "tunnel": {
+    "enabled": false,
+    "tunnelName": "telephony",
+    "hostname": "gw.agentpipe.top"
+  },
+  "daemon": {
+    "label": "com.george43g.telephony-mcp"
   }
 }
