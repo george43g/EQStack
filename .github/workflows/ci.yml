@@ -34,6 +34,9 @@ jobs:
       - name: Generate synthetic fixtures
         run: pnpm fixtures
 
+      - name: Docs integrity (AGENTS.md references resolve)
+        run: pnpm check:docs
+
       - name: Lint
         run: pnpm lint
 
