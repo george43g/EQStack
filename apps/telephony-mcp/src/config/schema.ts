@@ -127,6 +127,48 @@ export const LimitsSchema = z
   .default({});
 export type Limits = z.infer<typeof LimitsSchema>;
 
+/** Named Cloudflare Tunnel supervision (Phase D, D-10/D-36). Opt-in. */
+export const TunnelSchema = z
+  .object({
+    provider: z.enum(["cloudflared"]).default("cloudflared"),
+    enabled: z.boolean().default(false),
+    /** Tunnel NAME (loggable). The hostname is INV-11-sensitive; never log it. */
+    tunnelName: z.string().min(1).optional(),
+    hostname: z.string().min(1).optional(),
+    /** Secret NAME resolved via env → opkeep (INV-12) — never a value. */
+    tokenRef: z.string().nullable().default("CLOUDFLARE_TUNNEL_TOKEN"),
+    /** Locally-managed style only; null with the remotely-managed token. */
+    credentialsFile: z.string().nullable().default(null),
+    binPath: z.string().default("/opt/homebrew/bin/cloudflared"),
+    metricsPort: z.number().int().min(1).max(65535).default(20241),
+    healthIntervalMs: z.number().int().min(1000).default(15_000),
+    restart: z
+      .object({
+        initialBackoffMs: z.number().int().min(100).default(1_000),
+        maxBackoffMs: z.number().int().min(1000).default(60_000),
+        giveUpAfter: z.number().int().min(1).default(10),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict()
+  .default({});
+export type TunnelConfig = z.infer<typeof TunnelSchema>;
+
+/** launchd LaunchAgent wrapper (Phase D, D-9/D-37). Linux/systemd parity PARKED. */
+export const DaemonSchema = z
+  .object({
+    label: z.string().default("com.george43g.telephony-mcp"),
+    runAtLogin: z.boolean().default(true),
+    keepAlive: z.boolean().default(true),
+    logDir: z.string().default("~/Library/Logs/telephony-mcp"),
+    /** null → resolved from process.execPath at install time (launchd has no PATH). */
+    nodeBin: z.string().nullable().default(null),
+  })
+  .strict()
+  .default({});
+export type DaemonConfig = z.infer<typeof DaemonSchema>;
+
 export const ConfigSchema = z
   .object({
     server: ServerSchema,
@@ -136,6 +178,8 @@ export const ConfigSchema = z
     recipients: z.record(z.string().regex(/^[a-z0-9][a-z0-9-]*$/), RecipientSchema).default({}),
     profiles: z.record(z.string().regex(/^[a-z0-9][a-z0-9-]*$/), ProfileSchema),
     limits: LimitsSchema,
+    tunnel: TunnelSchema,
+    daemon: DaemonSchema,
     disclosure: z
       .object({
         text: z
@@ -150,6 +194,34 @@ export const ConfigSchema = z
   })
   .strict()
   .superRefine((cfg, ctx) => {
+    if (cfg.tunnel.enabled) {
+      // The 403 trap: Twilio signatures are computed against publicBaseUrl.
+      // A tunnel hostname that differs routes traffic to a listener that then
+      // rejects every webhook and relay upgrade with nothing useful logged.
+      if (!cfg.server.publicBaseUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tunnel", "enabled"],
+          message: "tunnel.enabled requires server.publicBaseUrl to be set",
+        });
+      } else if (
+        cfg.tunnel.hostname &&
+        new URL(cfg.server.publicBaseUrl).host !== cfg.tunnel.hostname
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tunnel", "hostname"],
+          message: `tunnel.hostname must equal the publicBaseUrl host (${new URL(cfg.server.publicBaseUrl).host}) — a mismatch 403s every Twilio webhook`,
+        });
+      }
+      if (!cfg.tunnel.tunnelName) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tunnel", "tunnelName"],
+          message: "tunnel.enabled requires tunnel.tunnelName",
+        });
+      }
+    }
     if (!cfg.profiles.default) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

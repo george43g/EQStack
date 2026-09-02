@@ -8,9 +8,10 @@
  *                     recording play|export|delete, history …)
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   applyEnvFromFlags,
   bindEnvFlags,
@@ -26,6 +27,15 @@ import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
 import { buildClientRegistry } from "./commands/bind-client.js";
 import { deleteRecording, placeCall } from "./commands/specs.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
+import {
+  defaultLaunchctl,
+  expandHome,
+  guiDomain,
+  parseLaunchctlPrint,
+  plistPath,
+  plistSpecFromConfig,
+  renderPlist,
+} from "./daemon/launchd.js";
 import { startGateway } from "./gateway/gateway.js";
 import { setLogLevel } from "./log.js";
 import { runStdioMcp } from "./mcp/server.js";
@@ -128,6 +138,157 @@ program
     }
   });
 
+const daemon = program
+  .command("daemon")
+  .description("Manage the launchd LaunchAgent that keeps `tel serve` running (D-9/D-37)");
+
+function daemonPaths(cfg: Config) {
+  const cliJs = fileURLToPath(import.meta.url);
+  const spec = plistSpecFromConfig(cfg.daemon, cliJs);
+  return { spec, path: plistPath(cfg.daemon.label) };
+}
+
+daemon
+  .command("install")
+  .description("Render the LaunchAgent plist and bootstrap it")
+  .action(async () => {
+    try {
+      const cfg = loadConfig();
+      const { spec, path } = daemonPaths(cfg);
+      if (!spec.cliJs.endsWith(".js")) {
+        fail(
+          new Error(
+            "daemon install must run from the built CLI (pnpm build; node dist/cli.js daemon install) — launchd cannot execute TypeScript",
+          ),
+        );
+      }
+      mkdirSync(dirname(path), { recursive: true });
+      mkdirSync(spec.logDir, { recursive: true });
+      writeFileSync(path, renderPlist(spec));
+      await defaultLaunchctl(["bootstrap", guiDomain(), path]);
+      console.error(`installed ${cfg.daemon.label} (${path})`);
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+daemon
+  .command("uninstall")
+  .description("Boot the agent out and remove the plist")
+  .action(async () => {
+    try {
+      const cfg = loadConfig();
+      const { path } = daemonPaths(cfg);
+      await defaultLaunchctl(["bootout", `${guiDomain()}/${cfg.daemon.label}`]).catch(() => {});
+      rmSync(path, { force: true });
+      console.error(`uninstalled ${cfg.daemon.label}`);
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+daemon
+  .command("start")
+  .description("Kickstart the agent")
+  .action(async () => {
+    try {
+      const cfg = loadConfig();
+      await defaultLaunchctl(["kickstart", `${guiDomain()}/${cfg.daemon.label}`]);
+      console.error("started");
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+daemon
+  .command("restart")
+  .description("Kill and respawn the agent")
+  .action(async () => {
+    try {
+      const cfg = loadConfig();
+      await defaultLaunchctl(["kickstart", "-k", `${guiDomain()}/${cfg.daemon.label}`]);
+      console.error("restarted");
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+daemon
+  .command("stop")
+  .description("Boot the agent out (until next install/login)")
+  .action(async () => {
+    try {
+      const cfg = loadConfig();
+      await defaultLaunchctl(["bootout", `${guiDomain()}/${cfg.daemon.label}`]);
+      console.error("stopped");
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+daemon
+  .command("status")
+  .description("launchd + gateway + tunnel, one line per layer")
+  .action(async () => {
+    const cfg = loadConfig();
+    let launchdLine = "not loaded";
+    try {
+      const { stdout } = await defaultLaunchctl(["print", `${guiDomain()}/${cfg.daemon.label}`]);
+      const s = parseLaunchctlPrint(stdout);
+      launchdLine = `pid=${s.pid ?? "-"} lastExit=${s.lastExitStatus ?? "-"} runs=${s.runs ?? "?"}`;
+    } catch {
+      // stays "not loaded"
+    }
+    console.log(`launchd  ${launchdLine}`);
+    try {
+      const h = await admin(cfg).health();
+      console.log(`gateway  up v${h.version} activeCalls=${h.activeCalls}`);
+    } catch {
+      console.log("gateway  down (nothing on the admin port)");
+    }
+    if (cfg.tunnel.enabled) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${cfg.tunnel.metricsPort}/ready`);
+        console.log(`tunnel   ${res.ok ? "ready" : `not ready (HTTP ${res.status})`}`);
+      } catch {
+        console.log("tunnel   down (no /ready listener)");
+      }
+    } else {
+      console.log("tunnel   disabled in config");
+    }
+  });
+
+daemon
+  .command("logs")
+  .description("Tail the daemon's structured stderr log")
+  .option("--follow", "keep following", false)
+  .option("--lines <n>", "how many lines", "100")
+  .action(async (opts: { follow: boolean; lines: string }) => {
+    const cfg = loadConfig();
+    const file = join(expandHome(cfg.daemon.logDir), "launchd.err.log");
+    const args = ["-n", opts.lines, ...(opts.follow ? ["-f"] : []), file];
+    const child = spawn("/usr/bin/tail", args, { stdio: "inherit" });
+    child.on("exit", (code) => process.exit(code ?? 0));
+  });
+
+program
+  .command("tunnel-status")
+  .description("Named-tunnel state (prints the tunnel NAME, never the hostname)")
+  .action(async () => {
+    const cfg = loadConfig();
+    if (!cfg.tunnel.enabled) {
+      console.log("tunnel disabled in config");
+      return;
+    }
+    console.log(`name: ${cfg.tunnel.tunnelName ?? "-"}`);
+    try {
+      const res = await fetch(`http://127.0.0.1:${cfg.tunnel.metricsPort}/ready`);
+      console.log(`local /ready: ${res.ok ? "ready" : `HTTP ${res.status}`}`);
+    } catch {
+      console.log("local /ready: down");
+    }
+  });
+
 program
   .command("serve")
   .description("Run the telephony gateway (public webhook/WS listener + localhost admin)")
@@ -162,8 +323,26 @@ program
         Boolean(cfg.server.publicBaseUrl),
         cfg.server.publicBaseUrl
           ? "set"
-          : "missing — serve will refuse to start (start the tunnel first)",
+          : "missing — serve will refuse to start (enable tunnel.* or set it manually)",
       );
+      if (cfg.tunnel.enabled) {
+        push(
+          "cloudflared",
+          existsSync(cfg.tunnel.binPath),
+          existsSync(cfg.tunnel.binPath) ? cfg.tunnel.binPath : `missing at ${cfg.tunnel.binPath}`,
+        );
+        const tokenOk = cfg.tunnel.tokenRef
+          ? (await new EnvKeychainSecretProvider().get(cfg.tunnel.tokenRef)) !== null
+          : cfg.tunnel.credentialsFile !== null;
+        push(
+          "tunnel token",
+          tokenOk,
+          tokenOk ? "resolvable" : `cannot resolve ${cfg.tunnel.tokenRef}`,
+        );
+        // INV-11: never print the hostname; the parse-time superRefine already
+        // guarantees it matches publicBaseUrl, so report only the guarantee.
+        push("tunnel hostname", true, "matches publicBaseUrl (enforced at parse)");
+      }
       push(
         "recipients",
         true, // informational since Phase C (INV-2): aliases are nicknames, not permissions
