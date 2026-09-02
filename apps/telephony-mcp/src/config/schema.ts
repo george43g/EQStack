@@ -10,7 +10,8 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 
-const E164 = z.string().regex(/^\+[1-9]\d{6,14}$/, "must be E.164, e.g. +61400000000");
+export const E164Schema = z.string().regex(/^\+[1-9]\d{6,14}$/, "must be E.164, e.g. +61400000000");
+const E164 = E164Schema;
 
 export const RecordingPolicySchema = z.enum(["preconsented", "manual", "never"]);
 export type RecordingPolicy = z.infer<typeof RecordingPolicySchema>;
@@ -117,8 +118,10 @@ export const LimitsSchema = z
     defaultMaxDurationMinutes: z.number().int().min(1).default(15),
     /** Administrator cap — profiles/requests are clamped to this. */
     hardMaxDurationMinutes: z.number().int().min(1).default(30),
-    /** How long a prepared call request stays startable. */
-    callRequestTtlMinutes: z.number().int().min(1).default(10),
+    /** @deprecated ignored since Phase C (D-5 dropped the TTL) — accepted so existing configs still parse. */
+    callRequestTtlMinutes: z.number().int().min(1).optional(),
+    /** One-shot dedupe window: identical place_call retries inside it return the same call (D-5). */
+    callDedupeWindowSeconds: z.number().int().min(1).default(120),
   })
   .strict()
   .default({});
@@ -130,7 +133,7 @@ export const ConfigSchema = z
     telephony: TelephonySchema,
     llm: LlmSchema,
     voice: VoiceSchema,
-    recipients: z.record(z.string().regex(/^[a-z0-9][a-z0-9-]*$/), RecipientSchema),
+    recipients: z.record(z.string().regex(/^[a-z0-9][a-z0-9-]*$/), RecipientSchema).default({}),
     profiles: z.record(z.string().regex(/^[a-z0-9][a-z0-9-]*$/), ProfileSchema),
     limits: LimitsSchema,
     disclosure: z

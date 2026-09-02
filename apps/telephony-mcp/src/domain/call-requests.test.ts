@@ -3,10 +3,16 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FixedClock, seqIds, tempStateDir, testConfig } from "../../tests/helpers.js";
 import { SqliteStore } from "../stores/sqlite-store.js";
-import { CallRequestError, prepareCallRequest, resolveStartableRequest } from "./call-requests.js";
+import {
+  buildCallPlan,
+  CallRequestError,
+  createCallRequest,
+  type PlaceCallInput,
+} from "./call-requests.js";
 import { ConsentError } from "./consent.js";
+import { resolveRecipient } from "./recipients.js";
 
-describe("two-stage call request flow", () => {
+describe("one-shot call planning (Phase C)", () => {
   let dir: string;
   let store: SqliteStore;
   const cfg = testConfig();
@@ -21,80 +27,48 @@ describe("two-stage call request flow", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("prepare resolves the alias and exposes only the number suffix", () => {
-    const request = prepareCallRequest(cfg, store, clock, seqIds(), {
-      recipient: "george",
-      objective: "book a table for two",
-    });
-    expect(request.numberSuffix).toBe("1222");
-    expect(JSON.stringify(request)).not.toContain("+61400111222");
-    expect(request.recordingEnabled).toBe(true); // preconsented default
-    expect(request.expiresAtMs).toBe(clock.nowMs() + 10 * 60_000);
-    expect(request.maxDurationSec).toBe(15 * 60);
-    expect(store.getCallRequest(request.id)).not.toBeNull();
+  function plan(input: PlaceCallInput) {
+    return buildCallPlan(cfg, resolveRecipient(cfg, input.to), input);
+  }
+
+  it("resolves a config alias and exposes only the number suffix", () => {
+    const p = plan({ to: "george", objective: "book a table for two" });
+    expect(p.recipientAlias).toBe("george");
+    expect(p.numberSuffix).toBe("1222");
+    expect(p.source).toBe("config");
+    expect(JSON.stringify(p)).not.toContain("+61400111222");
   });
 
-  it("rejects recipients that are not allowlisted", () => {
-    expect(() =>
-      prepareCallRequest(cfg, store, clock, seqIds(), {
-        recipient: "stranger",
-        objective: "x",
-      }),
-    ).toThrow(CallRequestError);
+  it("resolves a raw E.164 absent from config as an ad-hoc recipient (INV-2, D-4)", () => {
+    const p = plan({ to: "+61400999888", objective: "ad-hoc hello" });
+    expect(p.recipientAlias).toBe("adhoc-9888");
+    expect(p.source).toBe("adhoc");
+    expect(p.recordingPolicy).toBe("manual");
+    expect(p.recordingEnabled).toBe(false); // connects, starts unrecorded
+    expect(JSON.stringify(p)).not.toContain("+61400999888");
   });
 
-  it("applies consent rules at prepare time", () => {
-    const manual = prepareCallRequest(cfg, store, clock, seqIds("m"), {
-      recipient: "friend",
-      objective: "catch up",
-    });
-    expect(manual.recordingEnabled).toBe(false);
-    expect(() =>
-      prepareCallRequest(cfg, store, clock, seqIds("n"), {
-        recipient: "private",
-        objective: "x",
-        record: true,
-      }),
-    ).toThrow(ConsentError);
-    expect(() =>
-      prepareCallRequest(cfg, store, clock, seqIds("o"), {
-        recipient: "private",
-        objective: "x",
-        record: true,
-      }),
-    ).toThrow(/never/);
+  it("a name that is neither alias nor E.164 is a parse error, not a permission gate", () => {
+    const attempt = () => resolveRecipient(cfg, "mum");
+    expect(attempt).toThrow(CallRequestError);
+    expect(attempt).toThrow(/neither a configured alias nor E\.164/);
   });
 
-  it("requires explicit confirmation to start", () => {
-    const request = prepareCallRequest(cfg, store, clock, seqIds(), {
-      recipient: "george",
-      objective: "x",
-    });
-    expect(() => resolveStartableRequest(store, clock, request.id, false)).toThrow(/confirmation/);
-    expect(resolveStartableRequest(store, clock, request.id, true).id).toBe(request.id);
+  it("ad-hoc + record: true is a ConsentError (manual policy — INV-3 unchanged)", () => {
+    expect(() => plan({ to: "+61400999888", objective: "x", record: true })).toThrow(ConsentError);
   });
 
-  it("expires unstarted requests after the TTL", () => {
-    const request = prepareCallRequest(cfg, store, clock, seqIds(), {
-      recipient: "george",
-      objective: "x",
-    });
-    const late = new FixedClock(clock.nowMs() + 11 * 60_000);
-    expect(() => resolveStartableRequest(store, late, request.id, true)).toThrow(/expired/);
+  it("'never' recipients still cannot be recorded", () => {
+    expect(() => plan({ to: "private", objective: "x", record: true })).toThrow(ConsentError);
   });
 
-  it("started requests never expire — retries must find the existing call", () => {
-    const request = prepareCallRequest(cfg, store, clock, seqIds(), {
-      recipient: "george",
-      objective: "x",
-    });
-    store.markRequestStarted(request.id, "call-1");
-    const late = new FixedClock(clock.nowMs() + 60 * 60_000);
-    const resolved = resolveStartableRequest(store, late, request.id, true);
-    expect(resolved.startedCallId).toBe("call-1");
-  });
-
-  it("rejects unknown request ids", () => {
-    expect(() => resolveStartableRequest(store, clock, "nope", true)).toThrow(/unknown/);
+  it("createCallRequest persists the plan without a TTL and stays readable", () => {
+    const p = plan({ to: "george", objective: "persist me", mode: "direct" });
+    const request = createCallRequest(p, store, clock, seqIds());
+    const read = store.getCallRequest(request.id);
+    expect(read?.mode).toBe("direct");
+    expect(read?.objective).toBe("persist me");
+    expect("expiresAtMs" in (read as object)).toBe(false);
+    expect(read?.startedCallId).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 /**
- * CallService — the single writer and policy gate. Every mutation (prepare,
- * start, end, disclosure, recording toggle, deletion) flows through here via
+ * CallService — the single writer and policy gate. Every mutation (place,
+ * end, disclosure, recording toggle, deletion) flows through here via
  * the localhost admin API; the public listener only feeds it validated
  * Twilio callbacks. Events append to the store AND fan out to live
  * subscribers (SSE / `tel watch`).
@@ -11,17 +11,21 @@ import { EventEmitter } from "node:events";
 import type { Config } from "../config/schema.js";
 import { effectiveCallSettings } from "../config/schema.js";
 import {
+  buildCallPlan,
+  type CallPlan,
   CallRequestError,
-  type PrepareCallInput,
-  prepareCallRequest,
-  resolveStartableRequest,
+  createCallRequest,
+  type PlaceCallInput,
 } from "../domain/call-requests.js";
 import { assertRecordingToggleAllowed } from "../domain/consent.js";
+import { deriveIdempotencyKey, loadOrCreateInstallKey } from "../domain/idempotency.js";
 import type { Clock, IdProvider, RecordingStore, TelephonyAdapter } from "../domain/ports.js";
 import { systemClock } from "../domain/ports.js";
-import type { CallEvent, CallRecord, CallRequest, CallStatus } from "../domain/types.js";
+import { resolveRecipient } from "../domain/recipients.js";
+import type { CallEvent, CallRecord, CallStatus } from "../domain/types.js";
 import { CALL_STATUS_RANK, TERMINAL_STATUSES } from "../domain/types.js";
 import { logger } from "../log.js";
+import { ensureStateDir } from "../paths.js";
 import type { SqliteStore } from "../stores/sqlite-store.js";
 import type { Metrics } from "./metrics.js";
 
@@ -76,64 +80,83 @@ export class CallService {
   emit(callId: string, type: string, data: Record<string, unknown> = {}): CallEvent {
     const event = this.store.appendEvent(callId, type, data);
     this.events.emit("event", event);
-    this.metrics?.counter("voice_events_total", "Events appended").inc();
+    this.metrics?.counter("tel_events_total", "Events appended").inc();
     return event;
   }
 
-  // -- two-stage flow -------------------------------------------------------
+  // -- one-shot flow (Phase C: D-5/D-38/D-55) -------------------------------
 
-  prepare(input: PrepareCallInput): CallRequest {
+  private installKey: Buffer | null = null;
+
+  /**
+   * Resolve → plan → (dryRun? return) → idempotency claim BEFORE dial →
+   * persist request+call → dial. The resolved full number stays in memory
+   * from resolve to telephony.createCall and is never persisted (INV-11).
+   */
+  async placeCall(
+    input: PlaceCallInput & { dryRun?: boolean | undefined; idempotencyKey?: string | undefined },
+  ): Promise<
+    { dryRun: true; plan: CallPlan } | { dryRun: false; call: CallRecord; deduped: boolean }
+  > {
+    let plan: CallPlan;
+    let number: string;
     try {
-      const request = prepareCallRequest(this.cfg, this.store, this.clock, this.ids, input);
-      logger.info("call request prepared", {
-        requestId: request.id,
-        recipient: request.recipientAlias,
-        profile: request.profile,
-        recording: request.recordingEnabled,
-      });
-      return request;
+      const resolved = resolveRecipient(this.cfg, input.to);
+      number = resolved.number;
+      plan = buildCallPlan(this.cfg, resolved, input);
     } catch (err) {
       throw new CallServiceError((err as Error).message);
     }
-  }
+    if (input.dryRun) return { dryRun: true, plan };
 
-  async start(requestId: string, confirm: boolean): Promise<CallRecord> {
-    let request: CallRequest;
-    try {
-      request = resolveStartableRequest(this.store, this.clock, requestId, confirm);
-    } catch (err) {
-      throw new CallServiceError((err as Error).message);
+    this.installKey ??= loadOrCreateInstallKey(ensureStateDir());
+    const idemKey =
+      input.idempotencyKey ??
+      deriveIdempotencyKey(this.installKey, number, plan.objective, plan.mode, plan.profile);
+    const now = this.clock.nowMs();
+    const windowMs = this.cfg.limits.callDedupeWindowSeconds * 1000;
+
+    // Idempotency BEFORE concurrency (ordering inherited from the two-stage
+    // start(): an identical retry of the live call must return it, not 409).
+    const existingId = this.store.lookupCallIdempotency(idemKey, now, windowMs);
+    if (existingId) {
+      const existing = this.store.getCall(existingId);
+      if (existing) return { dryRun: false, call: existing, deduped: true };
     }
-    if (request.startedCallId) {
-      const existing = this.store.getCall(request.startedCallId);
-      if (existing) return existing; // idempotent retry — never dial twice
-    }
+
     if (this.store.activeCallCount() >= this.cfg.limits.maxConcurrentCalls) {
       throw new CallServiceError(
         `concurrency limit reached (${this.cfg.limits.maxConcurrentCalls} active call max)`,
         409,
       );
     }
-    const recipient = this.cfg.recipients[request.recipientAlias];
-    if (!recipient)
-      throw new CallServiceError(`recipient vanished from config: ${request.recipientAlias}`);
-    const settings = effectiveCallSettings(this.cfg, request.profile);
     const publicBaseUrl = this.cfg.server.publicBaseUrl;
     if (!publicBaseUrl) throw new CallServiceError("server.publicBaseUrl is not configured", 500);
 
-    const now = this.clock.nowMs();
+    const callId = this.ids.newId();
+    // Claim BEFORE dialing: losing the race means someone else is ringing them.
+    const claim = this.store.claimCallIdempotency(idemKey, callId, now, windowMs);
+    if (!claim.claimed) {
+      const existing = this.store.getCall(claim.existingCallId);
+      if (existing) return { dryRun: false, call: existing, deduped: true };
+      // Claim without a call row (crashed between claim and create): reclaim.
+      this.store.releaseCallIdempotency(idemKey);
+      this.store.claimCallIdempotency(idemKey, callId, now, windowMs);
+    }
+
+    const request = createCallRequest(plan, this.store, this.clock, this.ids);
     const call: CallRecord = {
-      id: this.ids.newId(),
+      id: callId,
       providerCallId: null,
       requestId: request.id,
-      recipientAlias: request.recipientAlias,
-      numberSuffix: request.numberSuffix,
-      profile: request.profile,
-      objective: request.objective,
+      recipientAlias: plan.recipientAlias,
+      numberSuffix: plan.numberSuffix,
+      profile: plan.profile,
+      objective: plan.objective,
       status: "created",
-      recordingEnabled: request.recordingEnabled,
-      recordingPolicy: recipient.recordingPolicy,
-      maxDurationSec: request.maxDurationSec,
+      recordingEnabled: plan.recordingEnabled,
+      recordingPolicy: plan.recordingPolicy,
+      maxDurationSec: plan.maxDurationSec,
       createdAtMs: now,
       updatedAtMs: now,
       endedAtMs: null,
@@ -150,10 +173,11 @@ export class CallService {
       recording: call.recordingEnabled,
     });
 
+    const settings = effectiveCallSettings(this.cfg, plan.profile);
     const base = publicBaseUrl.replace(/\/$/, "");
     try {
       const { providerCallId } = await this.telephony.createCall({
-        to: recipient.number,
+        to: number,
         from: this.cfg.telephony.fromNumber,
         relayWsUrl: `${base.replace(/^https:/, "wss:")}/relay/${token}`,
         statusCallbackUrl: `${base}/twilio/status`,
@@ -164,10 +188,12 @@ export class CallService {
         greeting: settings.profile.greeting,
       });
       this.store.setProviderCallId(call.id, providerCallId);
-      this.metrics?.counter("voice_calls_total", "Calls dialed").inc();
+      this.metrics?.counter("tel_calls_total", "Calls dialed").inc();
       this.armDurationTimer(call.id, call.maxDurationSec);
-      return this.store.getCall(call.id) as CallRecord;
+      return { dryRun: false, call: this.store.getCall(call.id) as CallRecord, deduped: false };
     } catch (err) {
+      // Release the claim: a failed dial must not swallow an honest retry.
+      this.store.releaseCallIdempotency(idemKey);
       this.store.updateCallStatus(call.id, "failed", {
         endedAtMs: this.clock.nowMs(),
         endReason: `dial failed: ${(err as Error).message}`,
