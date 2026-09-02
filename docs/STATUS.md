@@ -4,7 +4,7 @@ _Single source of truth for where the project stands and what's still open. Read
 first when resuming work. Supersedes the retired `HANDOFF_v1.4.x.md`, `DEFERRED_TASKS.md`,
 and the untracked `.tui-audit-notes.md` scratch files (folded in here, shipped items dropped)._
 
-_Last updated 2026-08-16 · current release **v1.23.0** (npm; every release through the
+_Last updated 2026-09-03 · current release **v1.25.4** (npm; every release through the
 #94–#110 queue tag+npm-verified: eviction cursor, date picker, unnamed-group titles, the
 height-0-box render family, analytics contact names, group events (v1.22.0), robustness
 0.8.1 full adoption (v1.22.1–2), structuredContent envelopes + single-shot shutdown marker
@@ -21,7 +21,7 @@ height-0-box render family, analytics contact names, group events (v1.22.0), rob
 > in `apps/analysis/`, shared `@eqstack/*` config packages in `packages/`. Conversion record +
 > progress log: **[`../HANDOFF.md`](../HANDOFF.md)**; design/why:
 > [`MONOREPO_MIGRATION.md`](MONOREPO_MIGRATION.md). The published npm package stays `imsg-mcp`;
-> the GitHub repo rename to EQStack remains George-triggered.
+> the GitHub repo rename to EQStack was executed 2026-08-05 (`git remote -v` → `EQStack.git`).
 
 ---
 
@@ -148,6 +148,41 @@ Durable facts that repeatedly bite — keep these in mind before touching the re
 ## Backlog
 
 Ordered roughly by priority. Nothing here blocks the current release.
+
+### 0. Harness / docs integrity — drift fix (2026-09-03, dotfiles audit)
+
+Root `AGENTS.md` (== `CLAUDE.md` symlink) had decayed into a stale imsg-only doc
+fronting a four-app monorepo. **Fixed in this pass:** deleted the false Git-LFS
+block (there is no LFS — synthetic fixtures via `pnpm fixtures`, `.gitattributes:1-9`);
+`.env.test` uses `fixtures/` not `env-data/`; the `pnpm sync-env-data` command
+(no such alias) → real `pnpm fixtures` + the legacy tsx script; the release
+private-list and both apps-lists now name all four apps incl. `gmail-mcp`;
+STATUS version 1.23.0 → 1.25.4 and the "rename remains George-triggered" line
+corrected (executed 2026-08-05). **New enforcer:** `scripts/check-docs-integrity.mjs`
+(wired into `pnpm verify` + a CI step) asserts every repo-path / `pnpm`-script
+reference in AGENTS.md resolves; `--self-test` proves it can fail.
+
+**Deferred to George (consult, not force — per the audit):**
+- **Structural re-cut** of root AGENTS.md into a thin four-app *map* with imsg
+  internals relocated (the skill: scope by risk divergence, not directory shape;
+  the root doubling as imsg's guide is *why* it drifted). Bigger, opinionated —
+  George's call on shape. **dotfiles' recommendation (2026-09-03):** root → a
+  four-app map; imsg's operational internals (fixtures, env wiring, sync scripts)
+  move to `apps/imsg-mcp/docs/` and are LINKED from the map — **no new
+  `apps/imsg-mcp/AGENTS.md`**. Rationale: that material is operational detail, not
+  a divergent *safety* boundary, so a scoped instruction file would be the ceremony
+  the rule warns against and would rot the same way. That leaves exactly two earned
+  scoped files (telephony, gmail). Verified in passing: the repo-local `.agents/`
+  holds only the one stale, non-canonical `skills/imsg-mcp-dev/SKILL.md` (gitignored,
+  link already removed); the canonical imsg skill is tracked at
+  `apps/imsg-mcp/skills/imsg-mcp/SKILL.md`, so nothing load-bearing is invisible to
+  a fresh clone. The `~/.agents/humans/` references are a user-home runtime path,
+  not this dir.
+- **F6 · gmail migration record durability**: `apps/gmail-mcp/HANDOFF.md` and
+  `docs/agent-handoff/GMAIL-MCP-PREMIGRATION-HANDOFF.md` are byte-identical
+  (md5 `c8e932fa…`) and **both gitignored** — the record survives on this laptop
+  only. Tracking it needs George's call (it may hold sensitive content; its own
+  header says do-not-commit). "A record on one machine is not a system of record."
 
 ### 1. Analytics — 20 remaining types (PARKED 2026-08-16, George's call)
 **Parked: these will be absorbed by the future relationship-analytics app** (`apps/analysis`, the

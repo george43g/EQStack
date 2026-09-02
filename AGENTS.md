@@ -13,16 +13,23 @@ MCP server for iMessage on macOS. Lets AI agents send and receive iMessages (and
 
 ## What This Repo Is
 
-- **Layout**: pnpm workspaces + Turborepo. `apps/imsg-mcp` (the shipping npm package `imsg-mcp`),
-  `apps/analysis` (blank shell for the future relationship-analysis app), `packages/{tsconfig,biome-config,vitest-config}` (`@eqstack/*`).
+- **Layout**: pnpm workspaces + Turborepo, **four apps**: `apps/imsg-mcp` (the shipping npm
+  package `imsg-mcp`), `apps/gmail-mcp` (`@george43g/gmail-mcp`, own AGENTS.md + CI, publish
+  hard-gated `private: true`), `apps/telephony-mcp` (`telephony-mcp`, `private: true`), and
+  `apps/analysis` (blank shell for the future relationship-analysis app). Shared config in
+  `packages/{tsconfig,biome-config,vitest-config}` (`@eqstack/*`, private).
 - **Stack**: TypeScript (ESM), Node **24+**, MCP SDK, `better-sqlite3`, `imessage-parser`, Zod.
 - **Sending**: AppleScript via `osascript` to Messages.app.
 - **Reading**: SQLite at `~/Library/Messages/chat.db` (macOS only; needs Full Disk Access).
 - **Contacts**: Reads `~/Library/Application Support/AddressBook/AddressBook-v22.abcddb` to resolve phone numbers/emails to contact names.
 
-## Remote / cloud agents (Git LFS)
+## Remote / cloud agents (fixtures, NOT Git LFS)
 
-Large DB files (`*.db`, `*.abcddb`) are tracked with Git LFS. In cloud or fresh clones they may be pointer files only. **Before doing any work**, restore LFS content: `git lfs install` (once), then `git lfs pull`. See **`skills.md`** (repo root) and **`.agents/skills/imsg-mcp-dev/SKILL.md`** for full steps.
+**There is no Git LFS in this repo.** `*.db` / `*.abcddb` files are **synthetic fixtures generated
+locally** and gitignored (`.gitattributes:1-9`, `ci.yml:110`). A fresh clone or cloud agent runs
+`pnpm install`, whose `prepare` step generates `apps/imsg-mcp/fixtures/` via `pnpm fixtures`
+(`apps/imsg-mcp/scripts/generate-fixtures.ts`) — no `git lfs pull`, no real data. Tests point at
+`fixtures/` (`apps/imsg-mcp/.env.test`), never at your Mac's real `chat.db`.
 
 ## Commands
 
@@ -45,7 +52,7 @@ For any `--mode`, Vite loads (each step overrides the previous): **`.env`** → 
 
 - **`.env`** (usually gitignored): baseline `VITE_ENV=development`; no machine paths here.
 - **`.env.local`** (tracked): your Mac paths (`VITE_IMSG_DB_PATH`, …); do **not** set `VITE_ENV` here so `development` stays from `.env`.
-- **`.env.test`**: `VITE_ENV=ai` and `env-data/` paths — used when **`pnpm test`** runs (mode **`test`**).
+- **`.env.test`**: `VITE_ENV=ai` and `fixtures/` paths — used when **`pnpm test`** runs (mode **`test`**).
 - **`pnpm test:native`**: **`--mode development`** — there is no `.env.test` in that chain, so **`VITE_ENV`** stays **`development`** from `.env` and paths come from **`.env.local`**.
 
 **Sending in tests**: Under Vitest, `applescript.ts` always mocks (`VITEST=true`), so tests never call `osascript`. Real Messages.app is used when you run the MCP outside Vitest with `VITE_ENV=development` (e.g. `pnpm mcp`).
@@ -68,15 +75,16 @@ One human conversation is often split across multiple `chat` rows (phone vs emai
 
 | Command | Notes |
 |---------|--------|
-| `pnpm sync-env-data` | Copies `~/Library/Messages/chat.db`, Address Book (`AddressBook-v22.abcddb` + `Sources/*/…`), and `~/.imsg-mcp/slugs.db` into **`env-data/`**. **Overwrites** targets without backup. **Do not run** unless you mean to refresh bundled fixtures (and understand Git LFS / commit size). If `Sources` cannot be read, a **warning** is printed (permissions). |
+| `pnpm fixtures` | Generates the synthetic `apps/imsg-mcp/fixtures/` set (chat.db, AddressBook, slugs.db, contacts.vcf) — run automatically by `prepare` on install. This is the fixture source of truth; no real data, no LFS. |
+| `pnpm exec tsx apps/imsg-mcp/scripts/sync-env-data.ts` | **Legacy dev-only**, no `pnpm` alias. Copies your Mac's real `chat.db` / Address Book / slugs into `env-data/` for local-only manual testing. **Never run in CI or on shared checkouts** (real personal data). Tests do NOT use `env-data/`. |
 | `pnpm exec tsx scripts/compare-contacts-vcf.ts` | Human-readable report: `env-data/contacts.vcf` vs `ContactsDB`. Shared logic: `src/vcf-contact-compare.ts`; **Vitest** asserts **≥ 80%** handle match rate on that fixture. |
 
-**Removed:** `scripts/test-contacts.ts` — superseded by **`tests/contacts-imessage-smoke.test.ts`** (skips if DBs missing or still Git LFS pointers).
+**Removed:** the old scripts/test-contacts.ts (no backtick — it is gone) was superseded by **`apps/imsg-mcp/tests/contacts-imessage-smoke.test.ts`** (skips if the fixture DBs are missing).
 
 ## Docs
 
 - **README.md** – User-facing: install, permissions, configuration, tool examples.
-- **skills.md** – Agent handoff: LFS, env summary, thread slugs, scripts, code map.
+- **skills.md** – Agent handoff: env summary, thread slugs, scripts, code map.
 - **apps/imsg-mcp/docs/IMESSAGE_DB_SCHEMA.md** – iMessage DB reference: tables, timestamps (Mac epoch), message types, reactions, attachments, example SQL.
 - **apps/imsg-mcp/docs/CONTACT_MERGE_AND_SLUGS.md** – How chats merge into one identity (cross-source Address Books, contactId), the completeness diagnostic, and per-identity thread slugs. Read before touching contacts/merge/slug code.
 
@@ -260,8 +268,9 @@ with per-package tags. Key facts:
 - **Per-package scope.** A `feat:`/`fix:` touching `apps/imsg-mcp/**` releases `imsg-mcp`; a commit
   touching only another app never does. Commit *type* still gates whether there's a release; *path*
   now gates *which* package releases.
-- **Private = skipped.** `ignorePrivate` is on by default, so `apps/telephony-mcp`, `apps/analysis`, and
-  the `packages/@eqstack/*` configs (all `private: true`) never publish.
+- **Private = skipped.** `ignorePrivate` is on by default, so `apps/gmail-mcp`, `apps/telephony-mcp`,
+  `apps/analysis`, and the `packages/@eqstack/*` configs (all `private: true`) never publish. Only
+  `apps/imsg-mcp` publishes today.
 - **Tags are namespaced per package — set GLOBALLY, not per package.** msr **always overrides** a
   package's own `.releaserc.json` `tagFormat`, so the scheme lives in the root `release` script:
   `multi-semantic-release --tag-format '${name}-v${version}'` → `imsg-mcp-v1.19.x`. (Learned the
