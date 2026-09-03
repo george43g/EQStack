@@ -244,3 +244,45 @@ are inert.
 | — | Is any Twilio-side timestamp available to close the STT-finalise leg? | implementer | **unknown — verify against Twilio's ConversationRelay WebSocket-messages doc and the Call resource's timing fields.** Do not assume one exists. |
 | — | Wall clock vs monotonic | implementer | All marks come from `systemClock` = `Date.now()` (`src/domain/ports.ts:29`). NTP slew can distort a multi-second delta. Keeping wall clock preserves cross-referencing with `event.tsMs`; if the measured spread looks impossible, re-measure with `performance.now()` deltas before believing it. |
 | — | Should `turn.timing` be emitted for a turn that never got a reply (call ended mid-think)? | implementer | Step 8.4 says no. Revisit if G's rendering wants the gap made visible. |
+
+---
+
+## Measured (2026-09-03, live paid call — George authorised)
+
+Call `e0112e7b-8dd3-43d4-9df0-4dc8631cfd7f` to George (ad-hoc `adhoc-0797`), **direct
+mode**, 7 turns, over a fresh Cloudflare **Quick Tunnel** (Melbourne edge; the named
+tunnel O-23 is still unprovisioned). Driven from the admin API by hand.
+
+| Leg | p50 | p90 | n | Trust |
+|---|---|---|---|---|
+| `direct.egress` (reply received → frame on wire) | **~0 ms** | 1 ms | 4 | **Reliable** — pure gateway-side |
+| `direct.turn` (end-of-turn → reply on wire) | **~12 s** (11995 ms) | 35 s | 4 | Reliable as "how long George waited" |
+| `direct.pickup` (turn.user → handed to host) | 9695 ms | 16315 ms | 6 | ⚠️ **Harness-distorted** |
+| `direct.think` (handed to host → reply) | 33678 ms | — | 1 | ⚠️ **Harness-distorted** |
+
+**The two trustworthy facts:**
+1. **The network/tunnel is negligible.** `direct.egress` ≈ 0–1 ms — the ConversationRelay
+   WSS + Quick Tunnel round trip is nothing. This **reaffirms R-1 / D-18**: a Cloudflare
+   Worker is not a latency fix.
+2. **A direct-mode turn is ~12 s of dead air**, and essentially all of it is the agent
+   generating the reply, not the wire.
+
+**Caveat (measurement-subject discipline):** `pickup`/`think` are inflated because the
+call was driven from Bash `curl` with compose-time between long-polls, so my own
+turnaround landed in those legs rather than in a tight MCP-host long-poll. The split
+between pickup and think is an artifact of the harness, not the gateway; only `egress`
+(pure gateway-side) and the *total* `direct.turn` are load-bearing. A real MCP-host loop
+would push pickup→~0 and concentrate the ~12 s in the model turn.
+
+**George's live confirmation (turn 6):** the latency is the agent's own response-generation
+time, not the cloudflare tunnels — "if you want a low-latency conversation you have to
+prepare the agent that sits on the very edge that can respond quickly; going all the way
+back to the origin agent with no one in between is a walkie-talkie conversation." The
+four-modes thesis, stated by the person the plan is for.
+
+## D-30 verdict: Phase F is **GO**
+
+`direct.turn` p50 ≈ 12 s ≫ the ~1.5 s threshold, response-generation-dominant, not network.
+The thinking sound is justified **to mask direct mode's dead air**. But F is a mask, not a
+fix: the real latency fix is the edge-agent modes (`delegate`/`consult`, Phases Q/R). F
+makes direct mode bearable; the modes make it unnecessary.
