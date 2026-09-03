@@ -34,6 +34,7 @@ coverage/
 # Local dev configurations — user-specific paths
 .mcp.json
 .cursor/
+.codex/
 opencode.json
 .agents/
 
@@ -57,6 +58,3 @@ release/
 stress-tui-report.json
 stress-mcp-report.json
 .claude/scheduled_tasks.lock
-
-# mcpsync pre-write backups of .codex/config.toml — churn, never content
-.codex/*.bak.*
