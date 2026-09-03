@@ -155,6 +155,18 @@ than duplicating it.
 > state/config dirs move after `daemon install`, the agent points at nothing. The
 > rename must land before the first plist install.
 
+| O-24 | `conversation-harness-preamble` · eqstack | **The tool should hand the driving model a system preamble** (whichever model drives — direct-mode Claude Code host, a byo-model OpenRouter model, or an EL delegate/consult agent). George 2026-09-04, from the live call: STT is lossy and mangles proper nouns/technical terms phonetically ("cloudflare"→"cloud flood", "claude code"→"cord code"). The preamble should (a) warn transcripts are approximate, (b) license **charitable, context-driven error-correction** (infer the intended word), and (c) add the rule: **for an important word/phrase — a name, number, command, or confirmation — do NOT guess; say the line broke up and ask the human to repeat/spell it.** Verified real by this session's own transcript. | George | Q/R/T + direct-mode host preamble |
+| O-25 | `structured-output-turns` · eqstack | **Drive the model's turn via structured output (JSON schema), not free text** — for byo-model (OpenRouter `response_format`) and the gateway LLM path. George 2026-09-04. A turn returns e.g. `{ say, transcript_confidence, needs_repeat, end_call }` so control signals ride beside the words — this **operationalizes O-24** (a `needs_repeat`/low-confidence field IS the ask-to-repeat rule) and raises robustness (parseable, no free-text control leakage). OpenRouter/OpenAI-compatible APIs support JSON-schema response formats. | George / implementer | T (byo-model), gateway LLM path |
+| O-26 | `end-call-after-playback` · eqstack | **Never end a call before the final utterance finishes playing.** On the 2026-09-03 measurement call I said a closing line then `end_call` after a fixed 6 s sleep, and George heard it cut off. Fix: the gateway should expose a playback-complete signal (or `end_call` should drain the TTS queue), and a driver should wait for it, not a guessed delay. **Related resilience observation (not a bug):** the call appears to have dropped and reconnected mid-session and survived — worth confirming the RelaySession/ConversationRelay reconnect path is deliberate and logged. | implementer | F (playFrame), any driver that hangs up |
+
+> **These three are one concept — the "conversation harness."** The telephony tool
+> provides every driving model (direct-mode host, byo-model, or EL agent) a preamble
+> (O-24) whose contract is expressed as structured output (O-25), and the call
+> lifecycle respects TTS playback boundaries (O-26). Parked 2026-09-04 at George's
+> request; action when the driving-model surface is built (F for the host path, T for
+> byo-model, Q/R for EL agents). All three graded **good ideas** and grounded in the
+> live measurement call, not speculation.
+
 ---
 
 ## Rejected
