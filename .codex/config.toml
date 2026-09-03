@@ -1,0 +1,20 @@
+# NOTE: machine-local, gitignored. The repo-wide `tsx-spawn-inventory` guard
+# cannot see this file, so the `.bin/tsx` ban is enforced here by hand: always
+# `node --import <tsx loader>`, NEVER `node_modules/.bin/tsx` (the CLI wrapper
+# runs code in a grandchild and SIGKILLs it ~60ms after a relayed signal,
+# truncating graceful shutdown — see apps/imsg-mcp/scripts/dev-proxy-cmd.ts).
+
+[mcp_servers.imessage-mcp-dev]
+command = "node"
+args = ["--import", "/Users/george/repos/EQStack/apps/imsg-mcp/node_modules/tsx/dist/loader.mjs", "/Users/george/repos/EQStack/apps/imsg-mcp/scripts/mcp-dev-proxy.ts"]
+
+[mcp_servers.gmail-mcp-dev]
+command = "node"
+args = ["--import", "/Users/george/repos/EQStack/apps/gmail-mcp/node_modules/tsx/dist/loader.mjs", "/Users/george/repos/EQStack/apps/gmail-mcp/scripts/mcp-dev-proxy.ts"]
+
+[mcp_servers.gmail-mcp-dev.env]
+MCP_DEV_CMD = "node --import /Users/george/repos/EQStack/apps/gmail-mcp/node_modules/tsx/dist/loader.mjs /Users/george/repos/EQStack/apps/gmail-mcp/src/cli/index.ts mcp"
+
+[mcp_servers.telephony-mcp]
+command = "node"
+args = ["--import", "/Users/george/repos/EQStack/apps/telephony-mcp/node_modules/tsx/dist/loader.mjs", "/Users/george/repos/EQStack/apps/telephony-mcp/src/cli.ts", "mcp"]
