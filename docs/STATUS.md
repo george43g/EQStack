@@ -162,7 +162,8 @@ corrected (executed 2026-08-05). **New enforcer:** `scripts/check-docs-integrity
 (wired into `pnpm verify` + a CI step) asserts every repo-path / `pnpm`-script
 reference in AGENTS.md resolves; `--self-test` proves it can fail.
 
-**Deferred to George (consult, not force — per the audit):**
+**Deferred to George (consult, not force — per the audit): both now decided
+2026-09-04 — see the resolution note under each.**
 - **Structural re-cut** of root AGENTS.md into a thin four-app *map* with imsg
   internals relocated (the skill: scope by risk divergence, not directory shape;
   the root doubling as imsg's guide is *why* it drifted). Bigger, opinionated —
@@ -178,11 +179,34 @@ reference in AGENTS.md resolves; `--self-test` proves it can fail.
   `apps/imsg-mcp/skills/imsg-mcp/SKILL.md`, so nothing load-bearing is invisible to
   a fresh clone. The `~/.agents/humans/` references are a user-home runtime path,
   not this dir.
+
+  **RESOLVED 2026-09-04 (George) — DONE, and deliberately not the way dotfiles
+  recommended.** George chose the re-cut *with* a new `apps/imsg-mcp/AGENTS.md`
+  (root 319 lines → a four-app map; imsg internals relocated; `CLAUDE.md`
+  symlinks added for imsg and telephony to match gmail). dotfiles' row above
+  stands unedited — it argued the internals should land in `apps/imsg-mcp/docs/`
+  and be *linked*, because they are operational detail rather than a divergent
+  safety boundary, and a scoped instruction file would rot the same way.
+  Two reasons it went the other way: (1) an `apps/imsg-mcp/docs/` file is not
+  loaded by any agent harness, while `AGENTS.md`/`CLAUDE.md` is precisely what
+  tools do load — the drift happened *in the file agents read*, so the fix
+  belongs there; imsg was also the only app whose guide was the root, which is
+  the asymmetry that caused it. (2) "would rot the same way" is now answered by
+  a mechanism rather than a convention: `scripts/check-docs-integrity.mjs` was
+  extended to every `apps/*/AGENTS.md`, taking the enforced surface from 26
+  references to 122. If dotfiles still disagrees, the counter belongs here as a
+  new note, not as a revert.
 - **F6 · gmail migration record durability**: `apps/gmail-mcp/HANDOFF.md` and
   `docs/agent-handoff/GMAIL-MCP-PREMIGRATION-HANDOFF.md` are byte-identical
   (md5 `c8e932fa…`) and **both gitignored** — the record survives on this laptop
   only. Tracking it needs George's call (it may hold sensitive content; its own
   header says do-not-commit). "A record on one machine is not a system of record."
+
+  **RESOLVED 2026-09-04 (George): redact, then track it here.** Note the repo is
+  PUBLIC, so this publishes permanently — the redaction pass must strip the
+  denylist patterns (standing rule: never in tracked files), any credential, and
+  any personal content, and George reviews the redacted file before it is
+  pushed. Tracked separately from this docs re-cut.
 
 ### 1. Analytics — 20 remaining types (PARKED 2026-08-16, George's call)
 **Parked: these will be absorbed by the future relationship-analytics app** (`apps/analysis`, the

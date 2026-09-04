@@ -63,7 +63,8 @@ fan out via turbo.
 - `native/` — optional Rust napi-rs module for blob-parsing acceleration
 - `fixtures/` — synthetic test data (gitignored, generated on `pnpm install`)
 
-See `AGENTS.md` for the deeper internal guide.
+See `apps/imsg-mcp/AGENTS.md` for the deeper internal guide (the paths above are
+relative to that directory), and the root `AGENTS.md` for repo-wide rules.
 
 ## Reporting issues
 
