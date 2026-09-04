@@ -12,6 +12,20 @@ hostname; `mcp.` / `assets.` stay separate per D-36), style **remotely-managed
 token** (one secret by name, ingress lives at Cloudflare, nothing local to
 drift).
 
+> **Status update 2026-09-04.** George gave the go-ahead (DECISIONS D-66) and
+> provisioning was attempted. Steps 1–3 below are now **automated and
+> idempotent** in [`scripts/provision-tunnel.py`](../scripts/provision-tunnel.py).
+> It is **blocked on a token scope, not on a decision** (DECISIONS O-28):
+> `CF_API_TOKEN` and `CF_GLOBAL_ADMIN_USER_TOKEN` both verify active and can
+> *read* zones/DNS/tunnels, but `POST /cfd_tunnel` returns `10000:
+> Authentication error` — they hold Tunnel:**Read**, not Tunnel:**Edit**. There
+> is also no `~/.cloudflared/cert.pem`, so the CLI path would need an
+> interactive login *and* would produce a locally-managed tunnel, deviating
+> from D-59b. Verified in passing: the zone is **active** and the account holds
+> **zero** tunnels, so nothing is half-provisioned. Unblock by adding
+> **Account · Cloudflare Tunnel · Edit** (+ confirming **Zone · DNS · Edit** on
+> agentpipe.top) to a token, then run the script.
+
 ## Steps (George, or an agent with Cloudflare API + opkeep access)
 
 1. Create the tunnel (dashboard → Zero Trust → Networks → Tunnels, or API
