@@ -9,16 +9,21 @@ Every step is idempotent — re-running reuses what exists. NOTHING secret is
 printed: the tunnel run-token is never fetched here (a separate step pipes it
 straight into 1Password as CLOUDFLARE_TUNNEL_TOKEN, per INV-12 / D-59b).
 
+Already run: the tunnel exists (DECISIONS D-67). Re-running is safe — it reuses
+the existing tunnel rather than creating a second one.
+
 Usage — the token never appears in argv, only in the child env:
 
-    CF_TOKEN=$(op read "op://key-vault/CF_API_TOKEN/credential") \
+    CF_TOKEN=$(opkeep get CF_EQSTACK_TELEPHONY_TUNNEL_TOKEN) \
       python3 apps/telephony-mcp/scripts/provision-tunnel.py
 
-The token needs **Account · Cloudflare Tunnel · Edit** and **Zone · DNS · Edit**
-on agentpipe.top. As of 2026-09-04 neither CF_API_TOKEN nor
-CF_GLOBAL_ADMIN_USER_TOKEN has the Tunnel:Edit half — both can read tunnels but
-`POST /cfd_tunnel` returns `10000: Authentication error`. That is DECISIONS
-O-28, and re-scoping a token is George's call alone.
+Use that token, which is scoped to exactly *Cloudflare Tunnel Write* on this one
+account plus *DNS Write* on this one zone. Do NOT reach for `CF_API_TOKEN`: that
+vault title is an alias over the account-wide `CF_SHARED_DNS_USER_TOKEN`, it
+lacks Tunnel:Edit anyway, and it is consumed by g-home-server infrastructure
+(DECISIONS D-68). Prefer `opkeep get` over `op read` — the latter can block on a
+biometric prompt and silently yield an empty string, which surfaces as the
+misleading Cloudflare error `9106: Missing ... Authorization headers`.
 """
 import json
 import os
