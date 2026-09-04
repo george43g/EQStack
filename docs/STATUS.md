@@ -149,6 +149,20 @@ Durable facts that repeatedly bite — keep these in mind before touching the re
 
 Ordered roughly by priority. Nothing here blocks the current release.
 
+### 0a. Agent identity + a Twilio SMS layer (PARKED 2026-09-05, George's idea)
+
+Not scheduled — recorded so it isn't lost. Agents should own their **own** SMS
+number and email rather than borrowing George's, so a long-running identity can
+track a process start to finish; a Twilio SMS tool is a **separate** substrate
+from `imsg-mcp` (Apple's protocol, reads `chat.db`) because it needs its own
+message store; the inbox belongs in a **published `packages/` library** so
+imsg's CLI/TUI/MCP can all show one consolidated per-contact view across the
+iMessage and Twilio numbers, sending from either and reflecting outgoing
+messages accurately whichever service carried them. Framing thesis, George's
+words: *"the next big customer for the next billion dollar business is no
+longer human — write tools that AIs would want, solve problems for AIs."*
+Full write-up: [`proposals/2026-09-05-agent-identity-and-twilio-sms.md`](proposals/2026-09-05-agent-identity-and-twilio-sms.md).
+
 ### 0. Harness / docs integrity — drift fix (2026-09-03, dotfiles audit)
 
 Root `AGENTS.md` (== `CLAUDE.md` symlink) had decayed into a stale imsg-only doc

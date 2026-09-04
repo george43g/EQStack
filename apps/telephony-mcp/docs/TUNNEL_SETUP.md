@@ -12,19 +12,29 @@ hostname; `mcp.` / `assets.` stay separate per D-36), style **remotely-managed
 token** (one secret by name, ingress lives at Cloudflare, nothing local to
 drift).
 
-> **Status update 2026-09-04.** George gave the go-ahead (DECISIONS D-66) and
-> provisioning was attempted. Steps 1–3 below are now **automated and
-> idempotent** in [`scripts/provision-tunnel.py`](../scripts/provision-tunnel.py).
-> It is **blocked on a token scope, not on a decision** (DECISIONS O-28):
-> `CF_API_TOKEN` and `CF_GLOBAL_ADMIN_USER_TOKEN` both verify active and can
-> *read* zones/DNS/tunnels, but `POST /cfd_tunnel` returns `10000:
-> Authentication error` — they hold Tunnel:**Read**, not Tunnel:**Edit**. There
-> is also no `~/.cloudflared/cert.pem`, so the CLI path would need an
-> interactive login *and* would produce a locally-managed tunnel, deviating
-> from D-59b. Verified in passing: the zone is **active** and the account holds
-> **zero** tunnels, so nothing is half-provisioned. Unblock by adding
-> **Account · Cloudflare Tunnel · Edit** (+ confirming **Zone · DNS · Edit** on
-> agentpipe.top) to a token, then run the script.
+> **✅ Status 2026-09-05: steps 1–4 are DONE (DECISIONS D-67). Steps 5–8 remain.**
+>
+> | Fact | Value |
+> |---|---|
+> | Tunnel | `telephony`, id `5cdf3c85-cb71-4212-971e-d17221524856`, `remote_config: true` |
+> | Ingress | `gw.agentpipe.top` → `http://localhost:8790`, catch-all 404 |
+> | DNS | proxied CNAME → `<tunnel-id>.cfargotunnel.com` |
+> | Run token | stored as `CLOUDFLARE_TUNNEL_TOKEN` in key-vault; `opkeep get` resolves it |
+> | API token used | `CF_EQSTACK_TELEPHONY_TUNNEL_TOKEN` — Tunnel Write on the one account + DNS Write on the one zone, nothing else |
+>
+> Verified publicly rather than from the API's own word: `dig gw.agentpipe.top`
+> returns Cloudflare proxy IPs and `curl https://gw.agentpipe.top/` returns
+> **530** — route exists, no connector running. That 530 is the *correct*
+> state until step 7, and is what you should see if you check now.
+>
+> **Steps 7 and 8 are held together on purpose.** Installing the LaunchAgent
+> puts a live public hostname in front of the gateway, which achieves nothing
+> until the Twilio webhooks are re-pointed at it — and that re-point is
+> George's authority (O-19). Do 5–7 as one deliberate "go live" step with 8.
+>
+> Steps 1–3 remain automated and idempotent in
+> [`scripts/provision-tunnel.py`](../scripts/provision-tunnel.py); re-running it
+> reuses the existing tunnel rather than creating a second one.
 
 ## Steps (George, or an agent with Cloudflare API + opkeep access)
 
