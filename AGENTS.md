@@ -313,7 +313,13 @@ with per-package tags. Key facts:
 ## MCP servers (project scope)
 
 Canonical set: `.mcp.json` (standard MCP schema, `${VAR}` placeholders only —
-never literal secrets). `.cursor/mcp.json` and `.warp/.mcp.json` are symlinks
-to it. `opencode.json`'s `mcp` key is GENERATED — after editing `.mcp.json`,
+never literal secrets). It is **tracked**, so every path in it must be
+**repo-relative with a `./` prefix** (`./apps/<app>/…`) — hosts spawn
+project-scoped servers with cwd = the repo root, and a `./`-less arg to
+`node --import` is read as a bare package specifier, not a path. An absolute
+path here resolves on exactly one machine and silently leaves a fresh clone,
+worktree or cloud agent with no MCP servers at all.
+`.cursor/mcp.json` and `.warp/.mcp.json` are symlinks to it (both still
+gitignored; recreate with `ln -s ../.mcp.json`). `opencode.json`'s `mcp` key is GENERATED — after editing `.mcp.json`,
 run: `mcpsync -c ./.mcp.json apply --scope project --to opencode`.
 Global servers and scope decisions: `~/dotfiles/docs/mcp-registry.md`.

@@ -32,8 +32,10 @@ coverage/
 .env.ai
 
 # Local dev configurations — user-specific paths
-.mcp.json
+# (.mcp.json is TRACKED: its paths are repo-relative, resolved from the repo
+#  root, which is the cwd MCP hosts spawn project-scoped servers with.)
 .cursor/
+.warp/
 .codex/
 opencode.json
 .agents/

@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "imessage-mcp-dev": {
+      "command": "node",
+      "args": [
+        "--import",
+        "./apps/imsg-mcp/node_modules/tsx/dist/loader.mjs",
+        "./apps/imsg-mcp/scripts/mcp-dev-proxy.ts"
+      ]
+    },
+    "gmail-mcp-dev": {
+      "command": "node",
+      "args": [
+        "--import",
+        "./apps/gmail-mcp/node_modules/tsx/dist/loader.mjs",
+        "./apps/gmail-mcp/scripts/mcp-dev-proxy.ts"
+      ],
+      "env": {
+        "MCP_DEV_CMD": "node --import ./apps/gmail-mcp/node_modules/tsx/dist/loader.mjs ./apps/gmail-mcp/src/cli/index.ts mcp"
+      }
+    },
+    "telephony-mcp": {
+      "command": "node",
+      "args": [
+        "--import",
+        "./apps/telephony-mcp/node_modules/tsx/dist/loader.mjs",
+        "./apps/telephony-mcp/src/cli.ts",
+        "mcp"
+      ]
+    }
+  }
+}
