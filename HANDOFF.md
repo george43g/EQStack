@@ -1032,3 +1032,104 @@ Next non-blocked backlog: imsg **RS-A** (2s post-send delivery poll, additive
 `delivered/failed/pending` + `send_method`) — the fork flagged it unblocked for parallel
 work; or Later phases H–N/P–V (sketched, not detailed). No mid-flight state: nothing
 staged, no half-applied edit.
+
+---
+
+# 2026-09-04 — checkpoint (eqstack session, telephony Pass 1 shipped + Phase E measured + RS-A published)
+
+**Where this entry and any conversation summary disagree, THIS FILE IS CORRECT.**
+Date verified: `date` → 2026-09-04 05:45 AEST.
+
+## State
+Telephony Pass 1 (A–E + G) fully merged; **Phase E measured on a live call → Phase F is
+GO (D-64)** but the data says the edge-agent modes (Q/R) are the real latency fix, F only
+masks. **imsg-mcp@1.25.5 published** (RS-A honest delivery feedback). Root-docs drift fixed
+with an enforcing check. One PR open and held: #142 (parked conversation-harness ideas).
+
+## Constraints (George, verbatim, this session)
+- **Publishing imsg-mcp gets explicit per-publish approval; private no-op merges I do
+  autonomously.** He approved RS-A: *"rs-a-publish: approved"*, and set merge order
+  *"do 140 first, then 139… in order would end up missing some docs from a published
+  version potentially"* — i.e. **land doc fixes before the publish so the published tree
+  carries them.**
+- Conversation-harness ideas (promoted to telephony DECISIONS O-24/25/26): STT is lossy
+  (*"cloud flood" = cloudflare, "cord code" = claude code*) → warn the driving model,
+  license charitable correction, but **for an important word ask the human to repeat**;
+  drive turns via **structured output (JSON schema)** so control signals ride beside the
+  words; **never hang up before the final line finishes playing** (*"you ended the call
+  before you were done speaking, be mindful of that"*).
+
+## Done (anchors)
+- **Telephony Pass 1 merged**: #132 (A rename), #134 (B registry), #135 (C open dialing),
+  #136 (D tunnel+daemon), #137 (E instrumentation), #138 (G console view) — all Release
+  runs verified no-op (`private: true`). main head `390115a`.
+- **Phase E measured live** (call `e0112e7b`, direct mode, 7 turns, quick tunnel):
+  `direct.turn` p50 ≈ **12 s**, `direct.egress` (gateway/network) ≈ **0–1 ms** → **D-30
+  verdict F is GO**, recorded D-64; PHASE-E §Measured. Network is NOT the latency (reaffirms
+  R-1/D-18); George confirmed the edge-agent thesis live.
+- **imsg-mcp@1.25.5 PUBLISHED** — PR #139 (RS-A), tag `imsg-mcp-v1.25.5`, `npm view
+  imsg-mcp version` → 1.25.5. Additive `status`/`sendMethod`/`errorCode` on `send_message`;
+  suite 1202→1216, no existing assertion changed.
+- **Harness drift fixed** — PR #140 merged: false LFS block deleted, all four apps listed,
+  STATUS version/rename corrected; new enforcer `scripts/check-docs-integrity.mjs` wired
+  into `pnpm verify` + an explicit CI step (found 4 issues beyond the audit; has `--self-test`).
+- **Conversation-harness ideas parked** — PR #142 (open), DECISIONS O-24/25/26 + synthesis.
+- Memory feedback saved: `feedback_commit_message_shell_safety`, `feedback_end_call_after_playback`.
+
+## Open — register is `apps/telephony-mcp/docs/plans/two-way-calling/DECISIONS.md`; do not duplicate
+- `telephony-next-step` · eqstack — George's call: build **F** (GO per D-64) vs leap to the
+  **edge-agent modes Q/R** (the real fix; F only masks the ~12 s). Never attempted.
+- `conversation-harness-park` · eqstack — **PR #142 open**, held for George review (docs-only).
+- `docs-recut-and-gmail-record` · eqstack — STATUS §0; dotfiles-recommended shape recorded.
+- `mcp-json-tracking` · eqstack — EQStack `.mcp.json` still gitignored (`git check-ignore` →
+  hit); fleet-sequenced: make repo-relative via mcpsync placeholder render, THEN track.
+- `tunnel-provisioning` (O-23) · eqstack — `~/.cloudflared` absent; named tunnel on
+  `agentpipe.top` unbuilt; quick-tunnel used for the measurement.
+- `imsg-mcp-SKILL-frontmatter` · eqstack — `apps/imsg-mcp/skills/imsg-mcp/SKILL.md` has no
+  YAML frontmatter so never triggers; George's call whether it should.
+
+## Corrections
+- Tool count settled at **13** (was "14" in the brief; B took 13→12 merging prepare/start
+  into `place_call`; E added `get_latency_report` → 13). Golden pins updated.
+- **D-60**: `upsertTiming`'s `COALESCE(excluded, existing)` is **LAST**-write-wins for an
+  always-non-null value, not first-write — the phase file's assumption was wrong; fixed with
+  `stampDeliveredIfUnset`.
+- The dotfiles audit's *".mcp.json already tracked"* is false for EQStack — it's gitignored
+  here (absolute paths). CLAUDE.md is a **symlink to AGENTS.md** (one file), so the stale
+  LFS block was in every session's project instructions.
+
+## Traps (one line each)
+- `git add -A` swept the untracked `docs/research`/`docs/agent-handoff` in — stage explicit paths.
+- Backticks and `$()` in `git commit -m` / `gh --body` are shell-executed in zsh — use `-F` /
+  `--body-file` (hit twice: a commit body, and a `cat /dev/stdin` PR-body hang).
+- Ephemeral quick-tunnel hostname in config goes stale on cloudflared restart — refresh
+  `publicBaseUrl` right before each call.
+- `say_on_call` returns on *accept*, not playback-complete — a guessed sleep before `end_call`
+  cuts the last line off (O-26).
+- Worktree agents branch from `main`, not the feature branch — reset to the intended base first.
+
+## Tree
+On `docs/telephony-conversation-harness` (PR #142, 1 commit ahead of `origin/main`, pushed).
+`origin/main` at `390115a`. Working tree clean but for the deliberate untracked
+`docs/research/*`, `docs/agent-handoff/*`, `opencode.json.bak.*` (7 total). Machine-local
+`.codex/config.toml` restored on disk by dotfiles (untracked, ignored) after their revert.
+
+## Blocked on you (George) — eqstack-owned
+`telephony-next-step` (F vs Q/R) · `conversation-harness-park` (merge #142) ·
+`docs-recut-and-gmail-record` · `mcp-json-tracking` (portable-then-track) ·
+`tunnel-provisioning` (O-23) · `imsg-mcp-SKILL-frontmatter`.
+
+## Elsewhere (changed this turn; owners raise these, not me)
+- **dotfiles** — committed `.codex/config.toml` tracking (`67459e6`) then **reverted it**
+  (`293a3e4`) after my absolute-paths flag; both sit on MY branch #142 as a net-zero pair
+  (empty diff, verified). Briefed **life-stack** that mcpsync should render host-specific paths
+  from a placeholder so `.mcp.json`/`.codex` can become portable-then-tracked. Linked
+  `apps/imsg-mcp/skills/humans` as a **global skill** (symlinks into this repo — do not move it).
+- **PR #129** `fix/gmail-mcp-portable-schema` — open, NOT this session's; leave it.
+
+## Resume
+No mid-flight code; nothing staged; PR #142 committed + pushed, held for George. First action
+after compaction: **await George's direction** on `telephony-next-step` (build F vs jump to
+the edge-agent modes Q/R) and the held PRs/decisions above. Everything is parked per his
+instruction; do not start new build work without his call. If he greenlights telephony work,
+the conversation-harness (O-24/25/26) should inform whichever driving-model surface is built.
