@@ -35,8 +35,29 @@ ACCOUNT = "0de8624f4e34eaf3ebc22d5290d9b230"
 ZONE = "70723edf90f806852c679630db5503c6"
 TUNNEL_NAME = "telephony"
 HOSTNAME = "gw.agentpipe.top"
-ORIGIN = "http://localhost:8790"
 API = "https://api.cloudflare.com/client/v4"
+
+
+def public_port() -> int:
+    """Read server.publicPort from the live config — never hardcode it.
+
+    The schema default is 8790, but that port is not guaranteed free: on this
+    machine browser-tab-mcp's daemon holds it, which is why the config sets
+    8890. An ingress pointing at the default would route the hostname at
+    whichever app won the port race, so the origin is derived, not assumed.
+    """
+    override = os.environ.get("TEL_PUBLIC_PORT")
+    if override:
+        return int(override)
+    cfg = os.path.expanduser("~/.config/telephony-mcp/config.json")
+    try:
+        with open(cfg) as f:
+            return int(json.load(f).get("server", {}).get("publicPort", 8790))
+    except (OSError, ValueError, TypeError):
+        return 8790
+
+
+ORIGIN = f"http://localhost:{public_port()}"
 
 token = os.environ.get("CF_TOKEN")
 if not token:
