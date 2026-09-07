@@ -12,7 +12,31 @@ hostname; `mcp.` / `assets.` stay separate per D-36), style **remotely-managed
 token** (one secret by name, ingress lives at Cloudflare, nothing local to
 drift).
 
-> **✅ Status 2026-09-05: steps 1–4 are DONE (DECISIONS D-67). Steps 5–8 remain.**
+> **✅ Status 2026-09-05: LIVE. Steps 1–7 are DONE (D-67, D-74). Step 8 is
+> withdrawn as written — see "Step 8 does not apply yet" below.**
+>
+> The gateway answers on `https://gw.agentpipe.top` through the named tunnel,
+> under launchd, and survives a terminal close. Evidence, taken from outside:
+>
+> ```
+> GET  https://gw.agentpipe.top/               -> 404   (OUR gateway rejecting an
+>                                                        unknown route, not CF's 530)
+> POST https://gw.agentpipe.top/twilio/status  -> 403   (signature validation working)
+> daemon status: launchd pid=… runs=1 | gateway up v0.1.0 | tunnel ready
+> ```
+>
+> **Two corrections to the steps below, both of which cost time:**
+>
+> 1. **The ingress port is NOT hardcoded 8790.** It must match `server.publicPort`,
+>    which is **8890** on this machine — `browser-tab-mcp`'s daemon holds 8790, so
+>    following the old text literally would have pointed the hostname at a
+>    different app or collided with it. `scripts/provision-tunnel.py` now *derives*
+>    the port from the live config (`TEL_PUBLIC_PORT` overrides) instead of
+>    assuming the schema default.
+> 2. **`daemon status` immediately after `daemon install` can report
+>    `tunnel down (no /ready listener)`.** That is `cloudflared` still registering,
+>    not a fault — it clears within ~30s and `curl 127.0.0.1:20241/ready` returns
+>    200. Do not debug it before waiting.
 >
 > | Fact | Value |
 > |---|---|
@@ -62,9 +86,28 @@ drift).
    checks green.
 7. `node dist/cli.js daemon install` → LaunchAgent bootstraps; `tel daemon
    status` shows launchd + gateway + tunnel, one line each.
-8. Re-point the Twilio number's voice/status webhooks at
-   `https://gw.agentpipe.top/…` — **once, never again** (George's authority —
-   O-19 governs later inbound changes).
+8. ~~Re-point the Twilio number's voice/status webhooks at
+   `https://gw.agentpipe.top/…`~~ — **WITHDRAWN 2026-09-05. There is nothing to
+   re-point.** See below.
+
+## Step 8 does not apply yet
+
+This step was written assuming the number's *configured* webhooks matter. They
+do not, for two independent reasons:
+
+- **Status/recording callbacks are supplied per call**, not set on the number —
+  `src/gateway/call-service.ts:183-184` builds `statusCallbackUrl` and
+  `recordingStatusCallbackUrl` from `publicBaseUrl` on every outbound call. So
+  changing `publicBaseUrl` (step 5) is the entire re-point; the number needs no
+  edit at all.
+- **There is no inbound voice handler to point at.** The public surface is
+  exactly `POST /twilio/status`, `POST /twilio/recording` and `WS /relay/<token>`
+  (`src/gateway/public-server.ts:3-5`). Pointing the number's `voice_url` at the
+  gateway would route inbound calls to a route that does not exist — strictly
+  worse than leaving it on Twilio's demo URL.
+
+`+61…1463`'s `voice_url` therefore stays untouched. It becomes a real step when
+**Phases L–M** build inbound routing, and O-19 still governs it then.
 
 ## Live verification (paid; separately authorised — INV-14)
 
