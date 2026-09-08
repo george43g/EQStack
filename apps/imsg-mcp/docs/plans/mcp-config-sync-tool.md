@@ -1,6 +1,30 @@
 # MCP config-sync tool — feature-absorption inventory & plan
 
-_Status: **DEFERRED / EQStack app candidate.** Prototypes exist and work; a properly built tool will
+> # ✅ CLOSED 2026-09-07 — BUILT ELSEWHERE, as `mcpsync`
+>
+> **Do not execute this plan.** It was delivered in a different repo and this file never found
+> out — the record and the world diverged for about two weeks. The tool is
+> **`mcpsync`**, at `apps/mcpsync/` in **life-stack**, on `$PATH` since 2026-08-22.
+>
+> It is a **superset** of the inventory below, verified against its source rather than assumed:
+>
+> | This plan wanted | `mcpsync` has |
+> |---|---|
+> | `doctor` · `list` · `import` · `apply` · `add`/`remove` · `sync` | all of them, plus `deploy`, `secret`, `write-hosts` |
+> | symlink write-through detection (`lstat`/`realpath`) | `src/core/hosts/json-adapter.ts` |
+> | Claude Desktop `$SHELL -lc` wrapper | `src/core/login-shell.ts` + `src/core/shell-quote.ts` |
+> | Codex managed TOML block | `src/core/toml.ts` + `src/core/hosts/codex-adapter.ts` |
+> | `status.js` redacted plaintext-secret scanner | `src/core/secret-scan.ts` |
+> | `--scope project` (listed as a known weakness) | supported — it is how this repo syncs |
+>
+> **No gap was found**, so nothing here needs rebuilding or porting. This repo already uses it:
+> the root `AGENTS.md` § *MCP servers* documents
+> `mcpsync -c ./.mcp.json apply --scope project --to opencode` as the way `opencode.json` is
+> regenerated. The inventory below is kept only as the design record of what was wanted and why.
+>
+> Handed over by the `life-stack` session, 2026-09-07.
+
+_Status: **~~DEFERRED / EQStack app candidate~~ CLOSED — see the banner above.** Prototypes exist and work; a properly built tool will
 replace them. This doc is the **absorption inventory**: every useful feature, code pattern, and
 hard-won fact from the 2026-07/08 session, recorded so the old code can be deleted with confidence
 once the real tool exists. Written 2026-08-02._

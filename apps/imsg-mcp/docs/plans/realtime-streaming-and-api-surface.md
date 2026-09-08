@@ -1,8 +1,26 @@
 # Real-time streaming, memory-efficient scroll & Messages API-surface audit
 
-**Status:** Research / recommendations (not started). Written 2026-07-30 from a review of the
-Messages.app API surface (osascript / URI / System Events / `chat.db`) and a code audit of what
-imsg-mcp already exposes vs. what's missing. Feeds **Backlog §9** in [`../STATUS.md`](../STATUS.md).
+**Status (corrected 2026-09-07): MOSTLY BUILT — priorities 1–3 shipped, 4 is half done, 5 is open.**
+The old status line read *"Research / recommendations (not started)"* and the closing line said
+*"None of this is started"*. Both were **false**: the core of this plan shipped in v1.20.0–v1.25.0.
+Written 2026-07-30 from a review of the Messages.app API surface (osascript / URI / System Events /
+`chat.db`). Feeds **Backlog §9** in [`../STATUS.md`](../STATUS.md).
+
+Graded against the code, not against memory — the "Suggested priority" list at the bottom is the
+scoring key:
+
+| # | Item | State | Evidence |
+|---|---|---|---|
+| 1 | Cache-hit metrics + viewport virtualization | ✅ **shipped** | `src/tui/messageCache.ts`; bounded memory via `IMSG_TUI_MSG_HARD_CAP`, lazy-load + LRU-on-memory-pressure (imsg guide § *TUI lazy-loading*) |
+| 2 | `ChangeWatcher` + EventBus → TUI + `wait_for_changes` | ✅ **shipped** | `src/change-watcher.ts`, `src/event-bus.ts`, `wait_for_changes` in `src/mcp-tools.ts` + `src/index.ts`, and `useSyncExternalStore` in `src/tui/App.tsx` + `src/tui/change-stream.ts` — the exact React primitive Part A recommended |
+| 3 | Group-action events + surfaces | ✅ **shipped** | `get_conversation_events` (v1.25.0; the plan proposed the name `list_conversation_events`) + inline TUI rows (`src/tui/App.tsx`, `src/tui/types.ts`) |
+| 4a | Scrub Rust comment examples | ✅ **done 2026-08-09** | recorded in Part D below — the plan already knew, while its own header said "not started" |
+| 4b | Unify Rust + TS on one structured parser | ❌ **open** | `native/src/attributed_body.rs:3-4` still reads *"simplified initial implementation … heuristic string extraction"*, while TS has a structured `TypedStreamParser`. The two engines still disagree on edge cases |
+| 5 | `serviceConfidence`, `focus_messages`/`activate` affordance, first-class read-receipt indicator | ❌ **open** | no `serviceConfidence` anywhere in `src/`; no `focus_messages`/`open_conversation` tool in `src/mcp-tools.ts` |
+
+**So the live remainder of this plan is 4b and 5** — and neither blocks anything, exactly as the
+original assessment predicted. Everything above them was built without this file being updated,
+which is the failure the `life-stack` session flagged in its 2026-09-04 forgotten-plans sweep.
 
 This doc answers three questions:
 1. Should we replace `chat.db` polling with a **worker that watches the DB and streams events** (an
@@ -205,4 +223,7 @@ Two findings in `native/src/attributed_body.rs` (verified):
 5. **P3 — `serviceConfidence` heuristic for MMS/iMessage; explicit `focus_messages`/`activate`
    affordance; first-class read-receipt indicator.**
 
-None of this is started; all of it is additive to the current polling design.
+~~None of this is started; all of it is additive to the current polling design.~~
+**Corrected 2026-09-07:** items 1–3 and 4a shipped (v1.20.0–v1.25.0); only **4b** (unify the Rust
+and TS `attributed_body` parsers) and **5** (`serviceConfidence`, `focus_messages`, first-class
+read-receipt indicator) remain. See the status table at the top of this file for the evidence.
