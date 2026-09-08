@@ -163,6 +163,22 @@ words: *"the next big customer for the next billion dollar business is no
 longer human — write tools that AIs would want, solve problems for AIs."*
 Full write-up: [`proposals/2026-09-05-agent-identity-and-twilio-sms.md`](proposals/2026-09-05-agent-identity-and-twilio-sms.md).
 
+### 0b. The secretary + live agent group meetings (PARKED 2026-09-09, George's vision)
+
+Not scheduled, and explicitly **not to be acted on** — recorded so the pieces get
+built pointing at the same destination. George calls his own Twilio number, a
+**secretary** answers, and he convenes a live **group call with every agent on the
+line** — polling them, delegating, gathering perspectives, "like any ordinary
+real-life meeting". She makes sure everyone picks up and everyone hangs up, then
+stays on the line for the next instruction. She can add **real humans** to the call,
+resolving them from a **nickname** via the humans files, reading their notes/emails/
+iMessages for context, doing a contacts lookup, and **briefing them before the AI
+speaks to them**. Distinct ElevenLabs voices are what make several agents
+distinguishable on one line; speech stays quick to save time and money. Secretary
+and coordinator are deliberately **not** the same role. Full write-up, including
+what it changes about work already in flight:
+[`proposals/2026-09-09-secretary-and-agent-group-meetings.md`](proposals/2026-09-09-secretary-and-agent-group-meetings.md).
+
 ### 0. Harness / docs integrity — drift fix (2026-09-03, dotfiles audit)
 
 Root `AGENTS.md` (== `CLAUDE.md` symlink) had decayed into a stale imsg-only doc
