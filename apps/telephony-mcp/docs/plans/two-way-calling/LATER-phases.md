@@ -266,6 +266,18 @@ precedent: `sips`/`qlmanage`/`mdls`, no npm audio stack).
 
 ## Q — mode 2: briefed ElevenLabs agent
 
+> ### ⚠️ SUPERSEDED 2026-09-09 — Q now has a phase file
+> **[`PHASE-Q-delegate-mode.md`](./PHASE-Q-delegate-mode.md) is the source of truth.**
+> The sketch below is kept as the original framing, but two of its claims are now
+> **false** and would mislead anyone acting on this section:
+> - *"O-1 blocks this outright"* — **resolved by D-69.** A second number was bought
+>   for ElevenLabs (`+61 3 4713 9984`) and registered (D-73); the gateway keeps
+>   `+61…1463`. Q is not blocked.
+> - *"the tunnel is still needed"* — **not for Q.** A delegate call is
+>   laptop-out-of-path in both directions and needs no public reachability. The
+>   tunnel (live since D-67/D-74) is Phase R's, for the consult tool channel.
+
+
 **Goal.** Provision an ElevenLabs agent from a brief (one prompt is the intended
 path), let it hold the whole call, and return transcript + a terminal "call over"
 flag to the originating agent through the same long-poll pattern used today.
