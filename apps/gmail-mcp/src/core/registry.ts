@@ -9,6 +9,7 @@
 // Use `has()` to gate that fallthrough.
 
 import type { z } from "zod";
+import { normalizeToolArgs } from "../tools.js";
 import type { OperationContext } from "./context.js";
 
 /**
@@ -75,7 +76,7 @@ export class OperationRegistry {
     if (!op) {
       throw new Error(`OperationRegistry: no op registered for "${name}"`);
     }
-    const input = op.schema.parse(rawArgs);
+    const input = op.schema.parse(normalizeToolArgs(rawArgs));
     return op.handler(input, ctx);
   }
 }

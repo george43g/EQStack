@@ -79,6 +79,71 @@ function requireHtmlForInlineImages(
 
 export const SendEmailSchema = EmailMessageSchema.superRefine(requireHtmlForInlineImages);
 
+type JsonSchema = Record<string, unknown> & {
+  type?: string;
+  properties?: Record<string, JsonSchema>;
+  items?: JsonSchema;
+  required?: string[];
+  pattern?: string;
+  anyOf?: JsonSchema[];
+  oneOf?: JsonSchema[];
+  allOf?: JsonSchema[];
+  additionalProperties?: unknown;
+};
+
+// Keep `any` on the boundary to avoid deep `zodToJsonSchema` generic inference issues
+// (see comment on `toMcpTools`); internal logic is fully typed via `JsonSchema`.
+function toPortableJsonSchema(schema: any): any {
+  if (!schema || typeof schema !== "object") return schema;
+  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+    if (Array.isArray(schema[key])) {
+      return { ...schema, [key]: (schema[key] as JsonSchema[]).map(toPortableJsonSchema) };
+    }
+  }
+  if (schema.type === "object" && schema.properties) {
+    const requiredNames = new Set(schema.required ?? []);
+    const properties = Object.fromEntries(
+      Object.entries(schema.properties).map(([name, value]) => {
+        const portable = toPortableJsonSchema(value as JsonSchema);
+        return [name, requiredNames.has(name) ? portable : { anyOf: [portable, { type: "null" }] }];
+      }),
+    );
+    const result: JsonSchema = {
+      ...schema,
+      properties,
+      required: Object.keys(properties),
+      additionalProperties:
+        schema.additionalProperties === undefined ? false : schema.additionalProperties,
+    };
+    const inlineImageFields = ["cid", "path", "content", "contentType", "filename"];
+    if (inlineImageFields.every((field) => field in properties)) {
+      const cid = result.properties?.cid as JsonSchema | undefined;
+      if (cid && "pattern" in cid) delete (cid as Record<string, unknown>).pattern;
+    }
+    return result;
+  }
+  if (schema.type === "array" && schema.items) {
+    return { ...schema, items: toPortableJsonSchema(schema.items as JsonSchema) };
+  }
+  return { ...schema };
+}
+
+function stripNulls<T>(value: T): T {
+  if (Array.isArray(value))
+    return (value as unknown[]).map((v) => stripNulls(v as unknown)) as unknown as T;
+  if (value === null || value === undefined || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== null)
+      .map(([key, item]) => [key, stripNulls(item as unknown)]),
+  ) as unknown as T;
+}
+
+export function normalizeToolArgs<T>(args: T): T {
+  if (args === null || args === undefined) return {} as T;
+  return stripNulls(args);
+}
+
 export const SendDraftSchema = z.object({
   draftId: z.string().min(1).describe("ID of the draft to send"),
 });
@@ -1258,7 +1323,7 @@ export function toMcpTools(tools: ToolDefinition[]) {
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    inputSchema: zodToJsonSchema(tool.schema as any),
+    inputSchema: toPortableJsonSchema(zodToJsonSchema(tool.schema as any)),
     annotations: tool.annotations,
   }));
 }
