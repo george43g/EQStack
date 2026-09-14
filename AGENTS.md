@@ -123,6 +123,10 @@ project-scoped servers with cwd = the repo root, and a `./`-less arg to
 `node --import` is read as a bare package specifier, not a path. An absolute
 path here resolves on exactly one machine and silently leaves a fresh clone,
 worktree or cloud agent with no MCP servers at all.
+Servers that run a published package via `npx` (e.g. `twilio`) carry no path,
+but must **pin an exact version** (`@twilio-alpha/mcp@0.7.0`, never bare):
+`npx -y` otherwise executes whatever was published most recently — with the
+credentials in its argv.
 `.cursor/mcp.json` and `.warp/.mcp.json` are symlinks to it (both still
 gitignored; recreate with `ln -s ../.mcp.json`). `opencode.json`'s `mcp` key is GENERATED — after editing `.mcp.json`,
 run: `mcpsync -c ./.mcp.json apply --scope project --to opencode`.
