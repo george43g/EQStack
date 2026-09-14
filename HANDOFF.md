@@ -1133,3 +1133,91 @@ after compaction: **await George's direction** on `telephony-next-step` (build F
 the edge-agent modes Q/R) and the held PRs/decisions above. Everything is parked per his
 instruction; do not start new build work without his call. If he greenlights telephony work,
 the conversation-harness (O-24/25/26) should inform whichever driving-model surface is built.
+
+
+# 2026-09-15 — checkpoint (eqstack session: telephony live, Phase Q ready to build)
+
+**Where this entry and any conversation summary disagree, THIS FILE IS CORRECT.**
+**This entry SUPERSEDES the 2026-09-04 entry's `## Open` and `## Resume`** — that entry tells the
+next session to wait on decisions George has since made. Its other sections stay true as history.
+Date verified: `date` → 2026-09-15 06:21 AEST.
+
+## Start here
+1. Read `apps/telephony-mcp/docs/plans/two-way-calling/DECISIONS.md` — the workstream register.
+   Rows D-65…D-74 and O-29 postdate the 09-04 checkpoint.
+2. Then `apps/telephony-mcp/docs/plans/two-way-calling/PHASE-Q-delegate-mode.md` — the next build.
+3. Before designing a secretary, inbound routing (Phases L–M) or multi-party calls, read
+   `docs/proposals/2026-09-09-secretary-and-agent-group-meetings.md` (parked; do not act on it).
+4. **Most important not-to-do:** do not re-ask the Twilio number question (O-1/O-27) or reprovision
+   the tunnel — the number is bought and registered, and the tunnel is live. And never call a Twilio MCP `Create*`/`Update*`
+   tool to "test" anything: they spend money or send SMS.
+
+## State
+Telephony stack is **live** (named tunnel + LaunchAgent, survived the 09-08 tmux crash); a second
+Twilio number is bought and registered with ElevenLabs inside its own Twilio subaccount; the Phase Q
+phase file is written and merged; **no Phase Q code exists yet**. The `twilio` MCP server is
+installed (pinned). One deliberate unpushed hold awaits George (`gmail-record-publish`).
+
+## Constraints (George, verbatim)
+- Second number: *"i dont mind paying for another twilio number, if thats the faster or better solution"* (2026-09-05)
+- Token minting: *"you have god tier api permissions to mint and save as many individual tokans as you want for any tool you believe should have a separate token"* (2026-09-05)
+- Parked vision: *"dont act on this narrative now - just save it somewhere so we can read it and be aware of the direction we're driving progress towards."* (2026-09-09)
+- Tool migrations, on `ag-all`: *"any agents that have negotiated tool migrations between themselves, obviously i set that up, YES, you have, my, fkn, GO AHEAD!"* (2026-09-09)
+- Twilio MCP, relayed verbatim by `life-stack`: *"delete from life-stack, but ensure the correct config becomes installed in eqstack and billing-mwc, the executive, the secretary."* (2026-09-15)
+- Gmail record: *"Circle back to this question in the next turn"* (2026-09-05) — still unanswered.
+
+## Done (anchors)
+- **Tunnel live** — D-67/D-74. Confirm: `curl -s -o /dev/null -w '%{http_code}' https://gw.agentpipe.top/` → `404` (our gateway, not Cloudflare's 530); `launchctl print gui/$(id -u)/com.george43g.telephony-mcp | grep state` → `running`.
+- **Second number** `+61 3 4713 9984` bought, isolated in a Twilio subaccount, registered with ElevenLabs as `phnum_7001m1qjaq8dfpttztdw4t1dt919` — D-69/D-73. EL rewriting its `voice_url` to `api.elevenlabs.io/twilio/inbound_call` was observed, not assumed; `+61…1463` still carries Twilio's demo URL.
+- **`CF_API_TOKEN` thread closed** — D-68…D-72: vault item archived (restorable), Cloudflare token deliberately left alive; tunnel work uses the scoped `CF_EQSTACK_TELEPHONY_TUNNEL_TOKEN`.
+- **Docs + config** — PR #143 `.mcp.json` repo-relative and tracked; PR #144 `AGENTS.md` re-cut into a four-app map (docs-integrity check 26 → 122 references); PR #152 → `5592527` adds `twilio` pinned at `@twilio-alpha/mcp@0.7.0` (committed config handshake-verified: `initialize` + `tools/list`, 197 tools, no tool called).
+- **Plans** — PR #150 Phase Q file; PR #149 two stale plan status lines corrected (`realtime-imsg` mostly built; `mcp-config-sync` closed as built elsewhere as `mcpsync`); PR #151 parked group-meeting vision (O-29, STATUS §0b); PR #146 parked agent-identity/SMS thesis (STATUS §0a).
+- **Release run for `5592527`** (PR #152) verified a no-op: `gh run view 34892223930 --log | grep -oE 'Released [0-9]+ of [0-9]+ packages'` → `Released 0 of 1 packages`.
+- **Post-crash sweep clean (2026-09-08)** — no worktrees/stashes; every branch-less commit accounted for via `git reflog` + `git fsck --dangling`.
+
+## Open — telephony rows live in the DECISIONS register; these are pointers, not duplicates
+- `phase-q-step-1` · eqstack — never attempted. `grep -A5 'delegate: {' apps/telephony-mcp/src/domain/types.ts` still shows `implemented: false`, and `AgentPlatformPort` appears in no file under `apps/telephony-mcp/src`.
+- `agent-platform-port-redesign` · eqstack — PHASE-Q open question 1. Implementing `elevenlabs-managed` as a separate port reverses a reservation (`apps/telephony-mcp/src/adapters/telephony/registry.ts:10`). **Owes a DECISIONS row BEFORE any code**; no Settled row names the port yet.
+- `delegate-recording-consent` · eqstack — PHASE-Q open question 3: recording happens inside ElevenLabs, so INV-13 does not apply. Proposed default: refuse `record: true` for delegate calls.
+- `delegate-cost-ceiling` · eqstack — PHASE-Q open question 2: EL minutes bill on top of Twilio; nothing caps a day. Needed before unattended/inbound use, not before the first attended call.
+- `twilio-mcp-narrowing` · eqstack — `grep -c -- '--services' .mcp.json` → `0`. The server loads 197 tools (~94 state-changing); Twilio's README says to narrow with `--services`/`--tags`. Everything EQStack has actually done with Twilio lives in `twilio_api_v2010`.
+- `twilio-mcp-reload-verify` · eqstack — `/mcp` after a session reload has never been observed. Only a handshake against the committed config was run; a reload depends on the client's launch environment.
+- `gmail-record-publish` · eqstack — redacted record committed as `e876331` on `docs/track-gmail-migration-record`, on no remote: `git log --oneline origin/main..docs/track-gmail-migration-record`. File: `docs/agent-handoff/GMAIL-MCP-PREMIGRATION-HANDOFF.md` (untracked on main). The repo is PUBLIC — pushing publishes permanently.
+- `imsg-mcp-SKILL-frontmatter` · eqstack — still no YAML frontmatter, so the skill never triggers. Confirm: `head -3 apps/imsg-mcp/skills/imsg-mcp/SKILL.md`. Never attempted since 09-04; George's call whether it should trigger.
+
+## Corrections (each 2026-09-04 open item, with its outcome)
+- `telephony-next-step` → **decided**: Q/R over F (D-65). F is deprioritised, not rejected.
+- `conversation-harness-park` → **merged** as PR #142 (O-24/25/26). O-24 lands in Phase Q.
+- `docs-recut-and-gmail-record` → re-cut **done** (PR #144); gmail record → `gmail-record-publish` above.
+- `mcp-json-tracking` → **done** (PR #143).
+- `tunnel-provisioning` (O-23) → **done** (D-67/D-74).
+- O-1 said *"re-ask at Phase Q start"* while O-27 answered the same question → **closed** 2026-09-09 (PR #151).
+- `TUNNEL_SETUP.md` step 8 (re-point the Twilio webhook) → **withdrawn**: the gateway has no inbound voice handler, and callbacks are supplied per call (D-74).
+- The runbook's tunnel ingress port `8790` → **wrong**: it is `8890`, because `browser-tab-mcp`'s daemon holds 8790 on this machine (D-74).
+
+## Traps (one line each)
+- `gh pr merge --delete-branch` switches the worktree to the base branch and removes from disk any file tracked only on the unpushed branch — restore with `git restore --source=<branch> -- <path>`.
+- `opkeep get <VAR>` serves a cached secret instead of erroring once the vault item is gone — test resolution with `op item get <TITLE>`, which returns not-found and no value.
+- GitHub push protection rejects a full Twilio Account SID (`AC` + 32 hex) — truncate ids in docs (`AC1a044d…`).
+- Unbounded `until … sleep` background waits ran for days and were OOM-killed under memory pressure — bound every loop, or use `gh pr merge --auto`.
+- Moving an AU Twilio number into a subaccount fails `21631` until an Address exists in that subaccount — addresses are per-account.
+- `git diff A B -- path --stat` treats `--stat` as a pathspec — flags go before `--`.
+- `git rev-list --count --all --not --remotes` over-counts unpushed work: it includes `refs/notes/*`, which `--not --remotes` cannot exclude. Use `--branches` instead, and check notes/tags with `git ls-remote`.
+
+## Tree
+`main...origin/main`, tracked tree clean — confirm with `git status -sb`. Untracked, deliberately: `docs/research/*` and `docs/agent-handoff/*` (George's research + the rescued gmail record; standing rule: never `git add -A`), and two `opencode.json.bak.*` files (mcpsync backups made by this session; safe to delete). Branches holding commits on no remote, per `git rev-list --count <branch> --not --remotes`: `docs/track-gmail-migration-record` (1, the deliberate hold) and `cursor/development-environment-setup-690b` (1, from 2026-02-27, not this session's). `git rev-list --count --all --not --remotes` reports 30, but that measures a different subject: the other 28 are `refs/notes/semantic-release-v1.x.y` (semantic-release's notes for the pre-monorepo tags), which `--not --remotes` cannot exclude because notes refs are never tracked under `refs/remotes/`. All 28 are on origin with identical commits — confirm: `comm -23 <(git for-each-ref --format='%(refname)' refs/notes/ | sort) <(git ls-remote origin 'refs/notes/*' | awk '{print $2}' | sort)` prints nothing. **Nothing else is unpushed.**
+
+## Blocked on you (George) — eqstack-owned
+`gmail-record-publish` · `agent-platform-port-redesign` · `delegate-recording-consent` · `delegate-cost-ceiling` (before unattended use) · `twilio-mcp-narrowing`.
+
+## Elsewhere (owners raise these, not eqstack)
+- **life-stack** — removing `twilio` from life-stack and installing it in billing-mwc, "the executive" and "the secretary". Told that EQStack **pinned** `0.7.0` while billing-mwc's block is unpinned.
+- **g-home-server** — split `CF_API_TOKEN`'s consumers onto per-consumer tokens (2026-09-05); `rotate-and-split` done on their host.
+- **dotfiles** — investigated this session's CPU bursts (measured: per-turn transcript processing, not a background job) and flagged it as the likely session to close under memory pressure.
+- **PR #129** `fix/gmail-mcp-portable-schema` — open, not this session's.
+
+## Resume
+Nothing staged, nothing mid-edit. Nothing in flight.
+Next build action: **Phase Q Step 1** — but first get George's call on `agent-platform-port-redesign`
+and record it as a DECISIONS row, then add the port and flip `CALL_MODE_SPECS.delegate.implemented`.
+Do not write the port before that row exists.
