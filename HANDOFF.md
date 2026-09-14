@@ -1211,7 +1211,7 @@ installed (pinned). One deliberate unpushed hold awaits George (`gmail-record-pu
 `gmail-record-publish` · `agent-platform-port-redesign` · `delegate-recording-consent` · `delegate-cost-ceiling` (before unattended use) · `twilio-mcp-reload-verify` (approve twilio in `/mcp`).
 
 ## Elsewhere (owners raise these, not eqstack)
-- **life-stack** — removing `twilio` from life-stack and installing it in billing-mwc, "the executive" and "the secretary". Told that EQStack **pinned** `0.7.0` while billing-mwc's block is unpinned. **Also owns taking the Twilio injection-risk and tool-narrowing question to George, once, for all four repos** — do not raise it separately from here.
+- **life-stack** — owns the `twilio` rollout (dropped from life-stack; billing-mwc and the executive). Told that EQStack **pinned** `0.7.0` while billing-mwc's block is unpinned. **DECIDED 2026-09-15 (George, relayed by life-stack): full access in all four repos, no deny rules.** life-stack put the bypass-mode injection mechanism and Twilio's own advisory to him explicitly before he chose, so do not re-propose deny rules on those grounds. (Per the Claude Code docs a deny rule *would* hold under `bypassPermissions` — untested.) **The secretary does NOT get Twilio** — recorded in `~/repos/executive/team/secretary/docs/DECISIONS.md:210-214` (`1f6036a`).
 - **g-home-server** — split `CF_API_TOKEN`'s consumers onto per-consumer tokens (2026-09-05); `rotate-and-split` done on their host.
 - **dotfiles** — investigated this session's CPU bursts (measured: per-turn transcript processing, not a background job) and flagged it as the likely session to close under memory pressure.
 - **PR #129** `fix/gmail-mcp-portable-schema` — open, not this session's.
