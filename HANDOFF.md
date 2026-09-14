@@ -1180,8 +1180,7 @@ installed (pinned). One deliberate unpushed hold awaits George (`gmail-record-pu
 - `agent-platform-port-redesign` · eqstack — PHASE-Q open question 1. Implementing `elevenlabs-managed` as a separate port reverses a reservation (`apps/telephony-mcp/src/adapters/telephony/registry.ts:10`). **Owes a DECISIONS row BEFORE any code**; no Settled row names the port yet.
 - `delegate-recording-consent` · eqstack — PHASE-Q open question 3: recording happens inside ElevenLabs, so INV-13 does not apply. Proposed default: refuse `record: true` for delegate calls.
 - `delegate-cost-ceiling` · eqstack — PHASE-Q open question 2: EL minutes bill on top of Twilio; nothing caps a day. Needed before unattended/inbound use, not before the first attended call.
-- `twilio-mcp-narrowing` · eqstack — `grep -c -- '--services' .mcp.json` → `0`. The server loads 197 tools (~94 state-changing); Twilio's README says to narrow with `--services`/`--tags`. Everything EQStack has actually done with Twilio lives in `twilio_api_v2010`.
-- `twilio-mcp-reload-verify` · eqstack — `/mcp` after a session reload has never been observed. Only a handshake against the committed config was run; a reload depends on the client's launch environment.
+- `twilio-mcp-reload-verify` · eqstack — needs George to **approve** the project server in `/mcp`, not just a reload. Reported from billing-mwc via life-stack, not yet observed in EQStack: a fresh Claude Code process lists a project `.mcp.json` twilio as `⏸ Pending approval`, and the green `claude.ai Twilio` row is the docs-only claude.ai connector, not this server. Only a handshake against the committed config has been run here.
 - `gmail-record-publish` · eqstack — redacted record committed as `e876331` on `docs/track-gmail-migration-record`, on no remote: `git log --oneline origin/main..docs/track-gmail-migration-record`. File: `docs/agent-handoff/GMAIL-MCP-PREMIGRATION-HANDOFF.md` (untracked on main). The repo is PUBLIC — pushing publishes permanently.
 - `imsg-mcp-SKILL-frontmatter` · eqstack — still no YAML frontmatter, so the skill never triggers. Confirm: `head -3 apps/imsg-mcp/skills/imsg-mcp/SKILL.md`. Never attempted since 09-04; George's call whether it should trigger.
 
@@ -1193,6 +1192,7 @@ installed (pinned). One deliberate unpushed hold awaits George (`gmail-record-pu
 - `tunnel-provisioning` (O-23) → **done** (D-67/D-74).
 - O-1 said *"re-ask at Phase Q start"* while O-27 answered the same question → **closed** 2026-09-09 (PR #151).
 - `TUNNEL_SETUP.md` step 8 (re-point the Twilio webhook) → **withdrawn**: the gateway has no inbound voice handler, and callbacks are supplied per call (D-74).
+- Recommending `--services twilio_api_v2010` to narrow the Twilio MCP (told to George 2026-09-15) → **a no-op**, measured with a control: default = 197 tools, all `TwilioApiV2010`; with that flag = the same 197; `--services twilio_messaging_v1` = 57 `TwilioMessagingV1`. The flag replaces the service set, and v2010 is already the default, so only `--tags` narrows within it. Counter raised by life-stack.
 - The runbook's tunnel ingress port `8790` → **wrong**: it is `8890`, because `browser-tab-mcp`'s daemon holds 8790 on this machine (D-74).
 
 ## Traps (one line each)
@@ -1208,10 +1208,10 @@ installed (pinned). One deliberate unpushed hold awaits George (`gmail-record-pu
 `main...origin/main`, tracked tree clean — confirm with `git status -sb`. Untracked, deliberately: `docs/research/*` and `docs/agent-handoff/*` (George's research + the rescued gmail record; standing rule: never `git add -A`), and two `opencode.json.bak.*` files (mcpsync backups made by this session; safe to delete). Branches holding commits on no remote, per `git rev-list --count <branch> --not --remotes`: `docs/track-gmail-migration-record` (1, the deliberate hold) and `cursor/development-environment-setup-690b` (1, from 2026-02-27, not this session's). `git rev-list --count --all --not --remotes` reports 30, but that measures a different subject: the other 28 are `refs/notes/semantic-release-v1.x.y` (semantic-release's notes for the pre-monorepo tags), which `--not --remotes` cannot exclude because notes refs are never tracked under `refs/remotes/`. All 28 are on origin with identical commits — confirm: `comm -23 <(git for-each-ref --format='%(refname)' refs/notes/ | sort) <(git ls-remote origin 'refs/notes/*' | awk '{print $2}' | sort)` prints nothing. **Nothing else is unpushed.**
 
 ## Blocked on you (George) — eqstack-owned
-`gmail-record-publish` · `agent-platform-port-redesign` · `delegate-recording-consent` · `delegate-cost-ceiling` (before unattended use) · `twilio-mcp-narrowing`.
+`gmail-record-publish` · `agent-platform-port-redesign` · `delegate-recording-consent` · `delegate-cost-ceiling` (before unattended use) · `twilio-mcp-reload-verify` (approve twilio in `/mcp`).
 
 ## Elsewhere (owners raise these, not eqstack)
-- **life-stack** — removing `twilio` from life-stack and installing it in billing-mwc, "the executive" and "the secretary". Told that EQStack **pinned** `0.7.0` while billing-mwc's block is unpinned.
+- **life-stack** — removing `twilio` from life-stack and installing it in billing-mwc, "the executive" and "the secretary". Told that EQStack **pinned** `0.7.0` while billing-mwc's block is unpinned. **Also owns taking the Twilio injection-risk and tool-narrowing question to George, once, for all four repos** — do not raise it separately from here.
 - **g-home-server** — split `CF_API_TOKEN`'s consumers onto per-consumer tokens (2026-09-05); `rotate-and-split` done on their host.
 - **dotfiles** — investigated this session's CPU bursts (measured: per-turn transcript processing, not a background job) and flagged it as the likely session to close under memory pressure.
 - **PR #129** `fix/gmail-mcp-portable-schema` — open, not this session's.
