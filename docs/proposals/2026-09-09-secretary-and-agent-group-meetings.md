@@ -4,6 +4,16 @@
 George's request: *"dont act on this narrative now — just save it somewhere so we
 can read it and be aware of the direction we're driving progress towards."*
 
+> **The secretary already has a home — do not build a second one.** George decided
+> 2026-09-15 that the phone-answering secretary in this document and the team
+> secretary in the `executive` repo are **one role**. Recorded there as D14, verbatim:
+> *"the EQStack phone persona and this secretary are one role"* — in
+> `~/repos/executive/docs/registers/decisions.md` (commit `5248a4c`). Her home is
+> `~/repos/executive/team/secretary/` (`AGENTS.md`, `policy.toml`). When this work
+> unparks, the phone work lands **on her**, not on a second persona built here.
+> Relayed by the `executive` session 2026-09-15, and checked against that commit
+> before being written down.
+
 This is a **destination document**. It exists so that when the pieces below get
 built, they get built pointing at the same place. Read it before designing the
 secretary, before Phases L–M (inbound), and before any multi-party call work.
