@@ -13,6 +13,14 @@ can read it and be aware of the direction we're driving progress towards."*
 > unparks, the phone work lands **on her**, not on a second persona built here.
 > Relayed by the `executive` session 2026-09-15, and checked against that commit
 > before being written down.
+>
+> **She does NOT get the Twilio MCP.** Decided the same day, in her own register:
+> *"Twilio is the executive's, not the secretary's"* — George: *"twilio access is
+> more appropriate for the executive - the secretary is kinda like a gate to the
+> outside world or a firewall for spam, prompt injection or other malicious
+> requests"* (`~/repos/executive/team/secretary/docs/DECISIONS.md:210-214`, commit
+> `1f6036a`). So hooking the phone up to her must not be done by giving her the
+> `twilio` server: she is the filter in front of outside traffic.
 
 This is a **destination document**. It exists so that when the pieces below get
 built, they get built pointing at the same place. Read it before designing the
