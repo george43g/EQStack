@@ -1199,7 +1199,7 @@ installed (pinned). One deliberate unpushed hold awaits George (`gmail-record-pu
 - `gh pr merge --delete-branch` switches the worktree to the base branch and removes from disk any file tracked only on the unpushed branch — restore with `git restore --source=<branch> -- <path>`.
 - `opkeep get <VAR>` serves a cached secret instead of erroring once the vault item is gone — test resolution with `op item get <TITLE>`, which returns not-found and no value.
 - GitHub push protection rejects a full Twilio Account SID (`AC` + 32 hex) — truncate ids in docs (`AC1a044d…`).
-- Unbounded `until … sleep` background waits ran for days and were OOM-killed under memory pressure — bound every loop, or use `gh pr merge --auto`.
+- Unbounded `until … sleep` background waits ran for days and were OOM-killed under memory pressure — bound every loop. **`gh pr merge --auto` is NOT an alternative here:** auto-merge is disabled on this repo (`GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)`). It only appears to work when checks are already green, because `gh` then merges directly.
 - Moving an AU Twilio number into a subaccount fails `21631` until an Address exists in that subaccount — addresses are per-account.
 - `git diff A B -- path --stat` treats `--stat` as a pathspec — flags go before `--`.
 - `git rev-list --count --all --not --remotes` over-counts unpushed work: it includes `refs/notes/*`, which `--not --remotes` cannot exclude. Use `--branches` instead, and check notes/tags with `git ls-remote`.
