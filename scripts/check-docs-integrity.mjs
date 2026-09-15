@@ -19,12 +19,28 @@
  * Scope is deliberately conservative — only tokens that are unambiguously
  * repo paths or pnpm scripts — so a false positive never blocks a real change.
  * Run `node scripts/check-docs-integrity.mjs --self-test` to prove it can fail.
+ *
+ * Three structural checks run alongside the reference scan:
+ *  - Codex instruction cap. Codex concatenates every AGENTS.md from the repo
+ *    root down to its working directory and silently truncates the result at
+ *    `project_doc_max_bytes` (32,768 bytes by default — codex-rs agents_md.rs,
+ *    `data.truncate(remaining)`). Every root-to-guide chain, enumerated from
+ *    tracked files with `git ls-files`, must fit. Bytes Codex may add between
+ *    files are unknown and not counted, so read the printed margin, not just
+ *    pass/fail.
+ *  - Claude Code loads a nested CLAUDE.md, never a nested AGENTS.md, so every
+ *    guide needs a sibling CLAUDE.md (a symlink to it).
+ *  - A KNOWN_ABSENT entry that no guide triggers any more is dead and fails,
+ *    so the allowlist cannot rot in the other direction either.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+/** Codex default; override only to experiment — CI must enforce the default. */
+const CODEX_PROJECT_DOC_MAX_BYTES = Number(process.env.CODEX_PROJECT_DOC_MAX_BYTES || 32768);
 
 /** Root AGENTS.md plus every apps/<app>/AGENTS.md that exists. */
 function findGuides() {
@@ -55,16 +71,6 @@ const KNOWN_ABSENT = [
     guide: "apps/gmail-mcp/AGENTS.md",
     path: "src/robustness/",
     why: "cited precisely because it was deleted and must not be re-grown locally",
-  },
-  {
-    guide: "apps/gmail-mcp/AGENTS.md",
-    path: "scripts/capture-fixtures.ts",
-    why: "documented in that guide as not yet shipped",
-  },
-  {
-    guide: "apps/gmail-mcp/AGENTS.md",
-    path: "scripts/anonymise-fixtures.ts",
-    why: "documented in that guide as not yet shipped",
   },
 ];
 
@@ -143,11 +149,12 @@ function pathResolves(rel, baseDir) {
 function check(text, baseDir = repoRoot, guideRel = null) {
   const { paths, scripts } = extractRefs(text);
   const failures = [];
-  let allowlisted = 0;
+  const usedAllow = [];
   for (const rel of paths) {
     if (pathResolves(rel, baseDir)) continue;
-    if (KNOWN_ABSENT.some((k) => k.guide === guideRel && k.path === rel)) {
-      allowlisted += 1;
+    const hit = KNOWN_ABSENT.find((k) => k.guide === guideRel && k.path === rel);
+    if (hit) {
+      usedAllow.push(`${hit.guide}::${hit.path}`);
       continue;
     }
     failures.push(`missing path: \`${rel}\``);
@@ -155,7 +162,56 @@ function check(text, baseDir = repoRoot, guideRel = null) {
   for (const name of scripts) {
     if (!scriptExistsSomewhere(name)) failures.push(`missing pnpm script: \`pnpm ${name}\``);
   }
-  return { failures, allowlisted, considered: paths.size + scripts.size };
+  return { failures, allowlisted: usedAllow.length, usedAllow, considered: paths.size + scripts.size };
+}
+
+/** KNOWN_ABSENT entries no guide triggered during this run — dead entries. */
+function unusedAllowlist(allow, usedKeys) {
+  const used = new Set(usedKeys);
+  return allow.filter((k) => !used.has(`${k.guide}::${k.path}`));
+}
+
+/** Chains longer than the cap. Exactly at the cap still fits. */
+function chainOverruns(chains, cap) {
+  return chains.filter((c) => c.bytes > cap);
+}
+
+/** Guides with no sibling CLAUDE.md — Claude Code would never load them. */
+function missingClaudeSiblings(guideRels, exists) {
+  return guideRels.filter((g) => !exists(join(dirname(g), "CLAUDE.md")));
+}
+
+/**
+ * Root-to-directory AGENTS.md chains as Codex assembles them. Tracked files
+ * only, so an untracked guide on one machine cannot change the verdict. Per
+ * directory Codex prefers AGENTS.override.md over AGENTS.md.
+ */
+function codexChains() {
+  let listing;
+  try {
+    listing = execFileSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  } catch (err) {
+    throw new Error(
+      `cannot enumerate tracked guides with \`git ls-files\` (${err.message.split("\n")[0]}). ` +
+        "The chain-size check needs a git checkout; refusing to report a pass it could not measure.",
+    );
+  }
+  const guides = listing
+    .split("\0")
+    .filter((f) => f === "AGENTS.md" || f === "AGENTS.override.md" || f.endsWith("/AGENTS.md") || f.endsWith("/AGENTS.override.md"));
+  const tracked = new Set(guides);
+  const fileFor = (dir) => {
+    const prefix = dir === "." ? "" : `${dir}/`;
+    for (const name of ["AGENTS.override.md", "AGENTS.md"]) if (tracked.has(`${prefix}${name}`)) return `${prefix}${name}`;
+    return null;
+  };
+  return [...new Set(guides.map((f) => dirname(f)))].sort().map((dir) => {
+    const parts = dir === "." ? [] : dir.split("/");
+    const ancestors = ["."].concat(parts.map((_, i) => parts.slice(0, i + 1).join("/")));
+    const files = ancestors.map(fileFor).filter(Boolean);
+    const bytes = files.reduce((n, f) => n + readFileSync(join(repoRoot, f)).length, 0);
+    return { dir, files, bytes };
+  });
 }
 
 if (process.argv.includes("--self-test")) {
@@ -193,8 +249,27 @@ if (process.argv.includes("--self-test")) {
     console.error("SELF-TEST FAILED: a code fence hid a bad path from the check:", fenced);
     process.exit(2);
   }
+  // A dead allowlist entry is reported; a live one is not.
+  const dead = unusedAllowlist([{ guide: "g.md", path: "a/" }, { guide: "g.md", path: "b/" }], ["g.md::a/"]);
+  if (dead.length !== 1 || dead[0].path !== "b/") {
+    console.error("SELF-TEST FAILED: dead allowlist entry not reported:", dead);
+    process.exit(2);
+  }
+  // Codex cap: one byte over is caught; exactly at the cap is not.
+  const over = chainOverruns([{ dir: "x", bytes: 32769 }, { dir: "y", bytes: 32768 }], 32768);
+  if (over.length !== 1 || over[0].dir !== "x") {
+    console.error("SELF-TEST FAILED: chain overrun not caught at the boundary:", over);
+    process.exit(2);
+  }
+  // A guide without a sibling CLAUDE.md is reported.
+  const noSib = missingClaudeSiblings(["apps/a/AGENTS.md", "apps/b/AGENTS.md"], (p) => p === "apps/a/CLAUDE.md");
+  if (noSib.length !== 1 || noSib[0] !== "apps/b/AGENTS.md") {
+    console.error("SELF-TEST FAILED: missing CLAUDE.md sibling not reported:", noSib);
+    process.exit(2);
+  }
   console.log(
-    "docs-integrity self-test OK (fails on bad refs, passes on good, base-dir honoured, fences stripped)",
+    "docs-integrity self-test OK (bad refs fail, good pass, base-dir honoured, fences stripped, " +
+      "dead allowlist entries caught, Codex chain cap caught at the boundary, missing CLAUDE.md caught)",
   );
   process.exit(0);
 }
@@ -202,23 +277,61 @@ if (process.argv.includes("--self-test")) {
 const guides = findGuides();
 let total = 0;
 let failed = 0;
-let allowed = 0;
+const usedKeys = [];
 for (const guide of guides) {
   const rel = relative(repoRoot, guide);
-  const { failures, allowlisted, considered } = check(readFileSync(guide, "utf8"), dirname(guide), rel);
+  const { failures, usedAllow, considered } = check(readFileSync(guide, "utf8"), dirname(guide), rel);
   total += considered;
-  allowed += allowlisted;
+  usedKeys.push(...usedAllow);
   if (failures.length > 0) {
     failed += failures.length;
     console.error(`✗ ${rel} references ${failures.length} thing(s) that no longer resolve:`);
     for (const f of failures) console.error(`    ${f}`);
   }
 }
-if (failed > 0) {
-  console.error(`\n  Fix the reference in the guide, or the check at scripts/check-docs-integrity.mjs.`);
+
+const deadEntries = unusedAllowlist(KNOWN_ABSENT, usedKeys);
+if (deadEntries.length > 0) {
+  failed += deadEntries.length;
+  console.error(`✗ ${deadEntries.length} KNOWN_ABSENT entr${deadEntries.length === 1 ? "y is" : "ies are"} dead — no guide mentions the path any more. Delete:`);
+  for (const k of deadEntries) console.error(`    ${k.guide} → \`${k.path}\``);
+}
+
+let chains;
+try {
+  chains = codexChains();
+} catch (err) {
+  console.error(`✗ ${err.message}`);
   process.exit(1);
 }
-const suffix = allowed > 0 ? ` (${allowed} allowlisted as intentionally absent)` : "";
+const overruns = chainOverruns(chains, CODEX_PROJECT_DOC_MAX_BYTES);
+if (overruns.length > 0) {
+  failed += overruns.length;
+  console.error(
+    `✗ ${overruns.length} AGENTS.md chain(s) exceed Codex's project_doc_max_bytes (${CODEX_PROJECT_DOC_MAX_BYTES}); Codex truncates the tail silently:`,
+  );
+  for (const c of overruns) {
+    console.error(`    ${c.dir}: ${c.bytes} B (${c.bytes - CODEX_PROJECT_DOC_MAX_BYTES} over) = ${c.files.join(" + ")}`);
+  }
+  console.error("    Fix: move reference detail into that app's docs/ and link it from the guide.");
+}
+
+const orphans = missingClaudeSiblings(guides.map((g) => relative(repoRoot, g)), (p) => existsSync(join(repoRoot, p)));
+if (orphans.length > 0) {
+  failed += orphans.length;
+  console.error(`✗ ${orphans.length} guide(s) have no sibling CLAUDE.md, so Claude Code never loads them:`);
+  for (const g of orphans) console.error(`    ${g}  (fix: ln -s AGENTS.md ${join(dirname(g), "CLAUDE.md")})`);
+}
+
+if (failed > 0) {
+  console.error("\n  Fix the guide, or the check at scripts/check-docs-integrity.mjs.");
+  process.exit(1);
+}
+const tightest = chains.reduce((a, c) => (c.bytes > a.bytes ? c : a));
 console.log(
-  `✓ ${guides.length} agent guide(s): all ${total} repo-path / pnpm-script references resolve${suffix}.`,
+  `✓ ${guides.length} agent guide(s): all ${total} repo-path / pnpm-script references resolve (${usedKeys.length} allowlisted as intentionally absent).`,
 );
+console.log(
+  `✓ ${chains.length} AGENTS.md chain(s) fit Codex's ${CODEX_PROJECT_DOC_MAX_BYTES} B cap; tightest is ${tightest.dir} at ${tightest.bytes} B (${CODEX_PROJECT_DOC_MAX_BYTES - tightest.bytes} B spare).`,
+);
+console.log(`✓ every guide has a sibling CLAUDE.md.`);
