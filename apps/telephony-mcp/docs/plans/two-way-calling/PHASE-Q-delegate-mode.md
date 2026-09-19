@@ -252,15 +252,14 @@ in `DECISIONS.md` as a correction.
 
 ## Open questions
 
-1. **`agent-platform-port-redesign`** — implementing `elevenlabs-managed` as a
-   separate port rather than a `TelephonyAdapter` reverses a reservation. Owes a
-   `DECISIONS.md` row with its reason before the code lands. *Owner: implementer.*
-2. **`delegate-cost-ceiling`** (was O-5) — EL agent minutes bill on top of Twilio.
-   `maxDurationMinutes` caps one call; nothing caps a day. Needed before any
-   unattended or inbound use, not before the first attended call. *Owner: George.*
-3. **`delegate-recording-consent`** — recording in this mode happens inside EL, so
-   INV-13's at-rest guarantees do not apply. Either refuse `record: true` for
-   delegate calls or state plainly in the consent surface that the recording lives at
-   a third party. Refusing is the honest default. *Owner: George.*
+1. ~~**`agent-platform-port-redesign`**~~ — **SETTLED 2026-09-19, D-75.** Separate
+   `AgentPlatformPort`; the `elevenlabs-managed` reservation is reversed and the
+   name kept for the port. Step 1 is unblocked.
+2. ~~**`delegate-cost-ceiling`**~~ (was O-5) — **DEFERRED 2026-09-19, D-77.** Not
+   before the first attended call; required before unattended or inbound use.
+3. ~~**`delegate-recording-consent`**~~ — **SETTLED 2026-09-19, D-76.** Allow
+   `record: true` with a plain third-party disclosure, and add an opt-in flag that
+   auto-approves and silences third-party disclosure prompts. Default is to ask.
+   The "refuse" default proposed above is withdrawn.
 4. **`poll-interval`** — 2 s is a guess. The live call in Step 8 is the chance to
    measure how stale the console actually feels and adjust once, with data.

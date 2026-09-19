@@ -238,6 +238,9 @@ reference in AGENTS.md resolves; `--self-test` proves it can fail.
   any personal content, and George reviews the redacted file before it is
   pushed. Tracked separately from this docs re-cut.
 
+  **2026-09-19 (George): publish it.** Redacted commit `e876331` pushed as PR #158
+  (`docs/track-gmail-migration-record`); merge when green after the current Release run.
+
 ### 1. Analytics — 20 remaining types (PARKED 2026-08-16, George's call)
 **Parked: these will be absorbed by the future relationship-analytics app** (`apps/analysis`, the
 monorepo's second app) rather than implemented in imsg-mcp — do not build them here. The enum
