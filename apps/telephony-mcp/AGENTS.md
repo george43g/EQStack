@@ -36,7 +36,9 @@ and the migration manifest (this tool is slated to move out of life-stack).
    literal secrets in config, code, tests, or fixtures. Never log or store
    secret values, tunnel URLs, or recording plaintext.
 7. Recordings stay AES-256-GCM encrypted at rest; audio bytes never cross
-   MCP; deletion requires scope + confirmation.
+   MCP; deletion requires scope + confirmation. Exception (D-76): a `delegate`
+   call's recording is held by ElevenLabs, never copied locally, and needs a
+   third-party acknowledgement (`src/domain/consent.ts`).
 
 ## Working notes
 
@@ -49,8 +51,11 @@ and the migration manifest (this tool is slated to move out of life-stack).
   to a real person. `voice_get_events` supports `waitMs` long-polling (≤55 s)
   so the host waits one call per turn instead of busy-polling. Keep the
   no-LLM-invocation invariant test (`tests/gateway.integration.test.ts`).
-- Reserved adapter ids (`elevenlabs-managed`, `twilio-media-streams`) parse
-  but must keep refusing construction until actually implemented.
+- Reserved telephony ids parse but refuse construction: `twilio-media-streams`
+  until implemented; `elevenlabs-managed` for good, pointing at the
+  `agentPlatform` block (D-75 made it the delegate-mode agent platform —
+  `src/adapters/agent-platform/elevenlabs.ts`). Delegate-mode code branches on
+  `CALL_MODE_SPECS` predicates, never on the mode string.
 - Narrow gate: `pnpm --filter telephony-mcp lint typecheck test`.
 - Live/paid verification (tunnel install, smoke call, latency measurement) is
   gated on explicit authorization — see the ExecPlan.

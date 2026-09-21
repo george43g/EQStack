@@ -72,9 +72,13 @@ single boolean. Its other flags are already correct and describe the mode exactl
 
 Two behaviours fall directly out of the predicates and must be pinned by tests:
 
-- `say_on_call` is **refused** in delegate mode, because `hostAnswersTurns` is false.
-  The host does not speak; the EL agent does. The refusal must name the mode and
-  suggest `get_call_events`, not fail obscurely.
+- `say_on_call` is **refused** in delegate mode. The host does not speak; the EL
+  agent does. The refusal must name the mode and suggest `get_call_events`, not
+  fail obscurely. **Built against `mediaPathOffDevice`, not `hostAnswersTurns`**
+  (this line originally said the latter): `byo-model` also has
+  `hostAnswersTurns: false`, yet `say_on_call` is its legitimate operator
+  interjection, so keying on it would have broken `byo-model`. The same refusal
+  covers `play_disclosure`, `set_recording` and `end_call` (see Implementation notes).
 - The session code that builds a relay token and WS URL must not run at all, because
   `mediaPathOffDevice` is true. If a delegate call ever produces a `/relay/<token>`,
   INV-7 has been violated.
@@ -89,13 +93,16 @@ make every field optional-in-principle and defeat INV-6.
 So Phase Q adds a **second port**, `AgentPlatformPort`, beside the telephony one:
 
 ```ts
-ensureAgent(brief: AgentBrief): Promise<{ agentId: string }>
+// As built (src/domain/ports.ts). The planning sketch had ensureAgent and
+// endConversation; see Implementation notes for why neither survived.
+createAgent(brief: AgentBrief): Promise<{ agentId: string }>
+updateAgent(agentId: string, brief: AgentBrief): Promise<void>        // 404 → recreate
 placeOutboundCall(req: { agentId; phoneNumberId; to; dynamicVariables }): Promise<{ conversationId: string }>
 getConversation(conversationId: string): Promise<AgentConversation>   // status + transcript
-endConversation(conversationId: string): Promise<void>
 ```
 
-⚠️ **This is a deliberate redesign and owes a `DECISIONS.md` row before it lands.**
+⚠️ **This is a deliberate redesign and owes a `DECISIONS.md` row before it lands**
+(recorded as **D-75**, 2026-09-19).
 `elevenlabs-managed` was reserved as a *telephony adapter id*
 (`src/adapters/telephony/registry.ts:10`, `src/config/schema.ts:91`), i.e. as
 another `TelephonyAdapter`. Implementing it as a separate port instead is a change
@@ -139,6 +146,9 @@ call litters the workspace and is slower. Derive a deterministic name
 (`eqstack-<profile>`), create on first use, store `profile → agentId` plus a hash of
 the brief in sqlite, and re-`update` the agent when the hash changes. That makes
 provisioning idempotent — the same property `place_call` already has for dialing.
+**As built: one agent per (profile, recording)** — `eqstack-<profile>` and
+`eqstack-<profile>-recorded` — because EL's recording switch is an agent setting
+(see Implementation notes).
 
 ### 5. O-24 lands here, because the agent prompt *is* the harness
 
@@ -173,10 +183,14 @@ ours — verify it on the live call rather than building for it.
   routing an inbound call *back to an originating agent* is Phases L–M.
 - **Phase F's thinking sound.** EL ships `pre_tool_speech` and `tool_call_sound`
   natively; building ours for this path would be duplicated work (D-65).
-- **Recording.** Delegate-mode recording lives in EL, not in our
-  `EncryptedRecordingStore`. Do not silently persist EL recordings — INV-13's
-  guarantees do not extend to a third party's storage, and claiming they do would be
-  a lie in the consent surface. Out of scope; note it in the mode's docs.
+- **Copying EL recordings locally.** Recording itself is now IN scope —
+  **D-76** (George, 2026-09-19) allows `record: true` on a delegate call with a
+  plain third-party disclosure, overriding this file's earlier "refuse" default.
+  What stays out: the recording lives in EL, never in our
+  `EncryptedRecordingStore`, and we never copy it locally — INV-13's guarantees do
+  not extend to a third party's storage, and claiming they do would be a lie in
+  the consent surface. INV-13 carries a documented exception for this mode
+  (WORKSTREAM.md).
 
 ---
 
@@ -220,12 +234,77 @@ composed brief; the poller is idempotent; `place_call --mode delegate --dry-run`
 creates nothing. All against a fake `AgentPlatformPort` — **no network** (INV-14).
 
 ### 8. The live call (paid, George-authorised — NOT part of the merge)
+
+Also verify there what the offline suite cannot: that the transcript appears
+while the call is live (undocumented by EL), that `processing` → `done` arrives in
+seconds, that `record_voice: false` really leaves `has_audio` false (read
+`platformHasAudio` on `call.ended`), and that EL accepts the agent body as sent
+(no `model_id`; `voice.speed` passed through unclamped).
 One real delegate call to George. Measure the same legs Phase E measured, so D-65's
 thesis is tested rather than asserted: if a delegate turn is not dramatically under
 direct's ~12 s p50, the premise for choosing Q/R over F was wrong and that belongs
 in `DECISIONS.md` as a correction.
 
 ---
+
+## Implementation notes (2026-09-22) — where the build differs from this plan
+
+Steps 1–7 are built. Each deviation below is deliberate; the reason is the
+point, so the next agent does not "fix" it back.
+
+1. **Registered name `elevenlabs-managed`, not `elevenlabs` (D-75).** Config is
+   `agentPlatform: { type: "elevenlabs-managed", apiKeyRef, phoneNumberId,
+   baseUrl, pollIntervalMs }`, optional; without it `delegate` refuses at plan
+   time with a pointer to the block. `telephony.type: "elevenlabs-managed"` still
+   parses and then refuses construction with a pointer to `agentPlatform`
+   (`src/adapters/telephony/registry.ts`). `twilio-media-streams` is unchanged.
+2. **No `endConversation`.** ElevenLabs exposes no REST endpoint that ends a live
+   conversation (SDK v2.68.0 endpoint list; its only remote hang-up is an
+   enterprise-only monitoring WebSocket). So `end_call` on a delegate call is a
+   mode-naming refusal, no duration timer is armed, and the call is bounded by
+   the agent's own `max_duration_seconds` (from the profile, clamped by
+   `limits.hardMaxDurationMinutes`) plus the agent's `end_call` system tool, which
+   the adapter enables explicitly because API-created agents do not get it by
+   default. Hanging up via Twilio with the returned `callSid` would need the EL
+   subaccount's credentials — George's call, not built.
+3. **`ensureAgent` lives in the call service, not the port.** Idempotency needs our
+   sqlite mapping (`agent_profiles`: agent key → agentId + briefHash), and an
+   adapter must not touch the store. The port is create/update; provisioning is
+   single-flight per key, reuses on an unchanged hash, updates on a changed one,
+   and recreates when EL answers 404 to an update.
+4. **Recording (D-76) splits the agent.** EL's recording switch is
+   `platform_settings.privacy.record_voice`, an agent setting with no
+   per-conversation override (`conversation_config_override` covers only asr,
+   turn, tts, conversation and agent prompt fields). EL documents it as ON by
+   default, so it is always sent explicitly. Consent order: the recipient's
+   `recordingPolicy` first (INV-3 — `never` refuses, `manual` refuses up-front
+   recording), then the third-party rule in `src/domain/consent.ts`: explicit
+   `record: true` needs `acknowledgeThirdPartyRecording: true` or the config flag
+   `consent.autoApproveThirdPartyDisclosures`; an implicit default (preconsented,
+   profile `record`) starts unrecorded with a notice, because standing consent to
+   OUR encrypted recording does not stretch to a third party's storage. The notice
+   rides on `place_call`'s result (`notices`; `plan.notices` on dryRun) and in the
+   refusal; the flag suppresses it.
+5. **`set_recording` on a delegate call is refused**, both directions: recording is
+   fixed at call start and nothing in EL's API changes it mid-call. A recording in
+   progress stops only when the call ends.
+6. **Poller details.** `processing` is non-terminal (the transcript is only trusted
+   at `done`); while live, the transcript's last item is held back until it has a
+   successor; every write is claimed through `recordProviderEvent`
+   (`el:turn:<index>`, `el:status:<status>`, `el:terminal`), so repeat, concurrent
+   and restarted polls never double-write; `serve` resumes pollers for live
+   delegate calls on start; a poll error emits one `delegate.poll_error` per
+   streak; past max duration + 600 s with no terminal status the record closes
+   `failed` / `poll_deadline_exceeded`. Events keep the relay session's shapes
+   (no text on `turn.user`) so the console hydrates them unchanged.
+7. **Brief mapping.** Per-call objective and context reach the agent as dynamic
+   variables (`call_objective`, `call_context`, both always sent — EL fails a call
+   with a missing one). `voice.model` is a ConversationRelay suffix and is NOT
+   mapped; EL picks its default conversational model. `voice.language` "en-AU" →
+   "en". The brief hash includes `AGENT_BRIEF_VERSION`, to be bumped when the
+   adapter's mapping changes.
+8. **No publicBaseUrl needed for a delegate dial**, and no relay token is ever
+   minted for one (pinned).
 
 ## Verification
 

@@ -8,6 +8,14 @@
     "type": "twilio-conversation-relay",
     "fromNumber": "+61255500000"
   },
+  "agentPlatform": {
+    "type": "elevenlabs-managed",
+    "apiKeyRef": "ELEVENLABS_API_KEY",
+    "phoneNumberId": "phnum_REPLACEWITHYOURID"
+  },
+  "consent": {
+    "autoApproveThirdPartyDisclosures": false
+  },
   "llm": {
     "type": "openai-compatible",
     "baseUrl": "https://openrouter.ai/api/v1",
