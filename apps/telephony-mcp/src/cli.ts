@@ -372,6 +372,14 @@ program
         // guarantees it matches publicBaseUrl, so report only the guarantee.
         push("tunnel hostname", true, "matches publicBaseUrl (enforced at parse)");
       }
+      // Informational: the phnum_ id is never printed (INV-11 — never beside its number).
+      push(
+        "agentPlatform",
+        true,
+        cfg.agentPlatform
+          ? `${cfg.agentPlatform.type} configured — mode "delegate" available`
+          : 'not configured — mode "delegate" refuses until an agentPlatform block is added',
+      );
       push(
         "recipients",
         true, // informational since Phase C (INV-2): aliases are nicknames, not permissions
@@ -391,6 +399,7 @@ program
         cfg.telephony.apiSecretRef,
         cfg.telephony.authTokenRef,
         ...(cfg.llm.apiKeyRef ? [cfg.llm.apiKeyRef] : []),
+        ...(cfg.agentPlatform ? [cfg.agentPlatform.apiKeyRef] : []),
       ];
       for (const ref of refs) {
         const value = await secrets.get(ref);
@@ -429,9 +438,17 @@ program
   .option("--no-record", "request no recording")
   .option(
     "--mode <mode>",
-    "conversation driver: byo-model (default; legacy alias llm) | direct (host replies via say)",
+    "conversation driver: byo-model (default; legacy alias llm) | direct (host replies via say) | delegate (an ElevenLabs agent holds the call)",
   )
-  .option("--dry-run", "preview the resolved plan without dialing", false)
+  .option(
+    "--acknowledge-third-party-recording",
+    "accept that a delegate call's recording is made and held by ElevenLabs (needed with --record)",
+  )
+  .option(
+    "--dry-run",
+    "preview the resolved plan without dialing (delegate: creates nothing at ElevenLabs)",
+    false,
+  )
   .option("--idempotency-key <key>", "override the derived dedupe key")
   .action(async (to: string, opts) => {
     try {
@@ -443,6 +460,7 @@ program
         ...(opts.profile ? { profile: opts.profile } : {}),
         ...(opts.record !== undefined ? { record: opts.record } : {}),
         ...(opts.mode ? { mode: opts.mode } : {}),
+        ...(opts.acknowledgeThirdPartyRecording ? { acknowledgeThirdPartyRecording: true } : {}),
         ...(opts.dryRun ? { dryRun: true } : {}),
         ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
       });

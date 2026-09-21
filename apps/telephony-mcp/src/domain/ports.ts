@@ -1,7 +1,10 @@
 /**
  * Ports — the seams between domain logic and the outside world. v1 ships
- * `twilio-conversation-relay` + `openai-compatible`; `elevenlabs-managed`
- * and `twilio-media-streams` are reserved adapter ids (config-accepted,
+ * `twilio-conversation-relay` + `openai-compatible`, plus (Phase Q) the
+ * `elevenlabs-managed` AgentPlatformPort for `delegate` calls. D-75 reversed
+ * the Phase B reservation of `elevenlabs-managed` as a TelephonyAdapter id:
+ * that id now names an agent platform, configured under `agentPlatform`.
+ * `twilio-media-streams` stays a reserved telephony id (config-accepted,
  * construction-refused).
  */
 import type { VoiceConfig } from "../config/schema.js";
@@ -50,6 +53,108 @@ export interface TelephonyAdapter {
   stopRecording(providerCallId: string): Promise<void>;
   fetchRecording(providerRecordingId: string): Promise<Uint8Array>;
   deleteRecording(providerRecordingId: string): Promise<void>;
+}
+
+// ── Agent platform (Phase Q, D-75) ────────────────────────────────────────
+//
+// In a mode whose spec has `mediaPathOffDevice`, a third-party agent platform
+// holds the phone leg end to end: we brief an agent, start the call, and poll
+// the conversation back into our event store. There is no media stream, relay
+// token or webhook on our side (INV-7, INV-10).
+
+/**
+ * Everything an agent is provisioned from. Pure data, built by
+ * `buildBrief` (src/domain/agent-brief.ts) and hashed there, so provisioning
+ * is idempotent: an unchanged brief never touches the platform twice.
+ * Carries no phone number (INV-11) — the callee reaches only the call request.
+ */
+export interface AgentBrief {
+  /** Deterministic workspace name: `eqstack-<profile>[-recorded]`. */
+  name: string;
+  /** Harness preamble + profile.systemPrompt + the per-call objective template. */
+  prompt: string;
+  /** Spoken as soon as the callee answers; null = the agent waits for them. */
+  firstMessage: string | null;
+  /** ISO 639-1 language the agent speaks and transcribes ("en"). */
+  language: string;
+  voice: {
+    voiceId: string;
+    speed: number;
+    stability: number | null;
+    similarityBoost: number | null;
+  };
+  /** The platform ends the call itself at this cap (we cannot hang up — see PHASE-Q). */
+  maxDurationSec: number;
+  /**
+   * Whether the PLATFORM records the audio (D-76). Recording is an agent-level
+   * setting fixed at call start, which is why a recorded call uses its own agent.
+   */
+  recordVoice: boolean;
+}
+
+export interface AgentOutboundCallRequest {
+  agentId: string;
+  /** The platform's id for its own number (EL `phnum_…`). Never logged. */
+  phoneNumberId: string;
+  /** Full E.164 — flows config → adapter only; never stored or logged (INV-11). */
+  to: string;
+  /** Per-call values the agent prompt references (objective, context). No numbers. */
+  dynamicVariables: Record<string, string>;
+}
+
+/** Conversation lifecycle, as the platform reports it. `done`/`failed` are terminal. */
+export const AGENT_CONVERSATION_STATUSES = [
+  "initiated",
+  "in-progress",
+  "processing",
+  "done",
+  "failed",
+] as const;
+export type AgentConversationStatus = (typeof AGENT_CONVERSATION_STATUSES)[number];
+
+export interface AgentTranscriptItem {
+  role: "user" | "agent";
+  /** Null for non-speech entries (tool calls); those never become utterances. */
+  text: string | null;
+  timeInCallSecs: number;
+  interrupted: boolean;
+}
+
+/** The parsed, number-free view of one conversation (INV-6: Zod-parsed at the adapter). */
+export interface AgentConversation {
+  conversationId: string;
+  status: AgentConversationStatus;
+  transcript: AgentTranscriptItem[];
+  terminationReason: string | null;
+  callDurationSecs: number | null;
+  /** True when the platform holds audio for this conversation (a D-76 recording). */
+  hasAudio: boolean;
+}
+
+/**
+ * The agent-platform seam. Deliberately lower-level than the phase file's
+ * sketch: `ensureAgent` is create/update + OUR sqlite mapping, so the
+ * "ensure" half lives in the call service (the adapter never touches the
+ * store), and there is no `endConversation` because ElevenLabs exposes no
+ * endpoint that hangs up a live conversation (PHASE-Q § Implementation notes).
+ * Phase R adds `registerMcpServer` here — never a second client.
+ */
+export interface AgentPlatformPort {
+  readonly id: string;
+  createAgent(brief: AgentBrief): Promise<{ agentId: string }>;
+  /** Throws an error carrying `status: 404` when the agent no longer exists. */
+  updateAgent(agentId: string, brief: AgentBrief): Promise<void>;
+  placeOutboundCall(req: AgentOutboundCallRequest): Promise<{ conversationId: string }>;
+  getConversation(conversationId: string): Promise<AgentConversation>;
+}
+
+/** One row of the `agent_profiles` table: which platform agent serves a brief key. */
+export interface AgentProfileRecord {
+  /** `<profile>` or `<profile>+recorded` (see agentKey in agent-brief.ts). */
+  agentKey: string;
+  agentId: string;
+  briefHash: string;
+  updatedAtMs: number;
 }
 
 export interface ChatMessage {
@@ -114,6 +219,9 @@ export interface EventStore {
   upsertTiming(t: Pick<TurnTiming, "callId" | "turn"> & Partial<TurnTiming>): void;
   stampDeliveredIfUnset(callId: string, turn: number, ms: number): void;
   getTimings(callId: string): TurnTiming[];
+
+  getAgentProfile(agentKey: string): AgentProfileRecord | null;
+  upsertAgentProfile(record: AgentProfileRecord): void;
 
   close(): void;
 }

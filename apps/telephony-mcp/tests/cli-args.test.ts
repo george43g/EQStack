@@ -64,6 +64,25 @@ describe("cli schema validation (L-9/L-10 replaced by command specs)", () => {
     expect(stderr.trim().split("\n")).toHaveLength(1);
   }, 30_000);
 
+  it("call --mode delegate --acknowledge-third-party-recording passes the schema (then needs config)", async () => {
+    const { code, stderr } = await runCli([
+      "call",
+      "+61400999888",
+      "--objective",
+      "y",
+      "--mode",
+      "delegate",
+      "--record",
+      "--acknowledge-third-party-recording",
+      "--dry-run",
+    ]);
+    // Schema validation runs BEFORE loadConfig: reaching the config error
+    // proves every flag parsed into a valid place_call input.
+    expect(code).toBe(1);
+    expect(stderr).toMatch(/^tel: cannot read config at /);
+    expect(stderr).not.toMatch(/^tel: (mode|acknowledgeThirdPartyRecording): /);
+  }, 30_000);
+
   it("--help lists the console command", async () => {
     const { code, stdout } = await runCli(["--help"]);
     expect(code).toBe(0);

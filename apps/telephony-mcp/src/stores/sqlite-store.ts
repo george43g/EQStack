@@ -5,7 +5,7 @@
  * even represent beyond a suffix).
  */
 import { DatabaseSync } from "node:sqlite";
-import type { EventStore } from "../domain/ports.js";
+import type { AgentProfileRecord, EventStore } from "../domain/ports.js";
 import type {
   CallEvent,
   CallRecord,
@@ -110,6 +110,12 @@ CREATE TABLE IF NOT EXISTS relay_tokens (
   token TEXT PRIMARY KEY,
   call_id TEXT NOT NULL UNIQUE,
   created_at_ms INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS agent_profiles (
+  agent_key TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  brief_hash TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_call ON events (call_id, seq);
 CREATE INDEX IF NOT EXISTS idx_calls_created ON calls (created_at_ms);
@@ -605,6 +611,34 @@ export class SqliteStore implements EventStore {
       deliveredToHostMs: (r.delivered_to_host_ms as number | null) ?? null,
       replyReceivedMs: (r.reply_received_ms as number | null) ?? null,
     }));
+  }
+
+  // -- agent profiles (Phase Q) ----------------------------------------------
+
+  getAgentProfile(agentKey: string): AgentProfileRecord | null {
+    const r = this.db.prepare("SELECT * FROM agent_profiles WHERE agent_key = ?").get(agentKey) as
+      | Record<string, unknown>
+      | undefined;
+    if (!r) return null;
+    return {
+      agentKey: r.agent_key as string,
+      agentId: r.agent_id as string,
+      briefHash: r.brief_hash as string,
+      updatedAtMs: r.updated_at_ms as number,
+    };
+  }
+
+  upsertAgentProfile(record: AgentProfileRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO agent_profiles (agent_key, agent_id, brief_hash, updated_at_ms)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT (agent_key) DO UPDATE SET
+           agent_id = excluded.agent_id,
+           brief_hash = excluded.brief_hash,
+           updated_at_ms = excluded.updated_at_ms`,
+      )
+      .run(record.agentKey, record.agentId, record.briefHash, record.updatedAtMs);
   }
 
   // -- relay tokens ---------------------------------------------------------

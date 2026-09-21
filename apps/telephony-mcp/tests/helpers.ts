@@ -7,6 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Config, parseConfig } from "../src/config/schema.js";
 import type {
+  AgentBrief,
+  AgentConversation,
+  AgentOutboundCallRequest,
+  AgentPlatformPort,
+  AgentTranscriptItem,
   Clock,
   IdProvider,
   LlmAdapter,
@@ -51,6 +56,26 @@ export function testConfig(overrides: Record<string, unknown> = {}): Config {
         systemPrompt: "You are calling on behalf of George.",
         greeting: "Hi, this is George's assistant.",
       },
+    },
+    ...overrides,
+  });
+}
+
+/** A phnum_ id that is obviously fake — the real one lives only in George's config. */
+export const TEST_PHONE_NUMBER_ID = "phnum_test0000fake";
+
+/**
+ * testConfig plus an agentPlatform block. The long poll interval keeps the
+ * background timer out of the way: tests drive `pollOnce()` explicitly.
+ * Never pair this with startGateway WITHOUT `agentPlatform: new
+ * FakeAgentPlatform()` — the real adapter would reach for the network (INV-14).
+ */
+export function delegateConfig(overrides: Record<string, unknown> = {}): Config {
+  return testConfig({
+    agentPlatform: {
+      type: "elevenlabs-managed",
+      phoneNumberId: TEST_PHONE_NUMBER_ID,
+      pollIntervalMs: 60_000,
     },
     ...overrides,
   });
@@ -126,6 +151,93 @@ export class FakeTelephony implements TelephonyAdapter {
   async deleteRecording(providerRecordingId: string): Promise<void> {
     this.log.deletedRecordings.push(providerRecordingId);
   }
+}
+
+export class ForbiddenPlatformCall extends Error {}
+
+/**
+ * Offline AgentPlatformPort (INV-14). Records every call; `forbidMutations`
+ * turns every create/update/dial into a throw, which is how the dryRun pin
+ * proves nothing is created on the platform.
+ */
+export class FakeAgentPlatform implements AgentPlatformPort {
+  readonly id = "fake-agent-platform";
+  log: {
+    created: AgentBrief[];
+    updated: Array<{ agentId: string; brief: AgentBrief }>;
+    calls: AgentOutboundCallRequest[];
+    polls: string[];
+  } = { created: [], updated: [], calls: [], polls: [] };
+  forbidMutations = false;
+  /** Agent ids the platform has "deleted" — updateAgent 404s on them. */
+  deletedAgents = new Set<string>();
+  failNextPoll: string | null = null;
+  failNextCall: string | null = null;
+  private conversations = new Map<string, AgentConversation>();
+  private n = 0;
+
+  private guard(op: string): void {
+    if (this.forbidMutations)
+      throw new ForbiddenPlatformCall(`${op} called while mutations are forbidden`);
+  }
+
+  async createAgent(brief: AgentBrief): Promise<{ agentId: string }> {
+    this.guard("createAgent");
+    this.log.created.push(brief);
+    return { agentId: `agent_fake${++this.n}` };
+  }
+
+  async updateAgent(agentId: string, brief: AgentBrief): Promise<void> {
+    this.guard("updateAgent");
+    if (this.deletedAgents.has(agentId)) {
+      throw Object.assign(new Error(`agent ${agentId} not found`), { status: 404 });
+    }
+    this.log.updated.push({ agentId, brief });
+  }
+
+  async placeOutboundCall(req: AgentOutboundCallRequest): Promise<{ conversationId: string }> {
+    this.guard("placeOutboundCall");
+    if (this.failNextCall) {
+      const msg = this.failNextCall;
+      this.failNextCall = null;
+      throw new Error(msg);
+    }
+    this.log.calls.push(req);
+    const conversationId = `conv_fake${++this.n}`;
+    this.conversations.set(conversationId, {
+      conversationId,
+      status: "initiated",
+      transcript: [],
+      terminationReason: null,
+      callDurationSecs: null,
+      hasAudio: false,
+    });
+    return { conversationId };
+  }
+
+  async getConversation(conversationId: string): Promise<AgentConversation> {
+    this.log.polls.push(conversationId);
+    if (this.failNextPoll) {
+      const msg = this.failNextPoll;
+      this.failNextPoll = null;
+      throw new Error(msg);
+    }
+    const c = this.conversations.get(conversationId);
+    if (!c)
+      throw Object.assign(new Error(`conversation ${conversationId} not found`), { status: 404 });
+    return structuredClone(c);
+  }
+
+  /** Test driver: move a conversation along (status, transcript, end metadata). */
+  script(conversationId: string, patch: Partial<Omit<AgentConversation, "conversationId">>): void {
+    const c = this.conversations.get(conversationId);
+    if (!c) throw new Error(`no conversation ${conversationId}`);
+    this.conversations.set(conversationId, { ...c, ...patch });
+  }
+}
+
+export function said(role: "user" | "agent", text: string | null, t = 0): AgentTranscriptItem {
+  return { role, text, timeInCallSecs: t, interrupted: false };
 }
 
 export interface ScriptedTurn {

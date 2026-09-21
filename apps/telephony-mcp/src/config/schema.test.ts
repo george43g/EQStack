@@ -106,3 +106,48 @@ describe("config schema", () => {
     expect(() => effectiveCallSettings(parsed, "missing")).toThrow(ConfigError);
   });
 });
+
+describe("agentPlatform + consent blocks (Phase Q, D-75/D-76)", () => {
+  it("both are optional; consent defaults to asking (never silent by default)", () => {
+    const cfg = parseConfig(base());
+    expect(cfg.agentPlatform).toBeUndefined();
+    expect(cfg.consent.autoApproveThirdPartyDisclosures).toBe(false);
+  });
+
+  it("parses an agentPlatform block under D-75's registered name, with defaults", () => {
+    const cfg = base();
+    (cfg as Record<string, unknown>).agentPlatform = {
+      type: "elevenlabs-managed",
+      phoneNumberId: "phnum_7001abc",
+    };
+    const parsed = parseConfig(cfg);
+    expect(parsed.agentPlatform).toEqual({
+      type: "elevenlabs-managed",
+      apiKeyRef: "ELEVENLABS_API_KEY",
+      phoneNumberId: "phnum_7001abc",
+      baseUrl: "https://api.elevenlabs.io",
+      pollIntervalMs: 2000,
+    });
+  });
+
+  it("rejects a phone number where the phnum_ id belongs, and unknown keys", () => {
+    const cfg = base();
+    (cfg as Record<string, unknown>).agentPlatform = {
+      type: "elevenlabs-managed",
+      phoneNumberId: "+61347139984",
+    };
+    expect(() => parseConfig(cfg)).toThrow(/phnum_/);
+    (cfg as Record<string, unknown>).agentPlatform = {
+      type: "elevenlabs-managed",
+      phoneNumberId: "phnum_1",
+      apiKey: "sk_literal",
+    };
+    expect(() => parseConfig(cfg)).toThrow(ConfigError);
+  });
+
+  it("the Phase B telephony reservation still PARSES, so construction can refuse it with a pointer", () => {
+    const cfg = base();
+    (cfg.telephony as Record<string, unknown>).type = "elevenlabs-managed";
+    expect(parseConfig(cfg).telephony.type).toBe("elevenlabs-managed");
+  });
+});
