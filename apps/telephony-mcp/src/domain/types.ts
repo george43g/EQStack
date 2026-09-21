@@ -111,7 +111,7 @@ export const CALL_MODE_SPECS: Record<CallMode, CallModeSpec> = {
     hostAnswersTurns: false,
     mediaPathOffDevice: true,
     supportsConsult: false,
-    implemented: false,
+    implemented: true, // Phase Q
   },
   consult: {
     gatewayDrivesTurns: false,

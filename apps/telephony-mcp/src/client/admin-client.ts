@@ -63,12 +63,10 @@ export class AdminClient {
     profile?: string | undefined;
     record?: boolean | undefined;
     mode?: import("../domain/types.js").CallMode | undefined;
+    acknowledgeThirdPartyRecording?: boolean | undefined;
     dryRun?: boolean | undefined;
     idempotencyKey?: string | undefined;
-  }): Promise<
-    | { dryRun: true; plan: import("../domain/call-requests.js").CallPlan }
-    | { dryRun: false; call: CallRecord; deduped: boolean }
-  > {
+  }): Promise<import("../gateway/call-service.js").PlaceCallResult> {
     return this.request("POST", "/calls", input);
   }
 

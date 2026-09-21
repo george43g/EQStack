@@ -21,7 +21,7 @@ import {
   normalizeCallMode,
 } from "../src/domain/types.js";
 import { SqliteStore } from "../src/stores/sqlite-store.js";
-import { FixedClock, seqIds, tempStateDir, testConfig } from "./helpers.js";
+import { delegateConfig, FixedClock, seqIds, tempStateDir, testConfig } from "./helpers.js";
 
 const SPEC_KEYS: ReadonlyArray<keyof CallModeSpec> = [
   "gatewayDrivesTurns",
@@ -59,6 +59,22 @@ describe("no string branching on mode in the session (step 8 rule 1)", () => {
     expect(source).not.toContain('=== "llm"');
     // The predicate path must exist — the spec table is what replaced the ifs.
     expect(source).toContain("CALL_MODE_SPECS");
+  });
+
+  // Phase Q: the delegate path keys off `mediaPathOffDevice` (D-34) — the
+  // mode's NAME appears nowhere in the code that routes it.
+  it.each([
+    "../src/gateway/call-service.ts",
+    "../src/gateway/delegate-poller.ts",
+    "../src/domain/call-requests.ts",
+  ])("%s never names the 'delegate' mode as a string", (rel) => {
+    const source = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+    expect(source).not.toMatch(/["'`]delegate["'`]/);
+  });
+
+  it("call-service.ts routes off-device calls by the mediaPathOffDevice predicate", () => {
+    const path = fileURLToPath(new URL("../src/gateway/call-service.ts", import.meta.url));
+    expect(readFileSync(path, "utf8")).toContain(".mediaPathOffDevice");
   });
 });
 
@@ -148,12 +164,45 @@ describe("buildCallPlan refuses unimplemented modes", () => {
     }
   }
 
-  it.each(["delegate", "consult"] as const)("refuses '%s' until its phase ships", (mode) => {
+  it("refuses 'consult' until its phase ships (Phase R)", () => {
     withStore(() => {
       const attempt = () =>
-        buildCallPlan(cfg, resolveRecipient(cfg, "george"), { to: "george", objective: "x", mode });
+        buildCallPlan(cfg, resolveRecipient(cfg, "george"), {
+          to: "george",
+          objective: "x",
+          mode: "consult",
+        });
       expect(attempt).toThrow(CallRequestError);
       expect(attempt).toThrow(/not implemented/);
+    });
+  });
+
+  it("'delegate' is implemented (Phase Q) but refuses without an agentPlatform block, naming it", () => {
+    expect(CALL_MODE_SPECS.delegate.implemented).toBe(true);
+    const attempt = () =>
+      buildCallPlan(cfg, resolveRecipient(cfg, "george"), {
+        to: "george",
+        objective: "x",
+        mode: "delegate",
+      });
+    expect(attempt).toThrow(CallRequestError);
+    expect(attempt).toThrow(/'delegate' needs the "agentPlatform" config block/);
+  });
+
+  it("'delegate' plans once an agentPlatform is configured", () => {
+    const dcfg = delegateConfig();
+    withStore((store) => {
+      const request = createCallRequest(
+        buildCallPlan(dcfg, resolveRecipient(dcfg, "george"), {
+          to: "george",
+          objective: "x",
+          mode: "delegate",
+        }),
+        store,
+        clock,
+        seqIds(),
+      );
+      expect(request.mode).toBe("delegate");
     });
   });
 

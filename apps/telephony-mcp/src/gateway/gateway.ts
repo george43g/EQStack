@@ -4,11 +4,12 @@
  * listener (Twilio only) and the localhost admin listener.
  */
 
+import { buildAgentPlatform } from "../adapters/agent-platform/registry.js";
 import { OpenAiCompatibleLlm } from "../adapters/llm/openai-compatible.js";
 import { buildTelephonyAdapter } from "../adapters/telephony/registry.js";
 import type { Config } from "../config/schema.js";
 import { TunnelSupervisor } from "../daemon/supervisor.js";
-import type { Clock, LlmAdapter, SecretProvider } from "../domain/ports.js";
+import type { AgentPlatformPort, Clock, LlmAdapter, SecretProvider } from "../domain/ports.js";
 import { systemClock } from "../domain/ports.js";
 import { logger } from "../log.js";
 import { dbPath, ensureStateDir, recordingsDir } from "../paths.js";
@@ -58,6 +59,8 @@ export async function startGateway(
     telephony?: import("../domain/ports.js").TelephonyAdapter;
     llm?: LlmAdapter;
     recordings?: import("../domain/ports.js").RecordingStore;
+    /** Test seam for delegate calls (INV-14: a fake, never the network). */
+    agentPlatform?: AgentPlatformPort;
   } = {},
 ): Promise<Gateway> {
   if (!cfg.server.publicBaseUrl) {
@@ -79,11 +82,27 @@ export async function startGateway(
     opts.telephony ??
     (await buildTelephonyAdapter(cfg.telephony, secrets, opts.fetchImpl ?? fetch));
   const llm = opts.llm ?? (await buildLlmAdapter(cfg, secrets, opts.fetchImpl));
+  // Optional: without the block, delegate calls refuse at plan time. No secret
+  // resolves here — the adapter resolves its key by name per request.
+  const agentPlatform = cfg.agentPlatform
+    ? (opts.agentPlatform ??
+      buildAgentPlatform(cfg.agentPlatform, secrets, opts.fetchImpl ?? fetch))
+    : null;
 
   const store = new SqliteStore(dbPath());
   const recordings = opts.recordings ?? new EncryptedRecordingStore(recordingsDir());
   const metrics = new Metrics();
-  const service = new CallService(cfg, store, telephony, recordings, clock, undefined, metrics);
+  const service = new CallService(
+    cfg,
+    store,
+    telephony,
+    recordings,
+    clock,
+    undefined,
+    metrics,
+    agentPlatform,
+  );
+  service.resumeDelegatePollers();
 
   // D-d: the tunnel starts degraded-tolerant — a tunnel that never becomes
   // ready leaves the gateway up and reporting, it does not abort serve.
@@ -117,6 +136,7 @@ export async function startGateway(
     adminPort: cfg.server.adminPort,
     telephony: telephony.id,
     llm: llm.id,
+    agentPlatform: agentPlatform?.id ?? "none",
     tunnel: tunnel ? "supervised" : "external",
   });
 

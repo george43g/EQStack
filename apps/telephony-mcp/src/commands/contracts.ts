@@ -9,7 +9,9 @@
  */
 import { z } from "zod";
 import { RecordingPolicySchema } from "../config/schema.js";
+import type { AgentPreview } from "../domain/agent-brief.js";
 import type { CallPlan } from "../domain/call-requests.js";
+import type { AgentBrief } from "../domain/ports.js";
 import type {
   CallEvent,
   CallRecord,
@@ -57,7 +59,7 @@ export const CallModeInputSchema = z
   .enum([...CALL_MODES, ...(Object.keys(LEGACY_MODE_ALIASES) as ["llm"])])
   .transform((m) => normalizeCallMode(m))
   .describe(
-    "Conversation driver. 'byo-model' (default; legacy alias 'llm'): the configured LLM conducts the call from the objective. 'direct': YOU (the MCP host) are the conversational brain — loop get_call_events { waitMs } for turn.user, then reply with say_on_call. 'delegate'/'consult' are reserved for the ElevenLabs modes and refuse until implemented.",
+    "Conversation driver. 'byo-model' (default; legacy alias 'llm'): the configured LLM conducts the call from the objective. 'direct': YOU (the MCP host) are the conversational brain — loop get_call_events { waitMs } for turn.user, then reply with say_on_call. 'delegate': a briefed ElevenLabs agent holds the whole call off-device (needs the agentPlatform config block) — follow it with get_call_events { waitMs } until call.ended, and read the words with get_transcript; say_on_call, play_disclosure, set_recording and end_call are refused because the agent, not this tool, holds the line. 'consult' is reserved and refuses until implemented.",
   );
 
 export const CallModeSchema = z.enum(CALL_MODES);
@@ -159,4 +161,31 @@ export const CallPlanSchema: z.ZodType<CallPlan> = z.object({
   recordingEnabled: z.boolean(),
   recordingPolicy: RecordingPolicySchema,
   maxDurationSec: z.number(),
+  recordingHolder: z.string(),
+  notices: z.array(z.string()),
+});
+
+export const AgentBriefSchema: z.ZodType<AgentBrief> = z.object({
+  name: z.string(),
+  prompt: z.string(),
+  firstMessage: z.string().nullable(),
+  language: z.string(),
+  voice: z.object({
+    voiceId: z.string(),
+    speed: z.number(),
+    stability: z.number().nullable(),
+    similarityBoost: z.number().nullable(),
+  }),
+  maxDurationSec: z.number(),
+  recordVoice: z.boolean(),
+});
+
+export const AgentPreviewSchema: z.ZodType<AgentPreview> = z.object({
+  platform: z.string(),
+  name: z.string(),
+  agentId: z.string().nullable(),
+  action: z.enum(["create", "update", "reuse"]),
+  briefHash: z.string(),
+  brief: AgentBriefSchema.optional(),
+  dynamicVariables: z.record(z.string()).optional(),
 });

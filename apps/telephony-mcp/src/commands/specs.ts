@@ -18,6 +18,7 @@ import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import {
   AfterSeqSchema,
+  AgentPreviewSchema,
   BeforeMsSchema,
   CallEventSchema,
   CallIdSchema,
@@ -61,7 +62,7 @@ const READ_ONLY: ToolAnnotations = {
 export const placeCall = {
   name: "place_call",
   description:
-    "Place a REAL, PAID phone call to a REAL person. `to` is a configured recipient alias OR any raw E.164 number (+<country><number>) — dialing is not gated (aliases are nicknames + defaults, never permissions). Ad-hoc numbers start unrecorded (recordingPolicy 'manual'). Use dryRun: true to preview the resolved plan without dialing. Identical retries inside the dedupe window return the already-created call instead of dialing twice.",
+    "Place a REAL, PAID phone call to a REAL person. `to` is a configured recipient alias OR any raw E.164 number (+<country><number>) — dialing is not gated (aliases are nicknames + defaults, never permissions). Ad-hoc numbers start unrecorded (recordingPolicy 'manual'). Use dryRun: true to preview the resolved plan without dialing (for mode 'delegate' it also shows the ElevenLabs agent and brief, and creates nothing there). Identical retries inside the dedupe window return the already-created call instead of dialing twice. In mode 'delegate' a recording would be made and held by ElevenLabs, a third party: record: true then also needs acknowledgeThirdPartyRecording: true, and the result's `notices` say where the recording lives.",
   input: z.object({
     to: z.string().min(1).describe("Configured recipient alias OR raw E.164, e.g. +61400000000"),
     objective: ObjectiveSchema,
@@ -72,6 +73,12 @@ export const placeCall = {
       .optional()
       .describe("Request recording on/off (subject to the recipient's recording policy)"),
     mode: CallModeInputSchema.optional(),
+    acknowledgeThirdPartyRecording: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true to accept that this call's recording is made and held by a third party (mode 'delegate': ElevenLabs), not in telephony-mcp's encrypted local store. Required with record: true on such calls unless config consent.autoApproveThirdPartyDisclosures is set",
+      ),
     dryRun: z
       .boolean()
       .optional()
@@ -90,6 +97,10 @@ export const placeCall = {
     plan: CallPlanSchema.optional(),
     call: CallRecordSchema.optional(),
     deduped: z.boolean().optional(),
+    /** Delegate calls: the platform agent that will hold (dryRun) or holds the call. */
+    agent: AgentPreviewSchema.optional(),
+    /** Consent surface for a dialed call (dryRun carries the same in plan.notices). */
+    notices: z.array(z.string()).optional(),
   }),
   annotations: {
     readOnlyHint: false,
@@ -101,7 +112,8 @@ export const placeCall = {
 
 export const endCall = {
   name: "end_call",
-  description: "Hang up a live call immediately.",
+  description:
+    "Hang up a live call immediately. Refused on 'delegate' calls: ElevenLabs holds the line and exposes no API to hang up a live conversation — the agent ends the call itself (its end_call tool) or at the profile's max duration, and get_call_events then delivers call.ended.",
   input: z.object({ callId: CallIdSchema, reason: EndReasonSchema.optional() }),
   output: z.object({ ok: z.literal(true) }),
   annotations: {
@@ -115,7 +127,7 @@ export const endCall = {
 export const playDisclosure = {
   name: "play_disclosure",
   description:
-    "Speak the configured recording-disclosure line into the live call. NEVER invoked automatically — this is the manual step before enabling recording for a 'manual'-policy recipient.",
+    "Speak the configured recording-disclosure line into the live call. NEVER invoked automatically — this is the manual step before enabling recording for a 'manual'-policy recipient. Refused on 'delegate' calls, where the ElevenLabs agent does all the speaking.",
   input: z.object({ callId: CallIdSchema }),
   output: z.object({ ok: z.literal(true) }),
   annotations: {
@@ -129,7 +141,7 @@ export const playDisclosure = {
 export const sayOnCall = {
   name: "say_on_call",
   description:
-    "Speak the given text verbatim (TTS) into the live call. This is the reply path for 'direct'-mode calls: wait for the callee's next utterance (get_call_events with waitMs), read it, then answer with this tool. Keep replies short and conversational — they are spoken aloud on a real phone line. Refused when the call has no live session (not answered yet, or ended).",
+    "Speak the given text verbatim (TTS) into the live call. This is the reply path for 'direct'-mode calls: wait for the callee's next utterance (get_call_events with waitMs), read it, then answer with this tool. Keep replies short and conversational — they are spoken aloud on a real phone line. Refused when the call has no live session (not answered yet, or ended), and on 'delegate' calls, where the ElevenLabs agent does the talking.",
   input: z.object({ callId: CallIdSchema, text: SayTextSchema }),
   output: z.object({ ok: z.literal(true), spokenChars: z.number().int() }),
   annotations: {
@@ -143,7 +155,7 @@ export const sayOnCall = {
 export const setRecording = {
   name: "set_recording",
   description:
-    "Enable or disable recording on a live call. Enabling is refused for 'never'-policy recipients; for 'manual' recipients, play the disclosure first (play_disclosure) — this tool does not do it for you.",
+    "Enable or disable recording on a live call. Enabling is refused for 'never'-policy recipients; for 'manual' recipients, play the disclosure first (play_disclosure) — this tool does not do it for you. Refused on 'delegate' calls: ElevenLabs fixes recording when the call starts (choose it with place_call's record).",
   input: z.object({ callId: CallIdSchema, enabled: z.boolean() }),
   output: z.object({ ok: z.literal(true), enabled: z.boolean() }),
   annotations: {

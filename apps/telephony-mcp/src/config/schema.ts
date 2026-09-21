@@ -81,9 +81,11 @@ export const LlmSchema = z
 export type LlmConfig = z.infer<typeof LlmSchema>;
 
 /**
- * `elevenlabs-managed` and `twilio-media-streams` are RESERVED adapter ids:
- * the schema accepts them so configs can be staged, but the adapter registry
- * refuses to construct them in v1.
+ * `twilio-media-streams` is a RESERVED adapter id: the schema accepts it so
+ * configs can be staged, but the adapter registry refuses to construct it.
+ * `elevenlabs-managed` stays in the enum only so a config written against the
+ * Phase B reservation still parses and then fails with a pointer: D-75 moved
+ * it out of telephony into the top-level `agentPlatform` block.
  */
 export const TelephonySchema = z
   .object({
@@ -99,6 +101,54 @@ export const TelephonySchema = z
   })
   .strict();
 export type TelephonyConfig = z.infer<typeof TelephonySchema>;
+
+/** Registered agent-platform ids. D-75 keeps the Phase B name for the new port. */
+export const AGENT_PLATFORM_IDS = ["elevenlabs-managed"] as const;
+export type AgentPlatformId = (typeof AGENT_PLATFORM_IDS)[number];
+
+/** Who holds a delegate call's recording, by name, for the D-76 consent text. */
+export const AGENT_PLATFORM_HOLDER: Readonly<Record<AgentPlatformId, string>> = {
+  "elevenlabs-managed": "ElevenLabs",
+};
+
+/**
+ * The agent platform that holds `delegate` calls (Phase Q, D-75). Optional:
+ * without it, delegate calls refuse at plan time and nothing else changes.
+ */
+export const AgentPlatformSchema = z
+  .object({
+    type: z.enum(AGENT_PLATFORM_IDS),
+    /** Secret NAME resolved via SecretProvider (INV-12) — never a value. */
+    apiKeyRef: z.string().min(1).default("ELEVENLABS_API_KEY"),
+    /**
+     * The platform's id for its own registered number (EL `phnum_…`). Not a
+     * phone number, so not INV-11-sensitive by itself — but never log it next
+     * to the number it maps to (that pairing is the sensitive thing).
+     */
+    phoneNumberId: z.string().regex(/^phnum_[A-Za-z0-9]+$/, "must be an ElevenLabs phnum_… id"),
+    baseUrl: z.string().url().startsWith("https://").default("https://api.elevenlabs.io"),
+    /** How often `serve` polls a live delegate conversation (PHASE-Q open question 4). */
+    pollIntervalMs: z.number().int().min(500).max(60_000).default(2_000),
+  })
+  .strict();
+export type AgentPlatformConfig = z.infer<typeof AgentPlatformSchema>;
+
+/**
+ * Third-party consent surface (D-76). Default: disclose and ask. The flag is
+ * the caller opting out of being asked — never silent by default, never
+ * impossible to silence.
+ */
+export const ConsentSchema = z
+  .object({
+    /**
+     * Auto-supply the acknowledgement a third-party recording needs (e.g. a
+     * delegate call recorded by ElevenLabs) and suppress the notice.
+     */
+    autoApproveThirdPartyDisclosures: z.boolean().default(false),
+  })
+  .strict()
+  .default({});
+export type ConsentConfig = z.infer<typeof ConsentSchema>;
 
 export const ServerSchema = z
   .object({
@@ -173,6 +223,8 @@ export const ConfigSchema = z
   .object({
     server: ServerSchema,
     telephony: TelephonySchema,
+    agentPlatform: AgentPlatformSchema.optional(),
+    consent: ConsentSchema,
     llm: LlmSchema,
     voice: VoiceSchema,
     recipients: z.record(z.string().regex(/^[a-z0-9][a-z0-9-]*$/), RecipientSchema).default({}),

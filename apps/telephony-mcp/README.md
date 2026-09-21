@@ -47,9 +47,14 @@ validated — see [`config.example.json`](./config.example.json). Highlights:
   recording default. `default` profile is required.
 - `llm`: OpenAI-compatible; OpenRouter by default. Ollama = `baseUrl:
   "http://localhost:11434/v1"`, a local model, `apiKeyRef: null`.
-- `telephony.type`: `twilio-conversation-relay` (v1). `elevenlabs-managed`
-  and `twilio-media-streams` are reserved ids — accepted by config, refused
-  at construction.
+- `telephony.type`: `twilio-conversation-relay` (v1). `twilio-media-streams`
+  is a reserved id — accepted by config, refused at construction.
+  `elevenlabs-managed` is refused there too, with a pointer: it is now the
+  optional top-level `agentPlatform` block (`{ "type": "elevenlabs-managed",
+  "phoneNumberId": "phnum_…" }`) that enables `delegate` calls.
+- `consent.autoApproveThirdPartyDisclosures` (default `false`): opt in to
+  auto-acknowledging third-party recordings (a `delegate` call's is held by
+  ElevenLabs) and silencing their notice.
 - `server.publicBaseUrl`: the HTTPS tunnel origin; `serve` refuses to start
   without it. Only `/twilio/status`, `/twilio/recording`, and `/relay/<token>`
   are public, all X-Twilio-Signature-validated; admin/metrics/SSE bind
@@ -57,8 +62,8 @@ validated — see [`config.example.json`](./config.example.json). Highlights:
 
 Secrets resolve by NAME at runtime (env → opkeep keychain cache): 
 `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY`, `TWILIO_API_SECRET`,
-`TWILIO_AUTH_TOKEN`, `OPENROUTER_API_KEY`. No `.env` files, no values in
-config.
+`TWILIO_AUTH_TOKEN`, `OPENROUTER_API_KEY`, and `ELEVENLABS_API_KEY` when
+`agentPlatform` is configured. No `.env` files, no values in config.
 
 ## Conversation modes
 
@@ -74,8 +79,17 @@ Chosen per call via `place_call { mode }` (or `tel call --mode`):
   to the agent; per-reply latency is a few seconds (one MCP round-trip + one
   model turn). In direct mode there is no system-prompted LLM mediating what
   is spoken — redaction and consent invariants still apply.
-- **`delegate`** / **`consult`** (reserved): ElevenLabs-agent modes; refuse
-  until their phases ship.
+- **`delegate`**: a briefed ElevenLabs agent holds the whole call off-device
+  (needs `agentPlatform`). The agent is provisioned from the same profile, with
+  the conversation-harness preamble prepended; the objective and context travel
+  as dynamic variables. `serve` polls the conversation into the usual events, so
+  the host loops `get_call_events { waitMs }` until `call.ended` and reads words
+  with `get_transcript`. `say_on_call`, `play_disclosure`, `set_recording` and
+  `end_call` are refused (the agent holds the line; ElevenLabs has no hang-up
+  API — the agent ends the call, or its max duration does). Recording needs
+  `acknowledgeThirdPartyRecording: true` because ElevenLabs holds it.
+- **`consult`** (reserved): delegate plus mid-call tool calls back into this
+  MCP; refuses until Phase R ships.
 
 ## Safety model
 
@@ -88,10 +102,11 @@ Chosen per call via `place_call { mode }` (or `tel call --mode`):
   Ad-hoc numbers start unrecorded (`recordingPolicy: "manual"`).
 - **Consent**: `never` recipients cannot be recorded, ever. `manual`
   recipients start unrecorded; the disclosure line
-  (`voice_play_disclosure`) and recording activation
-  (`voice_set_recording`) are separate explicit tools and are never invoked
+  (`play_disclosure`) and recording activation
+  (`set_recording`) are separate explicit tools and are never invoked
   automatically. `preconsented` records by default unless the request
-  disables it.
+  disables it. A recording held by a third party (`delegate` → ElevenLabs)
+  additionally needs an acknowledgement, and the result says where it lives.
 - **Recordings**: downloaded dual-channel after the completed callback,
   encrypted AES-256-GCM with a macOS-Keychain-held key, retained until
   explicit deletion (`local | provider | both` + confirmation). Audio bytes

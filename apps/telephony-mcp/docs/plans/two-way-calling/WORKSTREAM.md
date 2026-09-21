@@ -149,6 +149,12 @@ To break one, see [Changing an invariant](#changing-an-invariant).
   literal secrets in config, code, tests or fixtures.
 - **INV-13 — Recordings stay AES-256-GCM encrypted at rest.** Audio bytes never cross
   MCP. Deletion requires scope + explicit confirmation.
+  **Exception `[2026-09-22]` (D-76):** on a call whose mode has `mediaPathOffDevice`
+  (`delegate`), any recording is made and held by the agent platform (ElevenLabs),
+  never copied locally, so this invariant cannot cover it. Such a recording needs a
+  third-party acknowledgement (per call, or the opt-in
+  `consent.autoApproveThirdPartyDisclosures`), and the consent surface says plainly
+  where it lives (`src/domain/consent.ts`).
 
 ### Process
 
