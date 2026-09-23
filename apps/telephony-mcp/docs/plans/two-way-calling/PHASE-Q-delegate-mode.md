@@ -343,7 +343,7 @@ point, so the next agent does not "fix" it back.
 
 | For | What Q leaves |
 |---|---|
-| **R (consult)** | The `AgentPlatformPort` and the EL adapter. R adds `registerMcpServer` to the same port and flips `supportsConsult`. R must **not** introduce a second EL client. |
+| **R (consult)** | The `AgentPlatformPort` and the EL adapter. R adds the consult webhook tool to the agent body through the same port and adapter (D-90 — an MCP server was rejected, R-9) and flips `supportsConsult`. R must **not** introduce a second EL client. |
 | **T (byo-model)** | The harness-preamble composition (O-24) is mode-agnostic and is where O-25's structured-output turns attach. |
 | **I / G (views)** | Nothing to do. Delegate calls emit the same event types into the same store, so the console and future TUI render them unchanged. That is the test of whether §3's polling decision was right. |
 | **L–M (inbound)** | The EL number already answers inbound to the agent. What is missing is routing an inbound call back to an originating agent — untouched here. |
