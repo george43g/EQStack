@@ -59,7 +59,7 @@ export const CallModeInputSchema = z
   .enum([...CALL_MODES, ...(Object.keys(LEGACY_MODE_ALIASES) as ["llm"])])
   .transform((m) => normalizeCallMode(m))
   .describe(
-    "Conversation driver. 'byo-model' (default; legacy alias 'llm'): the configured LLM conducts the call from the objective. 'direct': YOU (the MCP host) are the conversational brain — loop get_call_events { waitMs } for turn.user, then reply with say_on_call. 'delegate': a briefed ElevenLabs agent holds the whole call off-device (needs the agentPlatform config block) — follow it with get_call_events { waitMs } until call.ended, and read the words with get_transcript; say_on_call, play_disclosure, set_recording and end_call are refused because the agent, not this tool, holds the line. 'consult' is reserved and refuses until implemented.",
+    "Conversation driver. 'byo-model' (default; legacy alias 'llm'): the configured LLM conducts the call from the objective. 'direct': YOU (the MCP host) are the conversational brain — loop get_call_events { waitMs } for turn.user, then reply with say_on_call. 'delegate': a briefed ElevenLabs agent holds the whole call off-device (needs the agentPlatform config block) — follow it with get_call_events { waitMs } until call.ended, and read the words with get_transcript; say_on_call, play_disclosure and set_recording are refused because the agent, not this tool, holds the line; end_call works only when agentPlatform.twilioHangup is configured. 'consult' is reserved and refuses until implemented.",
   );
 
 export const CallModeSchema = z.enum(CALL_MODES);

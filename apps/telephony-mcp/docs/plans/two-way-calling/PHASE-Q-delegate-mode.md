@@ -78,7 +78,8 @@ Two behaviours fall directly out of the predicates and must be pinned by tests:
   (this line originally said the latter): `byo-model` also has
   `hostAnswersTurns: false`, yet `say_on_call` is its legitimate operator
   interjection, so keying on it would have broken `byo-model`. The same refusal
-  covers `play_disclosure`, `set_recording` and `end_call` (see Implementation notes).
+  covers `play_disclosure` and `set_recording`, and `end_call` when no Twilio
+  hang-up is configured (see Implementation notes, item 2).
 - The session code that builds a relay token and WS URL must not run at all, because
   `mediaPathOffDevice` is true. If a delegate call ever produces a `/relay/<token>`,
   INV-7 has been violated.
@@ -265,8 +266,28 @@ point, so the next agent does not "fix" it back.
    the agent's own `max_duration_seconds` (from the profile, clamped by
    `limits.hardMaxDurationMinutes`) plus the agent's `end_call` system tool, which
    the adapter enables explicitly because API-created agents do not get it by
-   default. Hanging up via Twilio with the returned `callSid` would need the EL
-   subaccount's credentials — George's call, not built.
+   default. **Superseded for `end_call` 2026-09-23 (O-30, George approved):**
+   with the optional `agentPlatform.twilioHangup` block, `end_call` hangs up
+   through Twilio instead — see item 2a. Without it, the refusal above stands.
+2a. **Hang-up through Twilio (O-30).** EL's outbound-call response carries the
+   Twilio call SID under the wire name **`callSid`** (camelCase — the SDK
+   serializer renames `conversation_id` but not `callSid`; `call_sid` is
+   accepted too). The adapter keeps it only if it is `CA` + 32 hex, and the
+   call service stores it in the additive, nullable `calls.phone_leg_sid`
+   column — off `CallRecord`, so no output shape changes; `providerCallId`
+   still holds the EL conversation id. It is stored whether or not a hang-up
+   is configured, so enabling one later covers calls in flight. `end_call`
+   branches on `mediaPathOffDevice`: it posts `Status=completed` to
+   `Accounts/{twilioHangup.accountSid}/Calls/{sid}.json` with the subaccount's
+   restricted key (a main-account key cannot reach a subaccount), treats
+   Twilio 21220 (not in progress) as success, and on any other error returns
+   502 and changes nothing. It deliberately does **not** write `call.ended`:
+   EL hands over the transcript only at `done` (D-83) and the poller stops
+   once the record is terminal, so closing the record here would lose the
+   transcript. It emits `call.hangup_requested { reason, via, outcome }` once,
+   and the poller writes `call.ended` exactly once under its `el:terminal`
+   claim. Code: `src/adapters/telephony/twilio-hangup.ts`,
+   `CallService.endOffDeviceCall`.
 3. **`ensureAgent` lives in the call service, not the port.** Idempotency needs our
    sqlite mapping (`agent_profiles`: agent key → agentId + briefHash), and an
    adapter must not touch the store. The port is create/update; provisioning is

@@ -14,7 +14,8 @@
  */
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TwilioPhoneLegHangup } from "../src/adapters/telephony/twilio-hangup.js";
 import type { Config } from "../src/config/schema.js";
 import { HARNESS_PREAMBLE } from "../src/domain/agent-brief.js";
 import {
@@ -27,9 +28,12 @@ import { SqliteStore } from "../src/stores/sqlite-store.js";
 import {
   delegateConfig,
   FakeAgentPlatform,
+  FakePhoneLegHangup,
+  FakeSecrets,
   FakeTelephony,
   FixedClock,
   ForbiddenPlatformCall,
+  fakeCallSid,
   MemoryRecordingStore,
   said,
   seqIds,
@@ -50,7 +54,10 @@ describe("delegate mode (Phase Q)", () => {
   let ids: ReturnType<typeof seqIds>;
   let service: CallService;
 
-  function build(cfg: Config = delegateConfig()): CallService {
+  function build(
+    cfg: Config = delegateConfig(),
+    hangup: ConstructorParameters<typeof CallService>[8] = null,
+  ): CallService {
     return new CallService(
       cfg,
       store,
@@ -60,6 +67,7 @@ describe("delegate mode (Phase Q)", () => {
       ids, // shared across rebuilds: a "restarted" service must not reuse row ids
       undefined,
       platform,
+      hangup,
     );
   }
 
@@ -293,6 +301,149 @@ describe("delegate mode (Phase Q)", () => {
       platform.script(convOf(res.call.id), { status: "done" });
       await poller(res.call.id).pollOnce();
       await expect(service.endCall(res.call.id, "late")).resolves.toBeUndefined();
+    });
+  });
+
+  // ── end_call through the carrier (O-30) ──────────────────────────────────
+
+  describe("end_call hangs up through the carrier when configured (O-30)", () => {
+    let hangup: FakePhoneLegHangup;
+
+    beforeEach(() => {
+      service.shutdown();
+      hangup = new FakePhoneLegHangup();
+      service = build(delegateConfig(), hangup);
+    });
+
+    it("the dial persists the phone-leg SID beside the conversation id (which stays providerCallId)", async () => {
+      const res = await dial();
+      expect(res.call.providerCallId).toMatch(/^conv_fake\d+$/);
+      expect(store.getPhoneLegSid(res.call.id)).toBe(fakeCallSid(2));
+    });
+
+    it("the SID is persisted even without a hang-up configured, so enabling one later covers live calls", async () => {
+      service.shutdown();
+      service = build();
+      const res = await dial();
+      expect(store.getPhoneLegSid(res.call.id)).toBe(fakeCallSid(2));
+    });
+
+    it("hangs up the stored SID, announces it once, and leaves call.ended to the poller with the transcript intact", async () => {
+      const res = await dial();
+      const conv = convOf(res.call.id);
+      platform.script(conv, { status: "in-progress", transcript: [] });
+      await poller(res.call.id).pollOnce();
+
+      await service.endCall(res.call.id, "operator");
+      expect(hangup.hungUp).toEqual([fakeCallSid(2)]);
+      expect(telephony.log.ended).toHaveLength(0); // never the main-account adapter
+      // Not terminal yet: the platform still owes the transcript (D-83).
+      expect(store.getCall(res.call.id)?.status).toBe("answered");
+      expect(poller(res.call.id).isStopped).toBe(false);
+      let types = store.getEvents(res.call.id).map((e) => e.type);
+      expect(types).not.toContain("call.ended");
+      const req = store.getEvents(res.call.id).find((e) => e.type === "call.hangup_requested");
+      expect(req?.data).toEqual({ reason: "operator", via: "fake-hangup", outcome: "ended" });
+
+      // Repeating end_call before the platform settles: carrier says already
+      // ended, and no second announcement.
+      await service.endCall(res.call.id, "again");
+      expect(hangup.hungUp).toHaveLength(2);
+      types = store.getEvents(res.call.id).map((e) => e.type);
+      expect(types.filter((t) => t === "call.hangup_requested")).toHaveLength(1);
+
+      platform.script(conv, {
+        status: "done",
+        transcript: [said("agent", "Hello."), said("user", "Hi, who is this?")],
+        terminationReason: "Call ended by remote party",
+      });
+      expect(await poller(res.call.id).pollOnce()).toBe("terminal");
+      expect(store.getCall(res.call.id)?.status).toBe("completed");
+      expect(store.getTranscript(res.call.id)).toHaveLength(2);
+      types = store.getEvents(res.call.id).map((e) => e.type);
+      expect(types.filter((t) => t === "call.ended")).toHaveLength(1);
+
+      // Ended now: end_call is a no-op and touches the carrier no more.
+      await service.endCall(res.call.id, "late");
+      expect(hangup.hungUp).toHaveLength(2);
+    });
+
+    it("a carrier that reports the leg already over (21220) is success, not an error", async () => {
+      const res = await dial();
+      hangup.ended.add(fakeCallSid(2));
+      await expect(service.endCall(res.call.id, "operator")).resolves.toBeUndefined();
+      const req = store.getEvents(res.call.id).find((e) => e.type === "call.hangup_requested");
+      expect(req?.data).toMatchObject({ outcome: "already-ended" });
+    });
+
+    it("a failed hang-up is a 502 and changes nothing: no event, record still live", async () => {
+      const res = await dial();
+      hangup.failNext = "Twilio POST … → 401: Authenticate";
+      const err = await service.endCall(res.call.id, "operator").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(CallServiceError);
+      expect((err as CallServiceError).httpStatus).toBe(502);
+      expect((err as Error).message).toMatch(/^end_call could not hang up through fake-hangup: /);
+      expect(store.getCall(res.call.id)?.status).toBe("created");
+      const types = store.getEvents(res.call.id).map((e) => e.type);
+      expect(types).not.toContain("call.hangup_requested");
+      expect(types).not.toContain("call.ended");
+    });
+
+    it("no SID on record (platform returned none): refused, naming the mode, and the carrier is not called", async () => {
+      platform.returnPhoneLegSid = false;
+      const res = await dial();
+      expect(store.getPhoneLegSid(res.call.id)).toBeNull();
+      await expect(service.endCall(res.call.id, "operator")).rejects.toThrow(
+        /^end_call is refused on a 'delegate' call: no phone-leg call SID is recorded/,
+      );
+      expect(hangup.hungUp).toHaveLength(0);
+    });
+
+    it("the branch keys off mediaPathOffDevice: a byo-model call still ends through the telephony adapter", async () => {
+      const res = await service.placeCall({ to: "george", objective: "llm", mode: "byo-model" });
+      if (res.dryRun) throw new Error("expected a dial");
+      await service.endCall(res.call.id, "operator");
+      expect(hangup.hungUp).toHaveLength(0);
+      expect(telephony.log.ended).toEqual([res.call.providerCallId]);
+      expect(store.getCall(res.call.id)?.status).toBe("completed");
+    });
+
+    it("no secret value reaches the error or any log line (real adapter, fake fetch)", async () => {
+      const SECRET = "fake-hangup-secret-9f8e7d6c5b4a";
+      const auth = Buffer.from(`SK${"2".repeat(32)}:${SECRET}`).toString("base64");
+      const fetchImpl = (async () =>
+        new Response(JSON.stringify({ code: 20003, message: `bad ${SECRET} ${auth}` }), {
+          status: 401,
+        })) as typeof fetch;
+      service.shutdown();
+      service = build(
+        delegateConfig(),
+        new TwilioPhoneLegHangup({
+          accountSid: `AC${"1".repeat(32)}`,
+          apiKeySid: `SK${"2".repeat(32)}`,
+          apiSecretRef: "TWILIO_API_KEY_ELEVENLABS_SUBACCOUNT_CALLS_RW",
+          secrets: new FakeSecrets({ TWILIO_API_KEY_ELEVENLABS_SUBACCOUNT_CALLS_RW: SECRET }),
+          fetchImpl,
+        }),
+      );
+      const res = await dial();
+      const written: string[] = [];
+      const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
+        written.push(String(chunk));
+        return true;
+      });
+      let err: unknown;
+      try {
+        err = await service.endCall(res.call.id, "operator").catch((e: unknown) => e);
+      } finally {
+        spy.mockRestore();
+      }
+      expect((err as Error).message).toMatch(/→ 401 \(code 20003\)/);
+      expect(written.join("")).toContain("phone-leg hang-up failed");
+      for (const text of [(err as Error).message, written.join(""), readFileSync(dbFile)]) {
+        expect(String(text)).not.toContain(SECRET);
+        expect(String(text)).not.toContain(auth);
+      }
     });
   });
 

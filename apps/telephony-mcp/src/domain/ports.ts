@@ -138,6 +138,9 @@ export interface AgentConversation {
  * "ensure" half lives in the call service (the adapter never touches the
  * store), and there is no `endConversation` because ElevenLabs exposes no
  * endpoint that hangs up a live conversation (PHASE-Q § Implementation notes).
+ * Hanging up goes around the platform instead, to the carrier that holds the
+ * phone leg — `PhoneLegHangupPort` (O-30) — which is why `placeOutboundCall`
+ * returns the leg's carrier id alongside the conversation id.
  * Phase R adds `registerMcpServer` here — never a second client.
  */
 export interface AgentPlatformPort {
@@ -145,7 +148,7 @@ export interface AgentPlatformPort {
   createAgent(brief: AgentBrief): Promise<{ agentId: string }>;
   /** Throws an error carrying `status: 404` when the agent no longer exists. */
   updateAgent(agentId: string, brief: AgentBrief): Promise<void>;
-  placeOutboundCall(req: AgentOutboundCallRequest): Promise<{ conversationId: string }>;
+  placeOutboundCall(req: AgentOutboundCallRequest): Promise<AgentOutboundCallResult>;
   getConversation(conversationId: string): Promise<AgentConversation>;
 }
 
@@ -176,6 +179,28 @@ export interface VoicePreviewPort {
     status: AgentConversationStatus;
     toolCalls: PreviewToolCall[];
   }>;
+}
+
+export interface AgentOutboundCallResult {
+  /** The platform's conversation id — what `CallRecord.providerCallId` holds. */
+  conversationId: string;
+  /**
+   * The carrier's id for the phone leg the platform placed (a Twilio `CA…`
+   * call SID), or null when the platform did not return a well-formed one.
+   * Only a `PhoneLegHangupPort` uses it.
+   */
+  phoneLegSid: string | null;
+}
+
+/**
+ * Hangs up the phone leg of a call whose media path is off-device (O-30):
+ * the platform holds the conversation but not the carrier, so the carrier can
+ * end it. Resolves `already-ended` when the carrier says the leg is no longer
+ * live, so a repeated end_call is idempotent; throws on anything else.
+ */
+export interface PhoneLegHangupPort {
+  readonly id: string;
+  hangUp(phoneLegSid: string): Promise<"ended" | "already-ended">;
 }
 
 /** One row of the `agent_profiles` table: which platform agent serves a brief key. */
@@ -221,6 +246,9 @@ export interface EventStore {
   getCall(id: string): CallRecord | null;
   getCallByProviderId(providerCallId: string): CallRecord | null;
   setProviderCallId(id: string, providerCallId: string): void;
+  /** Off-device calls only: the carrier id of the phone leg (O-30). Never on CallRecord. */
+  setPhoneLegSid(id: string, phoneLegSid: string): void;
+  getPhoneLegSid(id: string): string | null;
   updateCallStatus(
     id: string,
     status: CallStatus,

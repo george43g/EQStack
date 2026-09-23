@@ -189,6 +189,49 @@ describe("SqliteStore", () => {
     expect(store.getCallIdForRelayToken("nope")).toBeNull();
   });
 
+  it("O-30: the phone-leg SID round-trips, stays off CallRecord, and reads null when unset", () => {
+    store.createCall(call("c1"));
+    store.createCall(call("c2"));
+    expect(store.getPhoneLegSid("c1")).toBeNull();
+    store.setPhoneLegSid("c1", `CA${"0".repeat(32)}`);
+    expect(store.getPhoneLegSid("c1")).toBe(`CA${"0".repeat(32)}`);
+    expect(store.getPhoneLegSid("c2")).toBeNull();
+    expect(store.getPhoneLegSid("missing")).toBeNull();
+    expect(Object.keys(store.getCall("c1") ?? {})).not.toContain("phoneLegSid");
+  });
+
+  it("O-30: migrates a pre-hang-up calls table additively — existing rows survive, SID reads null", () => {
+    const file = join(dir, "pre-o30.sqlite3");
+    const bare = new DatabaseSync(file);
+    bare.exec(
+      `CREATE TABLE calls (id TEXT PRIMARY KEY, provider_call_id TEXT UNIQUE,
+         request_id TEXT NOT NULL, recipient_alias TEXT NOT NULL, number_suffix TEXT NOT NULL,
+         profile TEXT NOT NULL, objective TEXT NOT NULL, status TEXT NOT NULL,
+         recording_enabled INTEGER NOT NULL, recording_policy TEXT NOT NULL,
+         max_duration_sec INTEGER NOT NULL, created_at_ms INTEGER NOT NULL,
+         updated_at_ms INTEGER NOT NULL, ended_at_ms INTEGER, end_reason TEXT);
+       INSERT INTO calls VALUES ('old', 'conv_old', 'r', 'george', '1222', 'default', 'o',
+         'answered', 0, 'preconsented', 900, 1, 1, NULL, NULL);`,
+    );
+    bare.close();
+    const migrated = new SqliteStore(file);
+    try {
+      expect(migrated.getCall("old")?.providerCallId).toBe("conv_old");
+      expect(migrated.getPhoneLegSid("old")).toBeNull();
+      migrated.setPhoneLegSid("old", `CA${"0".repeat(32)}`);
+      expect(migrated.getPhoneLegSid("old")).toBe(`CA${"0".repeat(32)}`);
+    } finally {
+      migrated.close();
+    }
+    // Idempotent: a second open over the migrated file neither throws nor loses the value.
+    const again = new SqliteStore(file);
+    try {
+      expect(again.getPhoneLegSid("old")).toBe(`CA${"0".repeat(32)}`);
+    } finally {
+      again.close();
+    }
+  });
+
   it("8.6: migrates a pre-Phase-E DB — adds the two columns, old rows read null", () => {
     // Build a timings table WITHOUT the new columns, then let SqliteStore migrate it.
     const bare = new DatabaseSync(join(dir, "bare.sqlite3"));

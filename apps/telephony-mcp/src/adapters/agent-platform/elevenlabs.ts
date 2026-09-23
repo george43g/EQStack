@@ -25,6 +25,7 @@ import type {
   AgentBrief,
   AgentConversation,
   AgentOutboundCallRequest,
+  AgentOutboundCallResult,
   AgentPlatformPort,
   SecretProvider,
 } from "../../domain/ports.js";
@@ -53,10 +54,22 @@ const CreateAgentResponse = z.object({ agent_id: z.string().min(1) });
 
 const UpdateAgentResponse = z.object({ agent_id: z.string().min(1) });
 
+/** A Twilio call SID. Anything else is dropped, never persisted or put in a URL. */
+export const TWILIO_CALL_SID = /^CA[0-9a-fA-F]{32}$/;
+
+/**
+ * The call SID's wire name is `callSid` — camelCase, unlike every other field
+ * here: the SDK's serializer (v2.59.0 and v2.68.0,
+ * `serialization/types/TwilioOutboundCallResponse`) renames `conversation_id`
+ * but not `callSid`. `call_sid` (the conversation-history spelling) is
+ * accepted too, in case EL normalises it.
+ */
 const OutboundCallResponse = z.object({
   success: z.boolean(),
   message: z.string(),
   conversation_id: z.string().min(1).nullish(),
+  callSid: z.string().nullish(),
+  call_sid: z.string().nullish(),
 });
 
 const TranscriptItem = z.object({
@@ -95,7 +108,8 @@ export function agentRequestBody(brief: AgentBrief): Record<string, unknown> {
         language: brief.language,
         prompt: {
           prompt: brief.prompt,
-          // The agent's only way to hang up; we have no endpoint to do it for it.
+          // EL has no endpoint that hangs up for it; without the optional
+          // Twilio hang-up (O-30) this tool is the only way the call ends early.
           built_in_tools: {
             end_call: {
               type: "system",
@@ -199,7 +213,7 @@ export class ElevenLabsAgentPlatform implements AgentPlatformPort {
     parseOrThrow(UpdateAgentResponse, json, "update agent");
   }
 
-  async placeOutboundCall(req: AgentOutboundCallRequest): Promise<{ conversationId: string }> {
+  async placeOutboundCall(req: AgentOutboundCallRequest): Promise<AgentOutboundCallResult> {
     const json = await this.request(
       "POST",
       "/v1/convai/twilio/outbound-call",
@@ -218,7 +232,11 @@ export class ElevenLabsAgentPlatform implements AgentPlatformPort {
         `ElevenLabs did not start the call: ${String(redactValue(parsed.message.slice(0, 300)))}`,
       );
     }
-    return { conversationId: parsed.conversation_id };
+    const sid = parsed.callSid ?? parsed.call_sid ?? null;
+    return {
+      conversationId: parsed.conversation_id,
+      phoneLegSid: sid !== null && TWILIO_CALL_SID.test(sid) ? sid : null,
+    };
   }
 
   async getConversation(conversationId: string): Promise<AgentConversation> {

@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS calls (
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   ended_at_ms INTEGER,
-  end_reason TEXT
+  end_reason TEXT,
+  phone_leg_sid TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,6 +185,13 @@ export class SqliteStore implements EventStore {
     this.db.exec(
       "CREATE TABLE IF NOT EXISTS call_idempotency (key TEXT PRIMARY KEY, call_id TEXT NOT NULL, created_at_ms INTEGER NOT NULL)",
     );
+    // O-30: the carrier's id for a delegate call's phone leg. Nullable, no
+    // default, no index — additive and instant on a live WAL database.
+    try {
+      this.db.exec("ALTER TABLE calls ADD COLUMN phone_leg_sid TEXT");
+    } catch {
+      // column already exists
+    }
     for (const col of ["delivered_to_host_ms", "reply_received_ms"]) {
       try {
         this.db.exec(`ALTER TABLE timings ADD COLUMN ${col} INTEGER`);
@@ -288,6 +296,17 @@ export class SqliteStore implements EventStore {
 
   setProviderCallId(id: string, providerCallId: string): void {
     this.db.prepare("UPDATE calls SET provider_call_id = ? WHERE id = ?").run(providerCallId, id);
+  }
+
+  setPhoneLegSid(id: string, phoneLegSid: string): void {
+    this.db.prepare("UPDATE calls SET phone_leg_sid = ? WHERE id = ?").run(phoneLegSid, id);
+  }
+
+  getPhoneLegSid(id: string): string | null {
+    const r = this.db.prepare("SELECT phone_leg_sid FROM calls WHERE id = ?").get(id) as
+      | { phone_leg_sid: string | null }
+      | undefined;
+    return r?.phone_leg_sid ?? null;
   }
 
   updateCallStatus(

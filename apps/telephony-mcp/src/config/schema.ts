@@ -112,6 +112,27 @@ export const AGENT_PLATFORM_HOLDER: Readonly<Record<AgentPlatformId, string>> = 
 };
 
 /**
+ * Optional Twilio hang-up for off-device calls (O-30). EL places delegate
+ * calls on a Twilio SUBACCOUNT, which the main account's API key cannot reach
+ * (Twilio: main-account keys are for main-account resources only), so this
+ * names a restricted key minted INSIDE that subaccount — calls read + update,
+ * nothing else. The two SIDs are identifiers, not secrets, so they sit here as
+ * plain values; the key's secret resolves by NAME (INV-12). Without this
+ * block end_call keeps refusing on a delegate call.
+ */
+export const TwilioHangupSchema = z
+  .object({
+    /** The subaccount EL dials from (AC…) — not the main `telephony` account. */
+    accountSid: z.string().regex(/^AC[0-9a-fA-F]{32}$/, "must be a Twilio account SID (AC…)"),
+    /** The restricted API key's SID (SK…), minted inside that subaccount. */
+    apiKeySid: z.string().regex(/^SK[0-9a-fA-F]{32}$/, "must be a Twilio API key SID (SK…)"),
+    /** Secret NAME of that key's secret, resolved via SecretProvider — never a value. */
+    apiSecretRef: z.string().min(1).default("TWILIO_API_KEY_ELEVENLABS_SUBACCOUNT_CALLS_RW"),
+  })
+  .strict();
+export type TwilioHangupConfig = z.infer<typeof TwilioHangupSchema>;
+
+/**
  * The agent platform that holds `delegate` calls (Phase Q, D-75). Optional:
  * without it, delegate calls refuse at plan time and nothing else changes.
  */
@@ -129,6 +150,8 @@ export const AgentPlatformSchema = z
     baseUrl: z.string().url().startsWith("https://").default("https://api.elevenlabs.io"),
     /** How often `serve` polls a live delegate conversation (PHASE-Q open question 4). */
     pollIntervalMs: z.number().int().min(500).max(60_000).default(2_000),
+    /** Lets end_call hang a delegate call up through Twilio (O-30). Optional. */
+    twilioHangup: TwilioHangupSchema.optional(),
   })
   .strict();
 export type AgentPlatformConfig = z.infer<typeof AgentPlatformSchema>;

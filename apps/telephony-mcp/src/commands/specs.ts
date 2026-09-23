@@ -113,7 +113,7 @@ export const placeCall = {
 export const endCall = {
   name: "end_call",
   description:
-    "Hang up a live call immediately. Refused on 'delegate' calls: ElevenLabs holds the line and exposes no API to hang up a live conversation — the agent ends the call itself (its end_call tool) or at the profile's max duration, and get_call_events then delivers call.ended.",
+    "Hang up a live call immediately. On a 'delegate' call this hangs up through Twilio when agentPlatform.twilioHangup is configured (the feed shows call.hangup_requested; call.ended follows once ElevenLabs finalises the transcript), and is refused otherwise — ElevenLabs exposes no API to hang up a live conversation, so the agent then ends the call itself (its end_call tool) or at the profile's max duration.",
   input: z.object({ callId: CallIdSchema, reason: EndReasonSchema.optional() }),
   output: z.object({ ok: z.literal(true) }),
   annotations: {

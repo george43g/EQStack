@@ -564,7 +564,7 @@ program
         "agentPlatform",
         true,
         cfg.agentPlatform
-          ? `${cfg.agentPlatform.type} configured — mode "delegate" available`
+          ? `${cfg.agentPlatform.type} configured — mode "delegate" available; end_call ${cfg.agentPlatform.twilioHangup ? "hangs up through Twilio" : "refused (no twilioHangup)"}`
           : 'not configured — mode "delegate" refuses until an agentPlatform block is added',
       );
       push(
@@ -587,6 +587,7 @@ program
         cfg.telephony.authTokenRef,
         ...(cfg.llm.apiKeyRef ? [cfg.llm.apiKeyRef] : []),
         ...(cfg.agentPlatform ? [cfg.agentPlatform.apiKeyRef] : []),
+        ...(cfg.agentPlatform?.twilioHangup ? [cfg.agentPlatform.twilioHangup.apiSecretRef] : []),
       ];
       for (const ref of refs) {
         const value = await secrets.get(ref);
