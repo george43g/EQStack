@@ -297,6 +297,23 @@ top of Twilio.
 
 ## R — mode 3: EL agent + consult callback
 
+> ### ⚠️ SUPERSEDED 2026-09-23 — R now has a phase file
+> **[`PHASE-R-consult-mode.md`](./PHASE-R-consult-mode.md) is the source of truth.**
+> The sketch below is kept as the original framing, but three of its claims are now
+> **wrong** and would mislead anyone acting on this section:
+> - *"calls **our** MCP server as a tool"* — the mechanism is an inline EL **webhook
+>   tool** posting to one route on `tools.agentpipe.top`. An MCP server's headers are
+>   shared by every conversation, so it cannot carry a per-call bearer; a webhook
+>   header can (`secret__` dynamic variable). See PHASE-R §1.
+> - *"Key dependency. Phase H"* — **not a dependency.** The webhook needs one public
+>   route, not the daemon's MCP-over-HTTP surface.
+> - *"Configure `approval_policy: auto_approve_all`"* — that is an MCP-server field
+>   and does not apply to a webhook tool. `pre_tool_speech: force` and
+>   `tool_call_sound: typing` still stand.
+>
+> The same correction applies to the capability table's *"Agent calls our MCP server
+> as a tool source"* row above: the capability is real, but consult does not use it.
+
 **Goal.** Mode 2 plus a consult loop. The EL agent hits something the brief does not
 cover, calls **our** MCP server as a tool, the tool blocks and queues the question,
 the local agent's long-poll returns it, the local agent answers, the tool returns,
