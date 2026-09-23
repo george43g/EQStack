@@ -217,18 +217,38 @@ describe("the tool listener's three checks (D-91)", () => {
     expect(rejected("conversation_id")).toBe(1);
   });
 
-  it("a stored phone-leg SID must match body.call_sid", async () => {
-    await start();
+  it("call SID: both present and equal → ok; both present and different → 401", async () => {
+    await start(withHoldMs(cfgWith(), 20));
     const d = await dial();
     hostPolled(d.callId);
     expect(d.sid).toMatch(/^CA0+\d+$/);
-    const r = await ask({ ...d, sid: fakeCallSid(999) }, { question: "anything?" });
-    expect(r.status).toBe(401);
-    const none = await ask({ ...d, sid: null }, { question: "anything?" });
-    expect(r.status).toBe(401);
-    expect(none.status).toBe(401);
-    expect(rejected("call_sid")).toBe(2);
+    const mismatch = await ask({ ...d, sid: fakeCallSid(999) }, { question: "anything?" });
+    expect(mismatch.status).toBe(401);
+    expect(rejected("call_sid")).toBe(1);
     expect(rows(d.callId)).toHaveLength(0);
+    const equal = await ask(d, { question: "anything?" });
+    expect(equal.status).toBe(200);
+  });
+
+  it("call SID: either side missing or empty → the check is skipped (bearer + conversation id still apply)", async () => {
+    await start(withHoldMs(cfgWith(), 20));
+    const d = await dial();
+    hostPolled(d.callId);
+    // Stored SID present, request omits it / sends it empty (e.g. a text session).
+    expect((await ask({ ...d, sid: null }, { question: "one?" })).status).toBe(200);
+    expect((await ask(d, { question: "two?", call_sid: "" })).status).toBe(200);
+    // Stored SID absent (EL returned none), request carries one.
+    await gateway?.close();
+    gateway = null;
+    platform.returnPhoneLegSid = false;
+    await start(withHoldMs(cfgWith({}, { limits: { maxConcurrentCalls: 2 } }), 20));
+    const e = await dial({ objective: "no leg sid" });
+    hostPolled(e.callId);
+    expect(e.sid).toBeNull();
+    expect((await ask({ ...e, sid: fakeCallSid(7) }, { question: "three?" })).status).toBe(200);
+    expect(rejected("call_sid")).toBe(0);
+    // …but the conversation id still gates it.
+    expect((await ask({ ...e, conv: "conv_other" }, { question: "four?" })).status).toBe(401);
   });
 
   it("a source IP outside the allowlist, or no CF-Connecting-IP at all, is 401", async () => {

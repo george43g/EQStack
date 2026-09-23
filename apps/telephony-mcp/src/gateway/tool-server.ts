@@ -25,8 +25,9 @@
  *   2. bearer — `Authorization: Bearer <token>`; the token is hashed and the
  *      HASH is looked up, resolving exactly one live consult call.
  *   3. conversation id — body.conversation_id (EL fills it from
- *      system__conversation_id) must equal that call's conversation id, and
- *      when a phone-leg SID is stored, body.call_sid must equal it too.
+ *      system__conversation_id) must equal that call's conversation id; and
+ *      when BOTH a stored phone-leg SID and a non-empty body.call_sid exist,
+ *      they must match (either side absent → that check is skipped).
  * The body is Zod-parsed between 2 and 3 (check 3 reads it); a body that
  * fails to parse is a 400 and holds nothing open (INV-6).
  *
@@ -210,8 +211,15 @@ export class ToolServer {
     if (!call.providerCallId || !sameString(body.conversation_id, call.providerCallId)) {
       return this.reject(res, "conversation_id");
     }
+    // The call SID is a belt, not a layer: checked only when BOTH sides have
+    // one (a text session or an EL response without callSid leaves one side
+    // empty). The bearer + conversation id stay the authentication (D-91).
     const legSid = this.deps.service.store.getPhoneLegSid(call.id);
-    if (legSid && !sameString(body.call_sid ?? "", legSid)) {
+    const bodySid = body.call_sid?.trim() ?? "";
+    const callSidChecked = Boolean(legSid) && bodySid !== "";
+    // A boolean only — never the SID itself.
+    logger.info("consult call-sid check", { callSidChecked });
+    if (callSidChecked && !sameString(bodySid, legSid as string)) {
       return this.reject(res, "call_sid");
     }
 
