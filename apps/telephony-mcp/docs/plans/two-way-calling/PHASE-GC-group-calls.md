@@ -741,8 +741,7 @@ plus LLM**.
 
 ## Proposed DECISIONS rows
 
-Not written into `DECISIONS.md` by this file. The top-level session adds the ones it
-accepts.
+**Accepted 2026-09-24 and written into `DECISIONS.md`** by the top-level session, after checking the load-bearing claims: MP-Bench (arXiv 2609.13076) exists; `skip_turn` is in SDK 2.68.0; the local `elevenlabs-mcp` repo is archived.
 
 | # | Row | Anchor |
 |---|---|---|
@@ -757,7 +756,7 @@ accepts.
 | R-13 | **EL agent transfer or workflow nodes for personas (T3)**: T1 does the same with less machinery | E6, E7 |
 | R-14 | **LiveKit rooms (T4), for now**: abandons Q/R's EL agents, and its workers need a host that is not the laptop (INV-7) | X3 |
 | R-15 | **The daemon as a per-turn "may I speak?" arbiter**: a tunnel round trip before every utterance, for no gain over T1's structural guarantee | § Options B |
-| O-39…O-47 | Open questions 1–3 and 5–10 above, with their owners | this file |
+| O-40…O-48 | Open questions 1–3 and 5–11 above, with their owners (renumbered: O-39 was taken by `caller-number-selector`) | this file |
 
 ---
 
