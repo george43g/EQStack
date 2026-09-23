@@ -1,7 +1,8 @@
 /**
  * Gateway assembly — what `tel serve` runs: build adapters from
  * config + secrets, open the single-writer store, then start the public
- * listener (Twilio only) and the localhost admin listener.
+ * listener (Twilio only), the localhost admin listener, and — with
+ * agentPlatform.consult — the loopback tool listener (Phase R).
  */
 
 import { buildAgentPlatform } from "../adapters/agent-platform/registry.js";
@@ -27,6 +28,7 @@ import { AdminServer } from "./admin-server.js";
 import { CallService } from "./call-service.js";
 import { Metrics } from "./metrics.js";
 import { PublicServer } from "./public-server.js";
+import { ToolServer } from "./tool-server.js";
 
 export async function buildLlmAdapter(
   cfg: Config,
@@ -119,6 +121,8 @@ export async function startGateway(
     phoneLegHangup,
   );
   service.resumeDelegatePollers();
+  // Consult state on calls that ended while serve was down (tokens, pending rows).
+  service.sweepEndedConsults();
 
   // D-d: the tunnel starts degraded-tolerant — a tunnel that never becomes
   // ready leaves the gateway up and reporting, it does not abort serve.
@@ -145,11 +149,22 @@ export async function startGateway(
 
   const publicServer = new PublicServer({ cfg, service, llm, twilioAuthToken, metrics, clock });
   const adminServer = new AdminServer(service, metrics);
+  // Phase R: the consult tool listener, only when consult is configured (D-91).
+  const toolServer = cfg.agentPlatform?.consult ? new ToolServer({ cfg, service, metrics }) : null;
   await publicServer.listen(cfg.server.publicPort);
   await adminServer.listen(cfg.server.adminPort);
+  if (toolServer) {
+    await toolServer.listen(cfg.server.toolsPort);
+    if (toolServer.sourceIpCheckDisabled) {
+      logger.warn(
+        "consult source-IP check DISABLED (agentPlatform.consult.allowedSourceIps is empty) — the bearer and conversation-id checks still apply",
+      );
+    }
+  }
   logger.info("gateway up", {
     publicPort: cfg.server.publicPort,
     adminPort: cfg.server.adminPort,
+    toolsPort: toolServer ? cfg.server.toolsPort : "off",
     telephony: telephony.id,
     llm: llm.id,
     agentPlatform: agentPlatform?.id ?? "none",
@@ -164,6 +179,7 @@ export async function startGateway(
     close: async () => {
       await tunnel?.stop();
       service.shutdown();
+      await toolServer?.close();
       await publicServer.close();
       await adminServer.close();
       store.close();

@@ -5,6 +5,13 @@ Follows apps/telephony-mcp/docs/TUNNEL_SETUP.md exactly: tunnel `telephony`,
 remotely-managed config, ingress gw.agentpipe.top -> http://localhost:8790,
 catch-all 404, proxied CNAME.
 
+Phase R (consult, D-91): when the live config has `agentPlatform.consult`, a
+SECOND hostname joins the same tunnel — tools.agentpipe.top ->
+http://127.0.0.1:<server.toolsPort> (default 8792) — with its own proxied
+CNAME. The ingress PUT replaces the whole list, so every hostname is sent
+every time; a hostname added by hand in the dashboard would be dropped by a
+re-run, which is why both live here.
+
 Every step is idempotent — re-running reuses what exists. NOTHING secret is
 printed: the tunnel run-token is never fetched here (a separate step pipes it
 straight into 1Password as CLOUDFLARE_TUNNEL_TOKEN, per INV-12 / D-59b).
@@ -29,13 +36,25 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 ACCOUNT = "0de8624f4e34eaf3ebc22d5290d9b230"
 ZONE = "70723edf90f806852c679630db5503c6"
 TUNNEL_NAME = "telephony"
 HOSTNAME = "gw.agentpipe.top"
+TOOLS_HOSTNAME = "tools.agentpipe.top"
 API = "https://api.cloudflare.com/client/v4"
+CONFIG_PATH = os.path.expanduser("~/.config/telephony-mcp/config.json")
+
+
+def load_config() -> dict:
+    try:
+        with open(CONFIG_PATH) as f:
+            cfg = json.load(f)
+            return cfg if isinstance(cfg, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def public_port() -> int:
@@ -49,15 +68,38 @@ def public_port() -> int:
     override = os.environ.get("TEL_PUBLIC_PORT")
     if override:
         return int(override)
-    cfg = os.path.expanduser("~/.config/telephony-mcp/config.json")
     try:
-        with open(cfg) as f:
-            return int(json.load(f).get("server", {}).get("publicPort", 8790))
-    except (OSError, ValueError, TypeError):
+        return int((load_config().get("server") or {}).get("publicPort", 8790))
+    except (ValueError, TypeError):
         return 8790
 
 
 ORIGIN = f"http://localhost:{public_port()}"
+
+
+def tools_origin() -> str | None:
+    """The consult tool listener's origin, or None when consult is not configured.
+
+    127.0.0.1, not localhost: the listener binds IPv4 loopback only, and a
+    `localhost` that resolves to ::1 first would be refused.
+    """
+    cfg = load_config()
+    consult = (cfg.get("agentPlatform") or {}).get("consult")
+    if not consult and not os.environ.get("TEL_TOOLS_PORT"):
+        return None
+    if consult:
+        base = str(consult.get("toolsBaseUrl", ""))
+        if urllib.parse.urlparse(base).hostname != TOOLS_HOSTNAME:
+            sys.exit(
+                "agentPlatform.consult.toolsBaseUrl does not point at the tools hostname this script "
+                "provisions; fix one or the other"
+            )
+    port = os.environ.get("TEL_TOOLS_PORT") or (cfg.get("server") or {}).get("toolsPort", 8792)
+    return f"http://127.0.0.1:{int(port)}"
+
+
+TOOLS_ORIGIN = tools_origin()
+ROUTES = [(HOSTNAME, ORIGIN)] + ([(TOOLS_HOSTNAME, TOOLS_ORIGIN)] if TOOLS_ORIGIN else [])
 
 token = os.environ.get("CF_TOKEN")
 if not token:
@@ -100,45 +142,46 @@ else:
     tid = created["id"]
     print(f"created tunnel {TUNNEL_NAME} id={tid}")
 
-# 2. ingress (remotely-managed config)
+# 2. ingress (remotely-managed config) — the PUT replaces the whole list
 cfg = {
     "config": {
-        "ingress": [
-            {"hostname": HOSTNAME, "service": ORIGIN},
-            {"service": "http_status:404"},
-        ]
+        "ingress": [{"hostname": h, "service": o} for h, o in ROUTES]
+        + [{"service": "http_status:404"}]
     }
 }
 must(call("PUT", f"/accounts/{ACCOUNT}/cfd_tunnel/{tid}/configurations", cfg), "setting ingress")
-print(f"ingress set: {HOSTNAME} -> {ORIGIN}, catch-all 404")
+for h, o in ROUTES:
+    print(f"ingress set: {h} -> {o}")
+print("ingress catch-all: 404")
 
-# 3. DNS CNAME (proxied), idempotent
+# 3. DNS CNAME (proxied) per hostname, idempotent
 target = f"{tid}.cfargotunnel.com"
-recs = must(call("GET", f"/zones/{ZONE}/dns_records?name={HOSTNAME}"), "listing dns")
-if recs:
-    rec = recs[0]
-    if rec.get("content") == target and rec.get("proxied") and rec.get("type") == "CNAME":
-        print(f"dns already correct: {HOSTNAME} CNAME {target} (proxied)")
+for name, _origin in ROUTES:
+    recs = must(call("GET", f"/zones/{ZONE}/dns_records?name={name}"), "listing dns")
+    if recs:
+        rec = recs[0]
+        if rec.get("content") == target and rec.get("proxied") and rec.get("type") == "CNAME":
+            print(f"dns already correct: {name} CNAME {target} (proxied)")
+        else:
+            must(
+                call(
+                    "PUT",
+                    f"/zones/{ZONE}/dns_records/{rec['id']}",
+                    {"type": "CNAME", "name": name, "content": target, "proxied": True},
+                ),
+                "updating dns",
+            )
+            print(f"dns updated: {name} CNAME {target} (proxied)")
     else:
         must(
             call(
-                "PUT",
-                f"/zones/{ZONE}/dns_records/{rec['id']}",
-                {"type": "CNAME", "name": HOSTNAME, "content": target, "proxied": True},
+                "POST",
+                f"/zones/{ZONE}/dns_records",
+                {"type": "CNAME", "name": name, "content": target, "proxied": True},
             ),
-            "updating dns",
+            "creating dns",
         )
-        print(f"dns updated: {HOSTNAME} CNAME {target} (proxied)")
-else:
-    must(
-        call(
-            "POST",
-            f"/zones/{ZONE}/dns_records",
-            {"type": "CNAME", "name": HOSTNAME, "content": target, "proxied": True},
-        ),
-        "creating dns",
-    )
-    print(f"dns created: {HOSTNAME} CNAME {target} (proxied)")
+        print(f"dns created: {name} CNAME {target} (proxied)")
 
 # 4. read back the live config as proof, not assumption
 live = must(call("GET", f"/accounts/{ACCOUNT}/cfd_tunnel/{tid}/configurations"), "reading back config")

@@ -4,7 +4,7 @@
  * Legs are keyed "<mode>.<leg>" because the metrics registry has no labels
  * and the report mirrors the series names (tel_direct_*).
  */
-import type { CallMode, TurnTiming } from "./types.js";
+import type { CallMode, ConsultQuestion, TurnTiming } from "./types.js";
 
 export interface LegStats {
   n: number;
@@ -38,9 +38,17 @@ function stats(values: number[]): LegStats | null {
   };
 }
 
+/**
+ * Phase R adds two legs from consult question rows (not turn timings):
+ *   consult.pickup — asked → first delivery of consult.asked to a polling host
+ *   consult.answer — asked → answered
+ */
 export function buildLatencyReport(
   rows: Array<{ timing: TurnTiming; mode: CallMode }>,
   callCount: number,
+  consultQuestions: ReadonlyArray<
+    Pick<ConsultQuestion, "askedAtMs" | "firstDeliveredMs" | "answeredAtMs">
+  > = [],
 ): LatencyReport {
   const legs: Record<string, number[]> = {};
   const add = (key: string, v: number | null) => {
@@ -85,6 +93,10 @@ export function buildLatencyReport(
         t.firstTokenToTwilioMs !== null ? t.firstTokenToTwilioMs - t.endOfTurnMs : null,
       );
     }
+  }
+  for (const q of consultQuestions) {
+    add("consult.pickup", q.firstDeliveredMs !== null ? q.firstDeliveredMs - q.askedAtMs : null);
+    add("consult.answer", q.answeredAtMs !== null ? q.answeredAtMs - q.askedAtMs : null);
   }
   const out: Record<string, LegStats> = {};
   for (const [key, values] of Object.entries(legs)) {

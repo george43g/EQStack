@@ -109,6 +109,31 @@ do not, for two independent reasons:
 `+61…1463`'s `voice_url` therefore stays untouched. It becomes a real step when
 **Phases L–M** build inbound routing, and O-19 still governs it then.
 
+## Second hostname: the consult tool channel (Phase R, D-91)
+
+Consult mode adds one public route on its **own** hostname, on the **same**
+tunnel: `tools.agentpipe.top` → `http://127.0.0.1:<server.toolsPort>` (default
+8792; the listener binds IPv4 loopback only, so the origin says `127.0.0.1`,
+not `localhost`). It is never routed on `gw.` — that host 404s `/v1/consult`.
+
+1. In `~/.config/telephony-mcp/config.json`, add `agentPlatform.consult`
+   (`toolsBaseUrl: "https://tools.agentpipe.top"`) and `tunnel.toolsHostname:
+   "tools.agentpipe.top"`; set `server.toolsPort` only if 8792 is taken
+   (`lsof -iTCP:8792 -sTCP:LISTEN`).
+2. Re-run `scripts/provision-tunnel.py` (same token and command as above). With
+   the consult block present it sends BOTH hostnames in the one ingress PUT —
+   the PUT replaces the whole list, so a hostname added only in the dashboard
+   would be dropped by any later run — and creates the second proxied CNAME.
+3. Restart serve; `tel doctor` shows the consult line.
+4. From outside, before any paid test: `POST https://tools.agentpipe.top/v1/consult`
+   with no bearer → **401**; `GET` → **404**; `POST https://gw.agentpipe.top/v1/consult`
+   → **404**.
+
+Optional edge belt (platform config, not code — D-89): a WAF custom rule on
+the zone, `http.host eq "tools.agentpipe.top" and not ip.src in {<EL egress
+IPs>}` → Block, so off-list traffic never reaches the Mac. The provisioning
+token has no WAF scope; this is a dashboard step.
+
 ## Live verification (paid; separately authorised — INV-14)
 
 One call end-to-end over the named tunnel, then reboot the Mac and confirm the

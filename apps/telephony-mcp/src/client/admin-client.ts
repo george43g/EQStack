@@ -94,6 +94,18 @@ export class AdminClient {
     return this.request("DELETE", `/recordings/${recordingSid}`, { scope, confirm });
   }
 
+  answerConsult(
+    callId: string,
+    questionId: string,
+    answer: string,
+  ): Promise<{ status: "answered"; delivered: boolean; collectable: boolean }> {
+    return this.request(
+      "POST",
+      `/calls/${encodeURIComponent(callId)}/consult/${encodeURIComponent(questionId)}/answer`,
+      { answer },
+    );
+  }
+
   listCalls(opts: { limit?: number; beforeMs?: number } = {}): Promise<{ calls: CallRecord[] }> {
     const q = new URLSearchParams();
     if (opts.limit) q.set("limit", String(opts.limit));

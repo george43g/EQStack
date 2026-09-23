@@ -137,10 +137,20 @@ To break one, see [Changing an invariant](#changing-an-invariant).
 
 ### Safety and privacy
 
-- **INV-10 — Public surface stays minimal and signature-validated.** Every route
-  reachable through the tunnel validates `X-Twilio-Signature` against the public URL.
-  Admin, metrics and event streams bind `127.0.0.1` only and are never routed through
-  the tunnel. Adding a public route requires a `DECISIONS.md` entry.
+- **INV-10 — Public surface stays minimal, and every public route authenticates its
+  one caller.** `[2026-09-23, D-91]` Every route reachable through the tunnel on the
+  Twilio hostname (`gw.`) validates `X-Twilio-Signature` against the public URL. The
+  one route on the tools hostname (`tools.`: `POST /v1/consult`, served by its own
+  listener bound to `127.0.0.1`) is called by ElevenLabs, which cannot sign as Twilio,
+  so it requires **all three** of: a per-call bearer stored only as a hash and deleted
+  when the call ends; the request's conversation id equal to the call's; and a source
+  IP (`CF-Connecting-IP`) on ElevenLabs' published egress list. Admin, metrics and
+  event streams bind `127.0.0.1` only and are never routed through the tunnel. Adding
+  a public route requires a `DECISIONS.md` entry.
+  *Was, until 2026-09-23:* "Public surface stays minimal and signature-validated.
+  Every route reachable through the tunnel validates `X-Twilio-Signature` against the
+  public URL." — true while Twilio was the only caller; consult's webhook tool made it
+  unsatisfiable for one route (PHASE-R § 4).
 - **INV-11 — Full phone numbers exist only in config.** Everything persisted or
   emitted — events, logs, MCP output, FTS, SDK payloads — carries alias + last four.
   All logging goes through `logger`; never bypass it. Never log or store secret

@@ -257,4 +257,107 @@ describe("SqliteStore", () => {
       migrated.close();
     }
   });
+
+  it("Phase R: a pre-consult DB gains the two tables additively — rows survive, readers cope", () => {
+    const file = join(dir, "pre-r.sqlite3");
+    // A DB exactly as a pre-Phase-R serve left it: every old table, no consult ones.
+    const seed = new SqliteStore(file);
+    seed.createCall({
+      id: "old",
+      providerCallId: "conv_old",
+      requestId: "r",
+      recipientAlias: "george",
+      numberSuffix: "1222",
+      profile: "default",
+      objective: "o",
+      status: "answered",
+      recordingEnabled: false,
+      recordingPolicy: "preconsented",
+      maxDurationSec: 900,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      endedAtMs: null,
+      endReason: null,
+    });
+    seed.close();
+    const bare = new DatabaseSync(file);
+    bare.exec(
+      "DROP INDEX idx_consult_call; DROP TABLE consult_questions; DROP TABLE consult_tokens;",
+    );
+    bare.close();
+    // A reader that meets the old DB before serve restarts: no table → no questions.
+    const early = new SqliteStore(file, { readonly: true });
+    try {
+      expect(early.listConsultQuestions("old")).toEqual([]);
+    } finally {
+      early.close();
+    }
+    // serve restarts while a read-only reader holds the DB open (WAL) — the live case.
+    const reader = new SqliteStore(file, { readonly: true });
+    const migrated = new SqliteStore(file);
+    try {
+      expect(migrated.getCall("old")?.providerCallId).toBe("conv_old");
+      const q = migrated.insertConsultQuestion({
+        id: "q1",
+        callId: "old",
+        question: "x?",
+        questionNorm: "x",
+        status: "pending",
+        askedAtMs: 5,
+      });
+      expect(q.seq).toBe(1);
+      migrated.putConsultTokenHash("old", "h".repeat(64), 5);
+      expect(migrated.getCallIdForConsultTokenHash("h".repeat(64))).toBe("old");
+      expect(reader.getCall("old")?.id).toBe("old");
+      expect(reader.listConsultQuestions("old")).toHaveLength(1);
+    } finally {
+      migrated.close();
+      reader.close();
+    }
+    // Idempotent: reopening neither throws nor loses rows.
+    const again = new SqliteStore(file);
+    try {
+      expect(again.listConsultQuestions("old")).toHaveLength(1);
+      expect(again.hasConsultToken("old")).toBe(true);
+    } finally {
+      again.close();
+    }
+  });
+
+  it("Phase R: consult transitions are guarded — the row count is the claim, first wins", () => {
+    const q = store.insertConsultQuestion({
+      id: "q1",
+      callId: "c1",
+      question: "Which day?",
+      questionNorm: "which day",
+      status: "pending",
+      askedAtMs: 10,
+    });
+    expect(q).toMatchObject({ seq: 1, status: "pending", answer: null });
+    expect(
+      store.transitionConsult("c1", "q1", "pending", "answered", { answer: "A", answeredAtMs: 11 }),
+    ).toBe(true);
+    expect(
+      store.transitionConsult("c1", "q1", "pending", "answered", { answer: "B", answeredAtMs: 12 }),
+    ).toBe(false);
+    expect(store.getConsultQuestion("c1", "q1")).toMatchObject({ answer: "A", answeredAtMs: 11 });
+    // Scoped to the call: the same id under another call is not there.
+    expect(store.getConsultQuestion("c2", "q1")).toBeNull();
+    expect(store.transitionConsult("c2", "q1", "answered", "delivered")).toBe(false);
+    store.stampConsultPickupIfUnset("c1", "q1", 20);
+    store.stampConsultPickupIfUnset("c1", "q1", 30);
+    expect(store.getConsultQuestion("c1", "q1")?.firstDeliveredMs).toBe(20);
+    store.insertConsultQuestion({
+      id: "q2",
+      callId: "c1",
+      question: "Time?",
+      questionNorm: "time",
+      status: "pending",
+      askedAtMs: 40,
+    });
+    expect(store.countPendingConsults("c1")).toBe(1);
+    expect(store.findPendingConsultByNorm("c1", "time")?.id).toBe("q2");
+    expect(store.cancelPendingConsults("c1")).toEqual(["q2"]);
+    expect(store.cancelPendingConsults("c1")).toEqual([]);
+  });
 });

@@ -27,6 +27,7 @@ import type {
   AgentOutboundCallRequest,
   AgentOutboundCallResult,
   AgentPlatformPort,
+  ConsultToolSpec,
   SecretProvider,
 } from "../../domain/ports.js";
 import { AGENT_CONVERSATION_STATUSES } from "../../domain/ports.js";
@@ -91,6 +92,61 @@ const ConversationResponse = z.object({
 });
 
 /**
+ * The consult tool (Phase R, D-90) as an inline EL webhook tool. Every field
+ * name and enum value is from SDK v2.68.0's serializers, byte-checked from the
+ * published tarball: `serialization/types/WebhookToolConfigInput.js`
+ * (response_timeout_secs 5–300, pre_tool_speech, tool_call_sound[_behavior],
+ * execution_mode, interruption_mode, tool_error_handling_mode, api_schema),
+ * `WebhookToolApiSchemaConfigInput.js` (url, method, request_headers,
+ * request_body_schema), `ConvAiDynamicVariable.js` (a header value
+ * `{ variable_name }`), and `LiteralJsonSchemaProperty.js`, whose value
+ * sources are mutually exclusive — `description` (the LLM writes it) OR
+ * `dynamic_variable` (EL fills it) — which is why the two id properties carry
+ * no description: the LLM never writes the conversation id or call SID.
+ *
+ * The bearer never appears here: the header names the `secret__` variable and
+ * EL substitutes the per-call value, keeping it from the LLM.
+ */
+export function consultToolBody(spec: ConsultToolSpec): Record<string, unknown> {
+  return {
+    type: "webhook",
+    name: spec.name,
+    description: spec.description,
+    response_timeout_secs: spec.responseTimeoutSecs,
+    pre_tool_speech: spec.preToolSpeech,
+    tool_call_sound: spec.toolCallSound,
+    tool_call_sound_behavior: spec.toolCallSoundBehavior,
+    execution_mode: spec.executionMode,
+    interruption_mode: spec.interruptionMode,
+    tool_error_handling_mode: spec.toolErrorHandlingMode,
+    api_schema: {
+      url: spec.url,
+      method: "POST",
+      content_type: "application/json",
+      request_headers: { Authorization: { variable_name: spec.bearerVariable } },
+      request_body_schema: {
+        type: "object",
+        required: ["question", "conversation_id"],
+        properties: {
+          question: {
+            type: "string",
+            description:
+              "One self-contained question for the originator, with everything they need to decide (they cannot hear the call).",
+          },
+          collect_question_id: {
+            type: "string",
+            description:
+              "Only to collect an answer that came back 'pending' earlier: the question_id you were given. Leave empty when asking a new question.",
+          },
+          conversation_id: { type: "string", dynamic_variable: "system__conversation_id" },
+          call_sid: { type: "string", dynamic_variable: "system__call_sid" },
+        },
+      },
+    },
+  };
+}
+
+/**
  * The agent body for create AND update (PATCH takes the same partial shape).
  * Every recording-relevant field is sent explicitly, never left to EL's
  * default: `record_voice` false is what keeps an unrecorded call unrecorded.
@@ -117,6 +173,8 @@ export function agentRequestBody(brief: AgentBrief): Record<string, unknown> {
               params: { system_tool_type: "end_call" },
             },
           },
+          // Consult agents only (D-92): a delegate body stays byte-identical.
+          ...(brief.consultTool ? { tools: [consultToolBody(brief.consultTool)] } : {}),
         },
       },
       tts,

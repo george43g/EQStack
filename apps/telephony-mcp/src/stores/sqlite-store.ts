@@ -11,6 +11,8 @@ import type {
   CallRecord,
   CallRequest,
   CallStatus,
+  ConsultQuestion,
+  ConsultStatus,
   RecordingMeta,
   TurnTiming,
   Utterance,
@@ -118,6 +120,31 @@ CREATE TABLE IF NOT EXISTS agent_profiles (
   brief_hash TEXT NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
+-- Phase R (consult). Additive: new tables only, created on every open, so a
+-- live WAL database gains them on the next serve start with nothing rewritten.
+-- Status transitions are guarded UPDATEs whose row count is the claim (D-60).
+CREATE TABLE IF NOT EXISTS consult_questions (
+  id TEXT PRIMARY KEY,
+  call_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  question TEXT NOT NULL,
+  question_norm TEXT NOT NULL,
+  status TEXT NOT NULL,
+  answer TEXT,
+  asked_at_ms INTEGER NOT NULL,
+  first_delivered_ms INTEGER,
+  answered_at_ms INTEGER,
+  delivered_at_ms INTEGER,
+  delivered_via TEXT,
+  UNIQUE (call_id, seq)
+);
+-- The per-call consult bearer, as a SHA-256 hash only; deleted when the call ends.
+CREATE TABLE IF NOT EXISTS consult_tokens (
+  call_id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_consult_call ON consult_questions (call_id, status);
 CREATE INDEX IF NOT EXISTS idx_events_call ON events (call_id, seq);
 CREATE INDEX IF NOT EXISTS idx_calls_created ON calls (created_at_ms);
 `;
@@ -157,6 +184,22 @@ function rowToCall(r: CallRow): CallRecord {
     updatedAtMs: r.updated_at_ms,
     endedAtMs: r.ended_at_ms,
     endReason: r.end_reason,
+  };
+}
+
+function rowToConsult(r: Record<string, unknown>): ConsultQuestion {
+  return {
+    id: r.id as string,
+    callId: r.call_id as string,
+    seq: r.seq as number,
+    question: r.question as string,
+    status: r.status as ConsultStatus,
+    answer: (r.answer as string | null) ?? null,
+    askedAtMs: r.asked_at_ms as number,
+    firstDeliveredMs: (r.first_delivered_ms as number | null) ?? null,
+    answeredAtMs: (r.answered_at_ms as number | null) ?? null,
+    deliveredAtMs: (r.delivered_at_ms as number | null) ?? null,
+    deliveredVia: (r.delivered_via as string | null) ?? null,
   };
 }
 
@@ -658,6 +701,167 @@ export class SqliteStore implements EventStore {
            updated_at_ms = excluded.updated_at_ms`,
       )
       .run(record.agentKey, record.agentId, record.briefHash, record.updatedAtMs);
+  }
+
+  // -- consult (Phase R) ----------------------------------------------------
+
+  /** Inserts a question with the next per-call seq; returns the stored row. */
+  insertConsultQuestion(q: {
+    id: string;
+    callId: string;
+    question: string;
+    questionNorm: string;
+    status: ConsultStatus;
+    askedAtMs: number;
+  }): ConsultQuestion {
+    const next = this.db
+      .prepare("SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM consult_questions WHERE call_id = ?")
+      .get(q.callId) as { seq: number };
+    this.db
+      .prepare(
+        `INSERT INTO consult_questions (id, call_id, seq, question, question_norm, status, asked_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(q.id, q.callId, next.seq, q.question, q.questionNorm, q.status, q.askedAtMs);
+    return this.getConsultQuestion(q.callId, q.id) as ConsultQuestion;
+  }
+
+  /** Scoped to one call: another call's question id is indistinguishable from none. */
+  getConsultQuestion(callId: string, id: string): ConsultQuestion | null {
+    const r = this.db
+      .prepare("SELECT * FROM consult_questions WHERE call_id = ? AND id = ?")
+      .get(callId, id) as Record<string, unknown> | undefined;
+    return r ? rowToConsult(r) : null;
+  }
+
+  findPendingConsultByNorm(callId: string, questionNorm: string): ConsultQuestion | null {
+    const r = this.db
+      .prepare(
+        "SELECT * FROM consult_questions WHERE call_id = ? AND status = 'pending' AND question_norm = ? ORDER BY seq LIMIT 1",
+      )
+      .get(callId, questionNorm) as Record<string, unknown> | undefined;
+    return r ? rowToConsult(r) : null;
+  }
+
+  countPendingConsults(callId: string): number {
+    const r = this.db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM consult_questions WHERE call_id = ? AND status = 'pending'",
+      )
+      .get(callId) as { n: number };
+    return r.n;
+  }
+
+  listConsultQuestions(callId: string): ConsultQuestion[] {
+    let rows: Array<Record<string, unknown>>;
+    try {
+      rows = this.db
+        .prepare("SELECT * FROM consult_questions WHERE call_id = ? ORDER BY seq")
+        .all(callId) as unknown as Array<Record<string, unknown>>;
+    } catch (err) {
+      // A read-only reader (MCP/CLI) can meet a DB a pre-Phase-R serve still
+      // owns: only serve creates tables, so "no table" means "no questions".
+      if (this.readonly && /no such table/.test((err as Error).message)) return [];
+      throw err;
+    }
+    return rows.map(rowToConsult);
+  }
+
+  /**
+   * A guarded transition: moves the row only while it is still in `from`.
+   * The returned boolean IS the claim — exactly one caller wins (D-60 pattern).
+   */
+  transitionConsult(
+    callId: string,
+    id: string,
+    from: ConsultStatus,
+    to: ConsultStatus,
+    set: {
+      answer?: string;
+      answeredAtMs?: number;
+      deliveredAtMs?: number;
+      deliveredVia?: string;
+    } = {},
+  ): boolean {
+    const result = this.db
+      .prepare(
+        `UPDATE consult_questions SET status = ?,
+           answer = COALESCE(?, answer),
+           answered_at_ms = COALESCE(?, answered_at_ms),
+           delivered_at_ms = COALESCE(?, delivered_at_ms),
+           delivered_via = COALESCE(?, delivered_via)
+         WHERE call_id = ? AND id = ? AND status = ?`,
+      )
+      .run(
+        to,
+        set.answer ?? null,
+        set.answeredAtMs ?? null,
+        set.deliveredAtMs ?? null,
+        set.deliveredVia ?? null,
+        callId,
+        id,
+        from,
+      );
+    return Number(result.changes) === 1;
+  }
+
+  /** consult.pickup: first delivery of consult.asked to a polling host wins. */
+  stampConsultPickupIfUnset(callId: string, id: string, ms: number): void {
+    this.db
+      .prepare(
+        `UPDATE consult_questions SET first_delivered_ms = ?
+         WHERE call_id = ? AND id = ? AND first_delivered_ms IS NULL`,
+      )
+      .run(ms, callId, id);
+  }
+
+  /** Every still-pending question on the call → cancelled. Returns the ids moved. */
+  cancelPendingConsults(callId: string): string[] {
+    const ids = (
+      this.db
+        .prepare("SELECT id FROM consult_questions WHERE call_id = ? AND status = 'pending'")
+        .all(callId) as unknown as Array<{ id: string }>
+    ).map((r) => r.id);
+    return ids.filter((id) => this.transitionConsult(callId, id, "pending", "cancelled"));
+  }
+
+  putConsultTokenHash(callId: string, tokenHash: string, nowMs: number): void {
+    this.db
+      .prepare("INSERT INTO consult_tokens (call_id, token_hash, created_at_ms) VALUES (?, ?, ?)")
+      .run(callId, tokenHash, nowMs);
+  }
+
+  /** Lookup keyed on the hash — the token itself is never stored or compared. */
+  getCallIdForConsultTokenHash(tokenHash: string): string | null {
+    const r = this.db
+      .prepare("SELECT call_id FROM consult_tokens WHERE token_hash = ?")
+      .get(tokenHash) as { call_id: string } | undefined;
+    return r?.call_id ?? null;
+  }
+
+  hasConsultToken(callId: string): boolean {
+    return (
+      this.db.prepare("SELECT 1 AS x FROM consult_tokens WHERE call_id = ?").get(callId) !==
+      undefined
+    );
+  }
+
+  deleteConsultToken(callId: string): void {
+    this.db.prepare("DELETE FROM consult_tokens WHERE call_id = ?").run(callId);
+  }
+
+  /** Calls that are already terminal but still hold consult state (a crash between the two). */
+  terminalCallsWithConsultState(): string[] {
+    const terminal = [...TERMINAL_STATUSES];
+    const marks = terminal.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM calls WHERE status IN (${marks}) AND (
+           id IN (SELECT call_id FROM consult_tokens)
+           OR id IN (SELECT call_id FROM consult_questions WHERE status = 'pending'))`,
+      )
+      .all(...terminal) as unknown as Array<{ id: string }>;
+    return rows.map((r) => r.id);
   }
 
   // -- relay tokens ---------------------------------------------------------

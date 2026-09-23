@@ -27,6 +27,13 @@ import { CALL_MODE_SPECS } from "./types.js";
 
 export class CallRequestError extends Error {}
 
+/**
+ * The originating agent's half of the consult harness (PHASE-R § 6), returned
+ * as a `place_call` notice on every consult call — dryRun included.
+ */
+export const CONSULT_HOST_NOTICE =
+  "This call can ask you questions. Stay in a get_call_events loop (waitMs ~25000) until call.ended. Answer each consult.asked with answer_consult promptly: short, speakable, self-contained. If you don't know, say so in the answer rather than waiting. The caller is on hold while you think.";
+
 export interface PlaceCallInput {
   /** Config alias OR raw E.164 (resolved before this layer). */
   to: string;
@@ -81,6 +88,12 @@ export function buildCallPlan(
       `call mode '${mode}' needs the "agentPlatform" config block ({ "type": "elevenlabs-managed", "apiKeyRef": "ELEVENLABS_API_KEY", "phoneNumberId": "phnum_…" }) — none is configured`,
     );
   }
+  // Phase R: the consult loop needs its public tool channel configured.
+  if (spec.supportsConsult && !cfg.agentPlatform?.consult) {
+    throw new CallRequestError(
+      `call mode '${mode}' needs the "agentPlatform.consult" config block ({ "toolsBaseUrl": "https://tools.<your-domain>", "holdSec": 45, "maxPendingPerCall": 3, "hostIdleSec": 90, "allowedSourceIps": [ElevenLabs egress IPs] }) — none is configured`,
+    );
+  }
   const profileName = input.profile ?? "default";
   const settings = effectiveCallSettings(cfg, profileName);
   // INV-3's three policies decide first; the third-party rule (D-76) only
@@ -113,7 +126,7 @@ export function buildCallPlan(
     recordingPolicy: resolved.recordingPolicy,
     maxDurationSec: settings.maxDurationSec,
     recordingHolder: thirdParty ?? "telephony-mcp",
-    notices: notice ? [notice] : [],
+    notices: [...(notice ? [notice] : []), ...(spec.supportsConsult ? [CONSULT_HOST_NOTICE] : [])],
   };
 }
 

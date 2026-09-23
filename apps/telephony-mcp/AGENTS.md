@@ -30,8 +30,13 @@ and the migration manifest (this tool is slated to move out of life-stack).
    redaction layer (`redactValue` from `@george43g/robustness`, wired in
    `src/log.ts`) guards logs — don't bypass `logger`.
 5. **Public surface stays minimal**: `/twilio/status`, `/twilio/recording`,
-   `/relay/<token>` — all X-Twilio-Signature-validated. Admin, metrics, and
-   SSE bind 127.0.0.1 only. Never route admin through the public listener.
+   `/relay/<token>` — all X-Twilio-Signature-validated — plus, with consult
+   configured, exactly one route on its own loopback listener and hostname:
+   `POST /v1/consult` (`src/gateway/tool-server.ts`), guarded by a per-call
+   bearer (hash only, deleted when the call ends), a conversation-id match and
+   an ElevenLabs source-IP allowlist (INV-10 as amended by D-91). Admin,
+   metrics, and SSE bind 127.0.0.1 only. Never route admin through a public
+   listener.
 6. Secrets resolve by NAME via env → opkeep keychain. No `.env` files, no
    literal secrets in config, code, tests, or fixtures. Never log or store
    secret values, tunnel URLs, or recording plaintext.
@@ -56,6 +61,13 @@ and the migration manifest (this tool is slated to move out of life-stack).
   `agentPlatform` block (D-75 made it the delegate-mode agent platform —
   `src/adapters/agent-platform/elevenlabs.ts`). Delegate-mode code branches on
   `CALL_MODE_SPECS` predicates, never on the mode string.
+- **Consult mode** (Phase R, `docs/plans/two-way-calling/PHASE-R-consult-mode.md`):
+  a delegate call whose ElevenLabs agent has one webhook tool back to us. The
+  question arrives as `consult.asked` on `get_call_events` and is answered with
+  `answer_consult` (or `tel answer`). The per-call bearer is minted at dial
+  time, handed to EL only as the `secret__consult_bearer` dynamic variable,
+  stored only as a SHA-256 hash, and never logged. Tests run the whole loop
+  against `FakeAgentPlatform` (`tests/consult-mode.test.ts`).
 - **Voice preview** (`tel voices …`, tools `preview_voices` /
   `review_voice_preview` / `save_voice_profile`): George auditions voices on
   ElevenLabs' hosted talk-to page, no phone call. `save_voice_profile` is the
