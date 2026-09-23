@@ -77,6 +77,29 @@ and SMS/iMessage legs (`docs/CONTACT_MERGE_AND_SLUGS.md` in the imsg app) —
 extended with a new transport. The existing merge invariants are the natural
 starting point, and the reason not to invent a second identity model.
 
+## Addendum 2026-09-24 — an agent-owned SMS number, on an existing chat stack
+
+George, answering which number delegate calls should come from (verbatim):
+
+> *"be aware that there's already a mobile number in the account... or there should be... because twilio has also been used to send sms messages. i eventually want to add capability, somewhere somehow (not sure if in this tool or a separate tool) where a twilio mobile number will be able to attach to a CLI tool and that mobile number can literally almost belong  to an AI agent... ie I'll be able to open a TUI that will show a history of all sent and recieved sms messages from that mobile number like any other phone sms app. but will have a cli and mcp API that agents can drive as well as humans. rather than rebuilding an entire chat infra, its worth looking at services like snikket or cheogram that allow you to BYO number from twiliio and attach it to an xmpp or IRC client, so all your message thread functionality is pre built out of the box - so unlikely its something we want to build from scratch, but if we can utilise  an existing solution, and just bolt on the needed APIs, ie twilio, MCP, CLI, TUI and AI agents and skills etc..."*
+
+What this adds to §2–§3:
+
+- **The number exists.** Twilio's master account holds `+61 4…1463`, type
+  **mobile**, SMS + MMS + voice enabled (measured 2026-09-23 via the Twilio MCP).
+  Its `sms_url` is still Twilio's demo reply, so nothing receives its SMS today.
+  That is the natural first "agent-owned" number.
+- **Don't build the chat layer.** The direction is an existing SMS↔chat bridge
+  that accepts a bring-your-own Twilio number — George named **Snikket** (an XMPP
+  server) and **Cheogram** (the XMPP↔SMS gateway behind JMP.chat) — so threads,
+  history, read state and multi-device come for free from an XMPP (or IRC)
+  client, and we bolt on only what is missing: the Twilio wiring, an MCP server
+  and CLI agents drive, a TUI for George, and skills. Which bridge, and whether
+  it accepts a Twilio number without a JMP subscription, is **unverified** —
+  the check-for-existing-solutions pass is the first step, before any code.
+- **Home undecided** — "not sure if in this tool or a separate tool". §2 already
+  argued it is probably not imsg-mcp; this keeps that open.
+
 ## When to circle back
 
 No date set. Natural triggers: after the telephony Q/R phases land (agent
