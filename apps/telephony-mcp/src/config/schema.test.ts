@@ -145,6 +145,33 @@ describe("agentPlatform + consent blocks (Phase Q, D-75/D-76)", () => {
     expect(() => parseConfig(cfg)).toThrow(ConfigError);
   });
 
+  it("twilioHangup (O-30) is optional, strict, SID-shaped, and takes the secret by NAME only", () => {
+    const cfg = base();
+    const hangup = { accountSid: `AC${"1".repeat(32)}`, apiKeySid: `SK${"2".repeat(32)}` };
+    (cfg as Record<string, unknown>).agentPlatform = {
+      type: "elevenlabs-managed",
+      phoneNumberId: "phnum_1",
+      twilioHangup: hangup,
+    };
+    expect(parseConfig(cfg).agentPlatform?.twilioHangup).toEqual({
+      ...hangup,
+      apiSecretRef: "TWILIO_API_KEY_ELEVENLABS_SUBACCOUNT_CALLS_RW",
+    });
+    const bad = (twilioHangup: Record<string, unknown>) => {
+      (cfg as Record<string, unknown>).agentPlatform = {
+        type: "elevenlabs-managed",
+        phoneNumberId: "phnum_1",
+        twilioHangup,
+      };
+      return () => parseConfig(cfg);
+    };
+    // A literal secret has nowhere to go (INV-12).
+    expect(bad({ ...hangup, apiSecret: "literal" })).toThrow(ConfigError);
+    expect(bad({ ...hangup, accountSid: `SK${"1".repeat(32)}` })).toThrow(/account SID/);
+    expect(bad({ ...hangup, apiKeySid: `AC${"2".repeat(32)}` })).toThrow(/API key SID/);
+    expect(bad({ accountSid: hangup.accountSid })).toThrow(ConfigError);
+  });
+
   it("the Phase B telephony reservation still PARSES, so construction can refuse it with a pointer", () => {
     const cfg = base();
     (cfg.telephony as Record<string, unknown>).type = "elevenlabs-managed";

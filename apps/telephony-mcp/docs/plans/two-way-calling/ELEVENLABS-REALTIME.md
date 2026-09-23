@@ -65,9 +65,14 @@ on phone calls exactly as on web calls — no page says "phone"; the first consu
 call is the test. The *consult question* doubles as a live signal: every tool
 call is an event we see in real time, with the conversation id.
 
-**Hanging up (O-30) needs no EL feature.** EL's outbound-call response returns
-`call_sid` (SDK `TwilioOutboundCallResponse`), which our adapter currently
-discards (`src/adapters/agent-platform/elevenlabs.ts`). Twilio: *"To end a phone
+**Hanging up (O-30) needs no EL feature — BUILT 2026-09-23.** EL's
+outbound-call response returns the Twilio call SID (SDK
+`TwilioOutboundCallResponse`; the wire name is **`callSid`**, camelCase, not
+`call_sid` — the serializer renames only `conversation_id`), which the adapter
+now keeps and the call service stores in `calls.phone_leg_sid`. With the
+optional `agentPlatform.twilioHangup` block, `end_call` on a delegate call
+hangs up through Twilio (PHASE-Q Implementation notes 2a); without it, it
+still refuses. Twilio: *"To end a phone
 call … pass a `completed` status to a `CallSid` in progress."* **Correction to
 O-30 as written:** our existing *main-account API key* cannot do it —
 twilio.com/docs/iam/api/subaccounts: *"Main account API Keys are only available
@@ -120,8 +125,8 @@ the one that costs the most to build.
    **workflow nodes** can also change voice mid-call (verified) but are heavier.
    Running it on the laptop means we also see every turn live, for free.
 4. **Hanging up delegate calls (O-30): Twilio REST with a subaccount-scoped key**,
-   after persisting `call_sid`. Needs George's yes (a new credential on the
-   isolated subaccount).
+   after persisting the call SID. George approved it 2026-09-23; built behind
+   the optional `agentPlatform.twilioHangup` block.
 5. **A live view of phone calls (O-32): decide the plan question first (O-33).**
    If the `realtime-monitoring` flag is available on our plan or cheaply, A+M is
    small and gives the right view. If not, and a live view becomes necessary

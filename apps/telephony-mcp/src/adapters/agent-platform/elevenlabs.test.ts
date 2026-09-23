@@ -13,6 +13,8 @@ import { agentRequestBody, ElevenLabsAgentPlatform, ElevenLabsApiError } from ".
 
 const KEY = "test-el-key-not-a-real-secret";
 const CALLEE = "+61400999888";
+/** Obviously fake: the shape of a Twilio call SID, all zeros. */
+const FAKE_CALL_SID = `CA${"0".repeat(32)}`;
 
 interface Seen {
   url: string;
@@ -98,7 +100,7 @@ describe("request shapes", () => {
 
   it("placeOutboundCall: POST /v1/convai/twilio/outbound-call with dynamic variables", async () => {
     const { impl, seen } = fakeFetch([
-      { json: { success: true, message: "ok", conversation_id: "conv_1", callSid: "CA1" } },
+      { json: { success: true, message: "ok", conversation_id: "conv_1", callSid: FAKE_CALL_SID } },
     ]);
     const res = await adapter(impl).placeOutboundCall({
       agentId: "agent_1",
@@ -106,7 +108,7 @@ describe("request shapes", () => {
       to: CALLEE,
       dynamicVariables: { call_objective: "o", call_context: "c" },
     });
-    expect(res).toEqual({ conversationId: "conv_1" });
+    expect(res).toEqual({ conversationId: "conv_1", phoneLegSid: FAKE_CALL_SID });
     expect(seen[0]?.url).toBe("https://api.elevenlabs.io/v1/convai/twilio/outbound-call");
     expect(seen[0]?.body).toEqual({
       agent_id: "agent_1",
@@ -116,6 +118,27 @@ describe("request shapes", () => {
         dynamic_variables: { call_objective: "o", call_context: "c" },
       },
     });
+  });
+
+  it("placeOutboundCall: the phone-leg SID is read from callSid or call_sid, and dropped unless it is a CA… SID (O-30)", async () => {
+    const req = {
+      agentId: "agent_1",
+      phoneNumberId: "phnum_abc",
+      to: CALLEE,
+      dynamicVariables: {},
+    };
+    const ok = { success: true, message: "ok", conversation_id: "conv_1" };
+    const { impl } = fakeFetch([
+      { json: { ...ok, call_sid: FAKE_CALL_SID } },
+      { json: ok },
+      { json: { ...ok, callSid: "CA1" } },
+      { json: { ...ok, callSid: `${FAKE_CALL_SID}/../Recordings` } },
+    ]);
+    const a = adapter(impl);
+    expect((await a.placeOutboundCall(req)).phoneLegSid).toBe(FAKE_CALL_SID);
+    expect((await a.placeOutboundCall(req)).phoneLegSid).toBeNull();
+    expect((await a.placeOutboundCall(req)).phoneLegSid).toBeNull();
+    expect((await a.placeOutboundCall(req)).phoneLegSid).toBeNull();
   });
 
   it("getConversation: GET /v1/convai/conversations/{id}", async () => {

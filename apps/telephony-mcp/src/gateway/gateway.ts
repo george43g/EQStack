@@ -7,9 +7,16 @@
 import { buildAgentPlatform } from "../adapters/agent-platform/registry.js";
 import { OpenAiCompatibleLlm } from "../adapters/llm/openai-compatible.js";
 import { buildTelephonyAdapter } from "../adapters/telephony/registry.js";
+import { buildPhoneLegHangup } from "../adapters/telephony/twilio-hangup.js";
 import type { Config } from "../config/schema.js";
 import { TunnelSupervisor } from "../daemon/supervisor.js";
-import type { AgentPlatformPort, Clock, LlmAdapter, SecretProvider } from "../domain/ports.js";
+import type {
+  AgentPlatformPort,
+  Clock,
+  LlmAdapter,
+  PhoneLegHangupPort,
+  SecretProvider,
+} from "../domain/ports.js";
 import { systemClock } from "../domain/ports.js";
 import { logger } from "../log.js";
 import { dbPath, ensureStateDir, recordingsDir } from "../paths.js";
@@ -61,6 +68,8 @@ export async function startGateway(
     recordings?: import("../domain/ports.js").RecordingStore;
     /** Test seam for delegate calls (INV-14: a fake, never the network). */
     agentPlatform?: AgentPlatformPort;
+    /** Test seam for the O-30 hang-up (INV-14). */
+    phoneLegHangup?: PhoneLegHangupPort;
   } = {},
 ): Promise<Gateway> {
   if (!cfg.server.publicBaseUrl) {
@@ -88,6 +97,12 @@ export async function startGateway(
     ? (opts.agentPlatform ??
       buildAgentPlatform(cfg.agentPlatform, secrets, opts.fetchImpl ?? fetch))
     : null;
+  // O-30, optional too: without it end_call refuses on delegate calls. Its
+  // secret, like the platform's, resolves by name per request.
+  const phoneLegHangup = agentPlatform
+    ? (opts.phoneLegHangup ??
+      buildPhoneLegHangup(cfg.agentPlatform?.twilioHangup, secrets, opts.fetchImpl ?? fetch))
+    : null;
 
   const store = new SqliteStore(dbPath());
   const recordings = opts.recordings ?? new EncryptedRecordingStore(recordingsDir());
@@ -101,6 +116,7 @@ export async function startGateway(
     undefined,
     metrics,
     agentPlatform,
+    phoneLegHangup,
   );
   service.resumeDelegatePollers();
 
@@ -137,6 +153,7 @@ export async function startGateway(
     telephony: telephony.id,
     llm: llm.id,
     agentPlatform: agentPlatform?.id ?? "none",
+    phoneLegHangup: phoneLegHangup?.id ?? "none",
     tunnel: tunnel ? "supervised" : "external",
   });
 

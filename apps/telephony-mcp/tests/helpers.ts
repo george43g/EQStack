@@ -10,6 +10,7 @@ import type {
   AgentBrief,
   AgentConversation,
   AgentOutboundCallRequest,
+  AgentOutboundCallResult,
   AgentPlatformPort,
   AgentTranscriptItem,
   Clock,
@@ -17,6 +18,7 @@ import type {
   LlmAdapter,
   LlmStreamRequest,
   OutboundCallSpec,
+  PhoneLegHangupPort,
   RecordingStore,
   SecretProvider,
   TelephonyAdapter,
@@ -155,6 +157,35 @@ export class FakeTelephony implements TelephonyAdapter {
 
 export class ForbiddenPlatformCall extends Error {}
 
+/** Obviously fake Twilio call SID: `CA` + zeros + a counter. */
+export function fakeCallSid(n: number): string {
+  return `CA${String(n).padStart(32, "0")}`;
+}
+
+/**
+ * Offline PhoneLegHangupPort (INV-14): records each hang-up, and can answer
+ * `already-ended` or throw, as Twilio would.
+ */
+export class FakePhoneLegHangup implements PhoneLegHangupPort {
+  readonly id = "fake-hangup";
+  hungUp: string[] = [];
+  /** SIDs the carrier reports as no longer live (Twilio 21220). */
+  ended = new Set<string>();
+  failNext: string | null = null;
+
+  async hangUp(phoneLegSid: string): Promise<"ended" | "already-ended"> {
+    if (this.failNext) {
+      const msg = this.failNext;
+      this.failNext = null;
+      throw new Error(msg);
+    }
+    this.hungUp.push(phoneLegSid);
+    if (this.ended.has(phoneLegSid)) return "already-ended";
+    this.ended.add(phoneLegSid);
+    return "ended";
+  }
+}
+
 /**
  * Offline AgentPlatformPort (INV-14). Records every call; `forbidMutations`
  * turns every create/update/dial into a throw, which is how the dryRun pin
@@ -173,6 +204,8 @@ export class FakeAgentPlatform implements AgentPlatformPort {
   deletedAgents = new Set<string>();
   failNextPoll: string | null = null;
   failNextCall: string | null = null;
+  /** When false, placeOutboundCall returns no phone-leg SID (as EL may). */
+  returnPhoneLegSid = true;
   private conversations = new Map<string, AgentConversation>();
   private n = 0;
 
@@ -195,7 +228,7 @@ export class FakeAgentPlatform implements AgentPlatformPort {
     this.log.updated.push({ agentId, brief });
   }
 
-  async placeOutboundCall(req: AgentOutboundCallRequest): Promise<{ conversationId: string }> {
+  async placeOutboundCall(req: AgentOutboundCallRequest): Promise<AgentOutboundCallResult> {
     this.guard("placeOutboundCall");
     if (this.failNextCall) {
       const msg = this.failNextCall;
@@ -212,7 +245,10 @@ export class FakeAgentPlatform implements AgentPlatformPort {
       callDurationSecs: null,
       hasAudio: false,
     });
-    return { conversationId };
+    return {
+      conversationId,
+      phoneLegSid: this.returnPhoneLegSid ? fakeCallSid(this.n) : null,
+    };
   }
 
   async getConversation(conversationId: string): Promise<AgentConversation> {

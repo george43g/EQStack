@@ -52,6 +52,13 @@ validated — see [`config.example.json`](./config.example.json). Highlights:
   `elevenlabs-managed` is refused there too, with a pointer: it is now the
   optional top-level `agentPlatform` block (`{ "type": "elevenlabs-managed",
   "phoneNumberId": "phnum_…" }`) that enables `delegate` calls.
+- `agentPlatform.twilioHangup` (optional): `{ "accountSid": "AC…",
+  "apiKeySid": "SK…", "apiSecretRef": "…" }` lets `end_call` hang a `delegate`
+  call up through Twilio. ElevenLabs dials from a Twilio **subaccount**, which a
+  main-account key cannot reach, so both SIDs are the subaccount's and the key
+  is a restricted one minted inside it (calls read + update). The SIDs are
+  identifiers, kept in config; the secret resolves by name (default
+  `TWILIO_API_KEY_ELEVENLABS_SUBACCOUNT_CALLS_RW`).
 - `consent.autoApproveThirdPartyDisclosures` (default `false`): opt in to
   auto-acknowledging third-party recordings (a `delegate` call's is held by
   ElevenLabs) and silencing their notice.
@@ -62,8 +69,9 @@ validated — see [`config.example.json`](./config.example.json). Highlights:
 
 Secrets resolve by NAME at runtime (env → opkeep keychain cache): 
 `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY`, `TWILIO_API_SECRET`,
-`TWILIO_AUTH_TOKEN`, `OPENROUTER_API_KEY`, and `ELEVENLABS_API_KEY` when
-`agentPlatform` is configured. No `.env` files, no values in config.
+`TWILIO_AUTH_TOKEN`, `OPENROUTER_API_KEY`, `ELEVENLABS_API_KEY` when
+`agentPlatform` is configured, and the `twilioHangup.apiSecretRef` name when
+that is. No `.env` files, no values in config.
 
 ## Conversation modes
 
@@ -84,9 +92,12 @@ Chosen per call via `place_call { mode }` (or `tel call --mode`):
   the conversation-harness preamble prepended; the objective and context travel
   as dynamic variables. `serve` polls the conversation into the usual events, so
   the host loops `get_call_events { waitMs }` until `call.ended` and reads words
-  with `get_transcript`. `say_on_call`, `play_disclosure`, `set_recording` and
-  `end_call` are refused (the agent holds the line; ElevenLabs has no hang-up
-  API — the agent ends the call, or its max duration does). Recording needs
+  with `get_transcript`. `say_on_call`, `play_disclosure` and `set_recording`
+  are refused (the agent holds the line). `end_call` hangs up through Twilio
+  when `agentPlatform.twilioHangup` is configured — the feed shows
+  `call.hangup_requested`, and `call.ended` follows once ElevenLabs finalises
+  the transcript — and is refused otherwise (ElevenLabs has no hang-up API; the
+  agent ends the call, or its max duration does). Recording needs
   `acknowledgeThirdPartyRecording: true` because ElevenLabs holds it.
 - **`consult`** (reserved): delegate plus mid-call tool calls back into this
   MCP; refuses until Phase R ships.
