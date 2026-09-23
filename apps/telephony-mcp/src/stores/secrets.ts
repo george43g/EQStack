@@ -14,6 +14,8 @@ import { execFile } from "node:child_process";
 
 const SECURITY_BIN = "/usr/bin/security";
 const KEYCHAIN_SERVICE = process.env.TEL_KEYCHAIN_SERVICE ?? "opkeep";
+/** `security find-generic-password` exit status for "no such item". */
+const ITEM_NOT_FOUND_EXIT = 44;
 
 export type ExecFileFn = (file: string, args: string[]) => Promise<{ stdout: string }>;
 
@@ -47,7 +49,13 @@ export class EnvKeychainSecretProvider {
           "-w",
         ]);
         value = stdout.replace(/\n$/, "") || null;
-      } catch {
+      } catch (err) {
+        // Only a definite "not in the keychain" (security exit 44) is cached as
+        // absent. A timeout, a kill or any other failure is transient: caching
+        // it would make a long-lived `serve` report the secret missing for the
+        // rest of its life. Hit live 2026-09-23 — a stalled machine timed the
+        // lookup out and the first delegate call failed until a restart.
+        if ((err as { code?: unknown }).code !== ITEM_NOT_FOUND_EXIT) return null;
         value = null;
       }
     }
