@@ -44,7 +44,7 @@ export const CONTEXT_VARIABLE = "call_context";
  * field sent, a tool enabled): it is folded into the hash so every existing
  * agent is re-updated once, instead of silently keeping the old shape.
  */
-export const AGENT_BRIEF_VERSION = 1;
+export const AGENT_BRIEF_VERSION = 2;
 
 /**
  * What splits one profile into separate platform agents: recording (D-80)

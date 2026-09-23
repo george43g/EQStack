@@ -151,6 +151,13 @@ export function consultToolBody(spec: ConsultToolSpec): Record<string, unknown> 
  * Every recording-relevant field is sent explicitly, never left to EL's
  * default: `record_voice` false is what keeps an unrecorded call unrecorded.
  */
+/** EL's built-in hang-up, as a system tool. The agent's only way to end a call itself. */
+const END_CALL_TOOL = {
+  type: "system",
+  name: "end_call",
+  params: { system_tool_type: "end_call" },
+} as const;
+
 export function agentRequestBody(brief: AgentBrief): Record<string, unknown> {
   const tts: Record<string, unknown> = { voice_id: brief.voice.voiceId, speed: brief.voice.speed };
   if (brief.voice.stability !== null) tts.stability = brief.voice.stability;
@@ -166,15 +173,14 @@ export function agentRequestBody(brief: AgentBrief): Record<string, unknown> {
           prompt: brief.prompt,
           // EL has no endpoint that hangs up for it; without the optional
           // Twilio hang-up (O-30) this tool is the only way the call ends early.
-          built_in_tools: {
-            end_call: {
-              type: "system",
-              name: "end_call",
-              params: { system_tool_type: "end_call" },
-            },
-          },
+          built_in_tools: { end_call: END_CALL_TOOL },
           // Consult agents only (D-92): a delegate body stays byte-identical.
-          ...(brief.consultTool ? { tools: [consultToolBody(brief.consultTool)] } : {}),
+          // end_call rides in `tools` too: when a body carries a `tools` list,
+          // EL keeps only that list and drops `built_in_tools` — measured
+          // 2026-09-23, the first consult agent could not hang up.
+          ...(brief.consultTool
+            ? { tools: [consultToolBody(brief.consultTool), END_CALL_TOOL] }
+            : {}),
         },
       },
       tts,
