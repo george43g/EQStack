@@ -40,6 +40,7 @@ import {
   seqIds,
   TEST_EL_EGRESS_IP,
   tempStateDir,
+  until,
   withHoldMs,
 } from "./helpers.js";
 
@@ -337,8 +338,7 @@ describe("the consult loop (PHASE-R § 2)", () => {
         after = events.at(-1)?.seq ?? after;
       }
     })();
-    await new Promise((r) => setTimeout(r, 50)); // the host's poll is open
-    expect(svc().isHostListening(d.callId)).toBe(true);
+    await until(() => svc().isHostListening(d.callId), "the host's poll to open");
     const r = await ask(d, { question: "Tuesday 3pm or Thursday 10am — which?" });
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({ status: "answered", answer: "Thursday 10am." });
