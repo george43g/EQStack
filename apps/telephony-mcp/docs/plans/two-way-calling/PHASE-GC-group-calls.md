@@ -689,6 +689,75 @@ plus LLM**.
 
 ---
 
+## Build notes (GC-1, Steps 1–8)
+
+Built on `feat/telephony-group-calls-gc1` from `main` at `1a6ce80`. Steps 9 and 10
+are not run: George authorises each one at the time (INV-14).
+
+**Where the build differs from the Steps above** (each is a small, deliberate call):
+
+- `AgentBrief` gains a fourth optional field, `enableAuth`, besides the three Step 3
+  names, so the adapter sets `platform_settings.auth` from data rather than by
+  guessing that a brief is a meeting brief.
+- A roster line also names the member's `ask_agent` key:
+  `EQ Stack (ask_agent agent "eqstack") — speak as <Eqstack>…</Eqstack> — …`.
+  The tool's `agent` enum holds member keys, and the tag holds labels. Without the
+  key in the line, the LLM has to guess how one maps to the other.
+- `ask_agent` answers carry `agent` on every meeting outcome, and meeting calls use
+  their own guidance wording (`MEETING_GUIDANCE`, which names `ask_agent`, not
+  `consult_originator`). `not_on_call` is a new outcome with its own metric.
+- `consult.unanswered` is filtered by addressee as well as `consult.asked`. A member
+  should not see another member's missed question.
+- `get_call_events {as}` is refused (400) on a call that is not a meeting and for a
+  member not on its roster. Without the refusal, a typo would silently leave nobody
+  marked as listening. A member's long-poll reads past other members' events and
+  keeps waiting. The admin route now returns `nextCursor`, and the MCP binding
+  continues from it, so a member never re-reads an event that was filtered out.
+- The chair's session (`meeting.chair.agent`) is **not** an `ask_agent` addressee in
+  GC-1. This is the default of Open question 3 (`secretary-telephony-tools`).
+- A meeting call's record uses the chair's profile (`profile = chair.voiceProfile`),
+  starts unrecorded unless `record: true` (a profile's `record` default does not
+  apply), and has `maxDurationSec` from `meeting.maxDurationMinutes`.
+- A CLI twin: `tel meeting <to> --member executive eqstack --agenda … [--brief
+  executive=…] [--dry-run]`.
+
+**SDK v2.68.0 checks (Open question 11):** every item below was read from the
+published tarball's `serialization/types/*.js`, fetched read-only with
+`npm pack @elevenlabs/elevenlabs-js@2.68.0`:
+
+| Field | Serializer | Result |
+|---|---|---|
+| `skip_turn` | `SystemToolConfigInputParams` (union on `system_tool_type`) → `SkipTurnToolConfig` = `object({})` | wire: `{type:"system", name:"skip_turn", params:{system_tool_type:"skip_turn"}}`, the same shape as `end_call` |
+| `supported_voices[]` | `SupportedVoice` | `label`, `voice_id`, `description`, `language`, `model_family`, `optimize_streaming_latency`, `stability`, `speed`, `similarity_boost` |
+| `enum` on a body property | `LiteralJsonSchemaProperty` | `enum: string[]`, beside `description` (confirmed; no fallback needed) |
+| `enable_auth` | `AgentPlatformSettingsRequestModel.auth` → `AuthSettings.enable_auth` | path `platform_settings.auth.enable_auth` confirmed |
+| `turn_eagerness` | `ConversationalConfig.turn` → `TurnConfig.turn_eagerness` ∈ `patient \| normal \| eager` | confirmed |
+| per-call override of `supported_voices` | `TtsConversationalConfigOverride.supported_voices` exists, gated by `TtsConversationalConfigOverrideConfig.supported_voices` | **The plan's assumption is wrong**: the SDK *can* override the voices per call, if the agent allows it. The design (one agent that carries every member) still stands, and it keeps voices stable per D-106. A per-call roster of voices is possible later (see the proposed D-row below). |
+
+**Config George's machine needs** (machine-local; no secrets). First save the two
+voices from the unpicked audition candidates (Step 2), `--dry-run` first:
+`tel voices save david --label David --dry-run`, then again without `--dry-run`, and
+the same for `roger --label Roger`. Then add:
+
+```jsonc
+"meeting": {
+  "chair": { "agent": "secretary", "displayName": "the chair", "voiceProfile": "lily" },
+  "members": {
+    "executive": { "label": "Executive", "displayName": "Executive", "voiceProfile": "david",
+                   "role": "George's chief of staff: priorities, commitments, coordination" },
+    "eqstack":   { "label": "Eqstack",   "displayName": "EQ Stack",  "voiceProfile": "roger",
+                   "role": "builds the EQ Stack comms apps: imsg, gmail, telephony" }
+  },
+  "holdSec": 20,
+  "maxDurationMinutes": 30
+}
+```
+
+It needs `agentPlatform.consult`, which the machine already has from Phase R. Leave
+out `personaFile` until the secretary writes one (Open question 3). Restart `serve`
+afterwards. The line-up is O-41's proposal and is **not yet confirmed**: never use
+Charlie. The first `start_meeting` creates `eqstack-meeting` on ElevenLabs.
+
 ## Verification
 
 - `pnpm --filter telephony-mcp lint typecheck test`, then root `pnpm verify`.
