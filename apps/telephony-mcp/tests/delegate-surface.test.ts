@@ -86,9 +86,9 @@ afterAll(async () => {
 });
 
 describe("delegate is a mode, not a tool (Scope §1, INV-1/INV-5)", () => {
-  it("delegate added no tool (the count moved 13 → 16 only for the voice-preview trio, then 17 for consult's answer_consult)", async () => {
+  it("delegate added no tool (the count moved 13 → 16 only for the voice-preview trio, then 17 for consult's answer_consult, then 18 for start_meeting — a meeting is a consult variant, not a mode, D-104)", async () => {
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(17);
+    expect(tools).toHaveLength(18);
     expect(tools.map((t) => t.name)).not.toContain("delegate_call");
     expect(tools.map((t) => t.name).sort()).toEqual([...COMMAND_NAMES].sort());
     const place = tools.find((t) => t.name === "place_call");

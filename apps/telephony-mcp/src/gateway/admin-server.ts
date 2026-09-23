@@ -19,6 +19,7 @@ import {
   BeforeMsSchema,
   EventLimitSchema,
   LimitSchema,
+  MeetingMemberRefSchema,
 } from "../commands/contracts.js";
 import type { CommandSpec } from "../commands/specs.js";
 import {
@@ -29,7 +30,9 @@ import {
   playDisclosure,
   sayOnCall,
   setRecording,
+  startMeeting,
 } from "../commands/specs.js";
+import { eventsForMember, memberPollRefusal } from "../domain/meeting-events.js";
 import type { CallEvent } from "../domain/types.js";
 import { logger } from "../log.js";
 import { VERSION } from "../version.js";
@@ -86,6 +89,7 @@ const EventsQuerySchema = z.object({
   afterSeq: z.coerce.number().pipe(AfterSeqSchema).optional(),
   limit: z.coerce.number().pipe(EventLimitSchema).optional(),
   waitMs: z.coerce.number().optional(),
+  as: MeetingMemberRefSchema.optional(),
 });
 
 /** A present-but-empty query param keeps today's "absent" semantics. */
@@ -131,6 +135,14 @@ const MUTATING_ROUTES: readonly AdminRoute[] = [
     status: 201,
     toArgs: (_match, body) => body,
     run: async (service, args) => service.placeCall(args),
+  }),
+  route({
+    method: "POST",
+    pattern: /^\/meetings$/,
+    spec: startMeeting,
+    status: 201,
+    toArgs: (_match, body) => body,
+    run: async (service, args) => service.startMeeting(args),
   }),
   route({
     method: "POST",
@@ -269,20 +281,53 @@ export class AdminServer {
         afterSeq: queryParam(url, "afterSeq"),
         limit: queryParam(url, "limit"),
         waitMs: queryParam(url, "waitMs"),
+        as: queryParam(url, "as"),
       });
       const afterSeq = query.afterSeq ?? 0;
       const limit = query.limit ?? 200;
       // Same clamp as before the inversion — out-of-range waits degrade, they don't 400.
       const waitMs = Math.min(Math.max(query.waitMs ?? 0, 0), 55_000);
+      const as = query.as;
+      // PHASE-GC § 3: `as` is a meeting member's poll. Refused on anything else,
+      // so a typo cannot silently mark nobody listening.
+      if (as !== undefined) {
+        const refusal = memberPollRefusal(this.service.meetingMembersOf(callId), as);
+        if (refusal) return json(res, 400, { error: refusal });
+      }
       // Phase R: any poll through serve marks a host as listening on this call;
-      // an open long-poll counts for its whole wait (O-38, `unavailable`).
-      const endPoll = this.service.noteHostPoll(callId);
+      // an open long-poll counts for its whole wait (O-38, `unavailable`). With
+      // `as`, it marks THAT member (D-98 per member).
+      const endPoll = this.service.noteHostPoll(callId, as);
       let events: CallEvent[];
+      let cursor = afterSeq;
       try {
-        events = this.service.store.getEvents(callId, afterSeq, limit);
-        if (events.length === 0 && waitMs > 0) {
-          await this.waitForCallEvent(callId, waitMs, res);
+        if (as === undefined) {
+          // Unchanged since Phase R: one read, one wait, one re-read.
           events = this.service.store.getEvents(callId, afterSeq, limit);
+          if (events.length === 0 && waitMs > 0) {
+            await this.waitForCallEvent(callId, waitMs, res);
+            events = this.service.store.getEvents(callId, afterSeq, limit);
+          }
+          cursor = events[events.length - 1]?.seq ?? afterSeq;
+        } else {
+          // A member's long-poll reads PAST events that are not for it
+          // (another member's question) and keeps waiting, so it neither
+          // busy-loops on them nor returns early with nothing.
+          let clientGone = false;
+          res.once("close", () => {
+            clientGone = true;
+          });
+          const deadline = Date.now() + waitMs;
+          for (;;) {
+            const raw = this.service.store.getEvents(callId, cursor, limit);
+            cursor = raw[raw.length - 1]?.seq ?? cursor;
+            events = eventsForMember(raw, as);
+            const remaining = deadline - Date.now();
+            if (events.length > 0 || remaining <= 0 || clientGone) break;
+            // A full page of other members' events: read the next page first.
+            if (raw.length >= limit) continue;
+            await this.waitForCallEvent(callId, remaining, res);
+          }
         }
       } finally {
         endPoll();
@@ -295,12 +340,14 @@ export class AdminServer {
           if (parsed.success) this.service.markDelivered(callId, parsed.data.turn);
         } else if (ev.type === "consult.asked") {
           // consult.pickup: the first hand-off of the question to a host wins.
+          // With `as`, only the addressee's own questions are handed off here.
           const parsed = z.object({ questionId: z.string() }).safeParse(ev.data);
           if (parsed.success) this.service.markConsultPickedUp(callId, parsed.data.questionId);
         }
       }
-      // D-28/INV-11: same redaction as the SSE path.
-      return json(res, 200, redactValue({ events }));
+      // D-28/INV-11: same redaction as the SSE path. nextCursor is the last
+      // event READ, filtered or not, so a member never re-reads another's.
+      return json(res, 200, redactValue({ events, nextCursor: cursor }));
     }
     m = path.match(/^\/calls\/([\w-]+)\/transcript$/);
     if (method === "GET" && m) {

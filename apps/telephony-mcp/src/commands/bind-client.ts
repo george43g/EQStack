@@ -14,6 +14,7 @@ import { redactValue } from "@george43g/robustness";
 import type { z } from "zod";
 import type { AdminClient } from "../client/admin-client.js";
 import { buildLatencyReport } from "../domain/latency-report.js";
+import { eventsForMember, memberPollRefusal } from "../domain/meeting-events.js";
 import type { CallEvent, Utterance } from "../domain/types.js";
 import type { SqliteStore } from "../stores/sqlite-store.js";
 import type { VoicePreviewService } from "../voice-preview/service.js";
@@ -36,6 +37,7 @@ import {
   sayOnCall,
   searchCalls,
   setRecording,
+  startMeeting,
 } from "./specs.js";
 
 export interface CommandDeps {
@@ -113,6 +115,7 @@ export function buildClientDefinitions(deps: CommandDeps): AnyToolDefinition[] {
 
   return [
     bind(placeCall, async (input) => admin.placeCall(input)),
+    bind(startMeeting, async (input) => admin.startMeeting(input)),
     bind(endCall, async ({ callId, reason }) => {
       await admin.endCall(callId, reason);
       return { ok: true as const };
@@ -145,13 +148,29 @@ export function buildClientDefinitions(deps: CommandDeps): AnyToolDefinition[] {
         };
       }),
     ),
-    bind(getCallEvents, async ({ callId, afterSeq, limit, waitMs }) => {
-      const raw = waitMs
-        ? (await admin.getEvents(callId, afterSeq ?? 0, limit ?? 200, waitMs)).events
-        : withReadStore((s) => s.getEvents(callId, afterSeq ?? 0, limit ?? 200));
-      const events = raw.map(cleanEvent);
+    bind(getCallEvents, async ({ callId, afterSeq, limit, waitMs, as }) => {
+      let page: { events: CallEvent[]; nextCursor?: number | undefined };
+      if (waitMs) {
+        // serve filters (and marks this member listening) for a long-poll.
+        page = await admin.getEvents(callId, afterSeq ?? 0, limit ?? 200, waitMs, as);
+      } else {
+        // A read without waitMs never counts as listening (D-98), so it stays
+        // off serve — but `as` still filters it, with the same refusals.
+        page = withReadStore((s) => {
+          const raw = s.getEvents(callId, afterSeq ?? 0, limit ?? 200);
+          if (as === undefined) return { events: raw };
+          const roster = s.listMeetingMembers(callId).map((m) => m.member);
+          const refusal = memberPollRefusal(roster.length > 0 ? roster : null, as);
+          if (refusal) throw new Error(refusal);
+          return { events: eventsForMember(raw, as), nextCursor: raw.at(-1)?.seq ?? afterSeq ?? 0 };
+        });
+      }
+      const events = page.events.map(cleanEvent);
       const last = events[events.length - 1];
-      return { events, nextCursor: last ? last.seq : (afterSeq ?? 0) };
+      return {
+        events,
+        nextCursor: page.nextCursor ?? (last ? last.seq : (afterSeq ?? 0)),
+      };
     }),
     bind(getTranscript, async ({ callId }) => ({
       transcript: withReadStore((s) => s.getTranscript(callId)).map(cleanUtterance),

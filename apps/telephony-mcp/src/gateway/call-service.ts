@@ -8,22 +8,36 @@
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { redactValue } from "@george43g/robustness";
 import type { Config } from "../config/schema.js";
-import { AGENT_PLATFORM_HOLDER, effectiveCallSettings } from "../config/schema.js";
+import {
+  AGENT_PLATFORM_HOLDER,
+  effectiveCallSettings,
+  meetingMaxDurationSec,
+} from "../config/schema.js";
 import {
   type AgentPreview,
   agentKey,
+  agentName,
   briefHash,
   buildBrief,
   buildDynamicVariables,
+  buildMeetingBrief,
+  buildMeetingVariables,
+  MEETING_AGENT_STEM,
+  type MeetingVariables,
+  memberJoinInstructions,
   planAgentAction,
 } from "../domain/agent-brief.js";
 import {
   buildCallPlan,
   type CallPlan,
   CallRequestError,
+  CONSULT_HOST_NOTICE,
   createCallRequest,
+  MEETING_CONVENOR_NOTICE,
   type PlaceCallInput,
 } from "../domain/call-requests.js";
 import { assertRecordingToggleAllowed } from "../domain/consent.js";
@@ -97,16 +111,68 @@ export type PlaceCallResult =
       notices?: string[];
     };
 
+// ── Meetings (PHASE-GC, D-104: a consult call with the meeting variant) ────
+
+export interface StartMeetingInput {
+  to: string;
+  /** Member keys (session names), in poll order. */
+  members: string[];
+  agenda: string;
+  /** Per-member roster brief (≤ 1500 chars each), keyed by member. */
+  briefs?: Record<string, string> | undefined;
+  context?: string | undefined;
+  record?: boolean | undefined;
+  acknowledgeThirdPartyRecording?: boolean | undefined;
+  dryRun?: boolean | undefined;
+  idempotencyKey?: string | undefined;
+}
+
+export interface MeetingRosterEntry {
+  member: string;
+  displayName: string;
+  label: string;
+  voiceProfile: string;
+  /** A get_call_events {as, waitMs} poll from this member is open or recent (D-98, per member). */
+  listening: boolean;
+}
+
+export interface StartMeetingResult {
+  callId?: string;
+  dryRun: boolean;
+  deduped?: boolean;
+  agent: AgentPreview;
+  roster: MeetingRosterEntry[];
+  /** Deliver each to that member's session, before or right after dialling. */
+  joinInstructions: Record<string, string>;
+  notices: string[];
+}
+
+/** What placeCall needs to dial a meeting instead of an ordinary consult call. */
+interface MeetingDial {
+  members: string[];
+  variables: MeetingVariables;
+  personaText: string | null;
+}
+
+/** The dryRun join text has no call id yet. */
+const CALL_ID_PLACEHOLDER = "<callId: returned when the meeting is dialled>";
+
 // ── Consult (Phase R, D-90..D-94) ──────────────────────────────────────────
 
-/** What `serve` answers EL's consult tool with — always a 200 body we worded (D-93). */
-export type ConsultResult =
+/**
+ * What `serve` answers EL's consult tool with — always a 200 body we worded
+ * (D-93). On a meeting call the result also names the `agent` asked, and a
+ * question to anyone not on the roster is `not_on_call` (PHASE-GC § 3).
+ */
+export type ConsultResult = (
   | { status: "answered"; question_id: string; answer: string }
   | { status: "pending"; question_id: string; guidance: string }
   | { status: "unavailable"; guidance: string }
   | { status: "busy"; guidance: string }
   | { status: "call_ended"; guidance: string }
-  | { status: "not_found"; guidance: string };
+  | { status: "not_found"; guidance: string }
+  | { status: "not_on_call"; guidance: string }
+) & { agent?: string };
 
 export type ConsultOutcome = ConsultResult["status"];
 
@@ -118,7 +184,23 @@ export const CONSULT_GUIDANCE = {
   busy: "Too many questions are already waiting. Do not retry. Tell the person you will pass the question on and someone will follow up.",
   call_ended: "This call has ended.",
   not_found: "There is no such question on this call. Do not retry.",
+  not_on_call: "There is no such agent on this call. Do not retry.",
 } as const;
+
+type Guidance = Record<keyof typeof CONSULT_GUIDANCE, string>;
+
+/** The same outcomes, worded for the chair of a meeting (MEETING_HARNESS names these moves). */
+export const MEETING_GUIDANCE: Guidance = {
+  pending:
+    "No answer yet. Say so in the chair's voice and carry on with the meeting; before you move to the next topic, and at the latest before you close, call ask_agent again with this agent and collect_question_id set to this question_id.",
+  unavailable:
+    "That agent is not at its desk (its session is not listening). Do not retry. Say so in the chair's voice and offer to pass the question on.",
+  busy: "Too many questions are already waiting. Do not retry now. Say you will come back to it.",
+  call_ended: "This call has ended.",
+  not_found: "There is no such question on this call. Do not retry.",
+  not_on_call:
+    "That agent is not on this call. Do not retry. Say so in the chair's voice, and offer to pass the question on.",
+};
 
 /** Wide buckets for a human-in-the-loop answer (D-27): seconds to minutes. */
 export const CONSULT_ANSWER_BUCKETS_MS = [
@@ -139,6 +221,11 @@ export function hashConsultToken(token: string): string {
 }
 
 type ConsultWaiter = (r: { kind: "answered"; answer: string } | { kind: "call_ended" }) => void;
+
+/** `~/x` → `<home>/x`; anything else unchanged. */
+function expandHome(path: string): string {
+  return path === "~" || path.startsWith("~/") ? `${homedir()}${path.slice(1)}` : path;
+}
 
 export const defaultIds: IdProvider = {
   newId: () => randomUUID(),
@@ -161,8 +248,12 @@ export class CallService {
   private provisioning = new Map<string, Promise<AgentPreview>>();
   /** Held consult requests, per question id (in memory — lost on restart, by design). */
   private consultWaiters = new Map<string, Set<ConsultWaiter>>();
-  /** Per call: when a host last polled get_call_events, and how many long-polls are open. */
-  private hostPolls = new Map<string, { lastMs: number; open: number }>();
+  /**
+   * Per call, per addressee: when a host last polled get_call_events, and how
+   * many long-polls are open. The addressee is "" for an ordinary host; on a
+   * meeting it is the member key a poll named with `as` (D-98, per member).
+   */
+  private hostPolls = new Map<string, Map<string, { lastMs: number; open: number }>>();
 
   constructor(
     readonly cfg: Config,
@@ -202,12 +293,25 @@ export class CallService {
   async placeCall(
     input: PlaceCallInput & { dryRun?: boolean | undefined; idempotencyKey?: string | undefined },
   ): Promise<PlaceCallResult> {
+    return this.dial(input, null);
+  }
+
+  /**
+   * The one dial pipeline (INV-5): place_call, and start_meeting with a
+   * roster. A meeting changes only what the agent is briefed with, the
+   * per-call variables, and the roster rows — never the dial path itself.
+   */
+  private async dial(
+    input: PlaceCallInput & { dryRun?: boolean | undefined; idempotencyKey?: string | undefined },
+    meeting: MeetingDial | null,
+    patchPlan: (plan: CallPlan) => CallPlan = (plan) => plan,
+  ): Promise<PlaceCallResult> {
     let plan: CallPlan;
     let number: string;
     try {
       const resolved = resolveRecipient(this.cfg, input.to);
       number = resolved.number;
-      plan = buildCallPlan(this.cfg, resolved, input);
+      plan = patchPlan(buildCallPlan(this.cfg, resolved, input));
     } catch (err) {
       throw new CallServiceError((err as Error).message);
     }
@@ -222,21 +326,36 @@ export class CallService {
           500,
         );
       }
-      brief = buildBrief(this.cfg, plan.profile, {
-        recordVoice: plan.recordingEnabled,
-        consult: CALL_MODE_SPECS[plan.mode].supportsConsult,
-      });
+      brief = meeting
+        ? buildMeetingBrief(this.cfg, { recordVoice: plan.recordingEnabled }, meeting.personaText)
+        : buildBrief(this.cfg, plan.profile, {
+            recordVoice: plan.recordingEnabled,
+            consult: CALL_MODE_SPECS[plan.mode].supportsConsult,
+          });
     }
     // dryRun creates NOTHING — not here, not on the platform (reads only).
     if (input.dryRun) {
-      return { dryRun: true, plan, ...(brief ? { agent: this.previewAgent(plan, brief) } : {}) };
+      return {
+        dryRun: true,
+        plan,
+        ...(brief ? { agent: this.previewAgent(plan, brief, meeting?.variables ?? null) } : {}),
+      };
     }
     const notices = plan.notices.length > 0 ? { notices: plan.notices } : {};
 
     this.installKey ??= loadOrCreateInstallKey(ensureStateDir());
+    // D-3b; a meeting's key also covers its roster (members, order, briefs).
     const idemKey =
       input.idempotencyKey ??
-      deriveIdempotencyKey(this.installKey, number, plan.objective, plan.mode, plan.profile);
+      deriveIdempotencyKey(
+        this.installKey,
+        number,
+        plan.objective,
+        plan.mode,
+        meeting
+          ? `${plan.profile}\u0000${MEETING_AGENT_STEM}\u0000${meeting.variables.roster}`
+          : plan.profile,
+      );
     const now = this.clock.nowMs();
     const windowMs = this.cfg.limits.callDedupeWindowSeconds * 1000;
 
@@ -310,6 +429,25 @@ export class CallService {
       profile: call.profile,
       recording: call.recordingEnabled,
     });
+    if (meeting) {
+      // The roster is written before the dial, so a question that arrives the
+      // moment the call connects already finds its addressee (INV-9: serve writes).
+      const configured = this.cfg.meeting?.members ?? {};
+      this.store.insertMeetingMembers(
+        call.id,
+        meeting.members.map((member) => {
+          const m = configured[member];
+          if (!m) throw new CallServiceError(`not a configured meeting member: ${member}`);
+          return {
+            member,
+            label: m.label,
+            displayName: m.displayName,
+            voiceProfile: m.voiceProfile,
+          };
+        }),
+      );
+      this.emit(call.id, "meeting.started", { members: meeting.members });
+    }
 
     try {
       if (brief) {
@@ -320,7 +458,12 @@ export class CallService {
           agentId: agent.agentId as string,
           phoneNumberId: this.cfg.agentPlatform?.phoneNumberId as string,
           to: number,
-          dynamicVariables: buildDynamicVariables(plan.objective, plan.context, consultToken),
+          dynamicVariables: buildDynamicVariables(
+            plan.objective,
+            plan.context,
+            consultToken,
+            meeting?.variables ?? null,
+          ),
         });
         consultToken = null;
         this.store.setProviderCallId(call.id, conversationId);
@@ -373,10 +516,144 @@ export class CallService {
     }
   }
 
+  // -- meetings (PHASE-GC Step 6) ---------------------------------------------
+
+  /**
+   * start_meeting: resolve the roster, brief the ensemble, then run the SAME
+   * dial pipeline as place_call with mode `consult` and the meeting variant
+   * (D-104, INV-5). Refusals name what is missing, at plan time.
+   */
+  async startMeeting(input: StartMeetingInput): Promise<StartMeetingResult> {
+    const meeting = this.cfg.meeting;
+    if (!meeting) {
+      throw new CallServiceError(
+        'start_meeting needs the "meeting" config block ({ "chair": { "voiceProfile": "…" }, "members": { "<session>": { "label", "displayName", "voiceProfile", "role" } } }) — none is configured',
+      );
+    }
+    const members = input.members;
+    if (members.length === 0)
+      throw new CallServiceError("members: at least one member is required");
+    const seen = new Set<string>();
+    for (const m of members) {
+      if (!meeting.members[m]) {
+        throw new CallServiceError(
+          `members: "${m}" is not a configured meeting member (configured: ${Object.keys(meeting.members).join(", ")})`,
+        );
+      }
+      if (seen.has(m)) throw new CallServiceError(`members: "${m}" is listed twice`);
+      seen.add(m);
+    }
+    const briefs = input.briefs ?? {};
+    for (const key of Object.keys(briefs)) {
+      if (!seen.has(key)) {
+        throw new CallServiceError(`briefs: "${key}" is not one of this meeting's members`);
+      }
+    }
+    // D-107: the persona lives in her home, referenced by machine-local config.
+    // Read at brief time; a missing file refuses at plan time, naming the path.
+    let personaText: string | null = null;
+    if (meeting.chair.personaFile) {
+      const path = expandHome(meeting.chair.personaFile);
+      try {
+        personaText = readFileSync(path, "utf8");
+      } catch (err) {
+        throw new CallServiceError(
+          `meeting.chair.personaFile cannot be read (${meeting.chair.personaFile}): ${(err as NodeJS.ErrnoException).code ?? (err as Error).message}`,
+        );
+      }
+    }
+    const variables = buildMeetingVariables(meeting, members, briefs);
+    const maxDurationSec = meetingMaxDurationSec(this.cfg, meeting);
+    const result = await this.dial(
+      {
+        to: input.to,
+        objective: input.agenda,
+        context: input.context,
+        // The chair's profile: its voice leads, its language is the agent's.
+        profile: meeting.chair.voiceProfile,
+        // A meeting is unrecorded unless asked for (INV-3); a profile's
+        // record default does not apply to a room of agents.
+        record: input.record ?? false,
+        mode: "consult",
+        acknowledgeThirdPartyRecording: input.acknowledgeThirdPartyRecording,
+        dryRun: input.dryRun,
+        idempotencyKey: input.idempotencyKey,
+      },
+      { members, variables, personaText },
+      (plan) => ({
+        ...plan,
+        maxDurationSec,
+        // The convenor is not the answerer: the members are (PHASE-GC § 2).
+        notices: [
+          ...plan.notices.filter((n) => n !== CONSULT_HOST_NOTICE),
+          MEETING_CONVENOR_NOTICE,
+        ],
+      }),
+    );
+    const callId = result.dryRun ? null : result.call.id;
+    const roster: MeetingRosterEntry[] = members.map((member) => {
+      const m = meeting.members[member] as NonNullable<(typeof meeting.members)[string]>;
+      return {
+        member,
+        displayName: m.displayName,
+        label: m.label,
+        voiceProfile: m.voiceProfile,
+        listening: callId ? this.isHostListening(callId, member) : false,
+      };
+    });
+    const joinInstructions = Object.fromEntries(
+      members.map((m) => [m, memberJoinInstructions(m, callId ?? CALL_ID_PLACEHOLDER)]),
+    );
+    if (result.dryRun) {
+      return {
+        dryRun: true,
+        agent: result.agent as AgentPreview,
+        roster,
+        joinInstructions,
+        notices: result.plan.notices,
+      };
+    }
+    return {
+      callId: result.call.id,
+      dryRun: false,
+      deduped: result.deduped,
+      agent: result.agent ?? this.meetingAgentPreview(result.call),
+      roster,
+      joinInstructions,
+      notices: result.notices ?? [],
+    };
+  }
+
+  /** A deduped retry has no fresh provisioning result: describe the stored agent instead. */
+  private meetingAgentPreview(call: CallRecord): AgentPreview {
+    const key = agentKey(MEETING_AGENT_STEM, {
+      recordVoice: call.recordingEnabled,
+      meeting: true,
+    });
+    const row = this.store.getAgentProfile(key);
+    return {
+      platform: this.agentPlatform?.id ?? "none",
+      name: agentName(MEETING_AGENT_STEM, { recordVoice: call.recordingEnabled, meeting: true }),
+      agentId: row?.agentId ?? null,
+      action: "reuse",
+      briefHash: row?.briefHash ?? "",
+    };
+  }
+
+  /** A meeting call is one with a roster (written at dial time, before the call connects). */
+  meetingMembersOf(callId: string): string[] | null {
+    const rows = this.store.listMeetingMembers(callId);
+    return rows.length > 0 ? rows.map((r) => r.member) : null;
+  }
+
   // -- delegate calls (Phase Q) ---------------------------------------------
 
   /** dryRun: what provisioning WOULD do, from a store read. Creates nothing. */
-  private previewAgent(plan: CallPlan, brief: AgentBrief): AgentPreview {
+  private previewAgent(
+    plan: CallPlan,
+    brief: AgentBrief,
+    meeting: MeetingVariables | null = null,
+  ): AgentPreview {
     const hash = briefHash(brief);
     const existing = this.store.getAgentProfile(agentKey(plan.profile, briefVariant(brief)));
     return {
@@ -386,7 +663,7 @@ export class CallService {
       action: planAgentAction(existing, hash),
       briefHash: hash,
       brief,
-      dynamicVariables: buildDynamicVariables(plan.objective, plan.context),
+      dynamicVariables: buildDynamicVariables(plan.objective, plan.context, null, meeting),
     };
   }
 
@@ -540,11 +817,17 @@ export class CallService {
    * `unavailable`: a question is only held while someone is listening (O-38).
    * Returns the matching `end` for a long-poll.
    */
-  noteHostPoll(callId: string): () => void {
-    const entry = this.hostPolls.get(callId) ?? { lastMs: 0, open: 0 };
+  noteHostPoll(callId: string, as?: string): () => void {
+    const perCall =
+      this.hostPolls.get(callId) ?? new Map<string, { lastMs: number; open: number }>();
+    this.hostPolls.set(callId, perCall);
+    const key = as ?? "";
+    const entry = perCall.get(key) ?? { lastMs: 0, open: 0 };
     entry.lastMs = this.clock.nowMs();
     entry.open += 1;
-    this.hostPolls.set(callId, entry);
+    perCall.set(key, entry);
+    // "Making sure everyone picks up" (PHASE-GC § 3): the first poll per member, stamped once.
+    if (as) this.store.stampMemberPolledIfUnset(callId, as, entry.lastMs);
     let ended = false;
     return () => {
       if (ended) return;
@@ -554,10 +837,14 @@ export class CallService {
     };
   }
 
-  /** A long-poll in progress counts as listening; otherwise the last poll must be recent. */
-  isHostListening(callId: string): boolean {
+  /**
+   * A long-poll in progress counts as listening; otherwise the last poll must
+   * be recent. With an addressee (a meeting member), only THAT member's polls
+   * count — D-98 applied per member.
+   */
+  isHostListening(callId: string, addressee?: string | null): boolean {
     const consult = this.cfg.agentPlatform?.consult;
-    const entry = this.hostPolls.get(callId);
+    const entry = this.hostPolls.get(callId)?.get(addressee ?? "");
     if (!consult || !entry) return false;
     if (entry.open > 0) return true;
     return this.clock.nowMs() - entry.lastMs <= consult.hostIdleSec * 1000;
@@ -590,7 +877,12 @@ export class CallService {
    */
   async askConsult(
     callId: string,
-    input: { question?: string | undefined; collectQuestionId?: string | undefined },
+    input: {
+      question?: string | undefined;
+      collectQuestionId?: string | undefined;
+      /** Meeting calls only (PHASE-GC § 3): the member asked. */
+      agent?: string | undefined;
+    },
     signal?: AbortSignal,
   ): Promise<ConsultResult> {
     const consult = this.cfg.agentPlatform?.consult;
@@ -598,38 +890,51 @@ export class CallService {
     if (!consult || !call || TERMINAL_STATUSES.has(call.status)) {
       return this.finish({ status: "call_ended", guidance: CONSULT_GUIDANCE.call_ended });
     }
-    const holdMs = consult.holdSec * 1000;
+    // A meeting has its own hold (shorter: the whole room waits) and wording;
+    // an ordinary consult call takes exactly the Phase R path (addressee null).
+    const roster = this.meetingMembersOf(callId);
+    const g: Guidance = roster ? MEETING_GUIDANCE : CONSULT_GUIDANCE;
+    const holdMs = (roster && this.cfg.meeting ? this.cfg.meeting.holdSec : consult.holdSec) * 1000;
+    const named = (r: ConsultResult, agent: string | null): ConsultResult =>
+      this.finish(roster && agent ? { ...r, agent } : r);
 
     if (input.collectQuestionId) {
       // Scoped to THIS call: another call's id is indistinguishable from none.
       const q = this.store.getConsultQuestion(callId, input.collectQuestionId);
-      if (!q) return this.finish({ status: "not_found", guidance: CONSULT_GUIDANCE.not_found });
+      const agent = q?.addressee ?? input.agent ?? null;
+      if (!q) return named({ status: "not_found", guidance: g.not_found }, agent);
       if (q.status === "answered" || q.status === "delivered") {
-        return this.finish(this.deliverConsult(q, "collected"));
+        return named(this.deliverConsult(q, "collected"), agent);
       }
       if (q.status === "cancelled") {
-        return this.finish({ status: "call_ended", guidance: CONSULT_GUIDANCE.call_ended });
+        return named({ status: "call_ended", guidance: g.call_ended }, agent);
       }
       if (q.status === "unanswered") {
-        return this.finish({ status: "unavailable", guidance: CONSULT_GUIDANCE.unavailable });
+        return named({ status: "unavailable", guidance: g.unavailable }, agent);
       }
       // Still pending: hold for whatever is left of the original hold window.
-      const remaining = this.isHostListening(callId)
+      const remaining = this.isHostListening(callId, q.addressee)
         ? Math.max(0, q.askedAtMs + holdMs - this.clock.nowMs())
         : 0;
-      return this.finish(await this.holdConsult(q, remaining, signal));
+      return named(await this.holdConsult(q, remaining, g, signal), agent);
     }
 
+    // Meeting: the addressee must be on THIS call's roster (the tool's enum is
+    // every configured member; presence is per call).
+    const addressee = roster ? (input.agent ?? "") : null;
+    if (roster && addressee !== null && !roster.includes(addressee)) {
+      return named({ status: "not_on_call", guidance: g.not_on_call }, addressee || null);
+    }
     const question = (input.question ?? "").trim();
     const norm = normalizeQuestion(question);
     // A repeat of a pending question joins it: no new row, no second notice.
-    const existing = norm ? this.store.findPendingConsultByNorm(callId, norm) : null;
+    const existing = norm ? this.store.findPendingConsultByNorm(callId, norm, addressee) : null;
     if (existing) {
       const remaining = Math.max(0, existing.askedAtMs + holdMs - this.clock.nowMs());
-      return this.finish(await this.holdConsult(existing, remaining, signal));
+      return named(await this.holdConsult(existing, remaining, g, signal), addressee);
     }
     if (this.store.countPendingConsults(callId) >= consult.maxPendingPerCall) {
-      return this.finish({ status: "busy", guidance: CONSULT_GUIDANCE.busy });
+      return named({ status: "busy", guidance: g.busy }, addressee);
     }
     const q = this.store.insertConsultQuestion({
       id: this.ids.newId(),
@@ -638,8 +943,12 @@ export class CallService {
       questionNorm: norm,
       status: "pending",
       askedAtMs: this.clock.nowMs(),
+      addressee,
     });
-    if (!this.isHostListening(callId)) {
+    // Only meeting events carry the addressee: a Phase R event is unchanged.
+    const to = addressee !== null ? { addressee } : {};
+    if (addressee !== null) this.store.incrementMemberQuestions(callId, addressee);
+    if (!this.isHostListening(callId, addressee)) {
       // Nobody is polling: don't leave the callee on hold for no one.
       this.store.transitionConsult(callId, q.id, "pending", "unanswered");
       this.emit(callId, "consult.unanswered", {
@@ -647,17 +956,24 @@ export class CallService {
         seq: q.seq,
         question: q.question,
         reason: "no_listener",
+        ...to,
       });
-      return this.finish({ status: "unavailable", guidance: CONSULT_GUIDANCE.unavailable });
+      return named({ status: "unavailable", guidance: g.unavailable }, addressee);
     }
-    this.emit(callId, "consult.asked", { questionId: q.id, seq: q.seq, question: q.question });
-    return this.finish(await this.holdConsult(q, holdMs, signal));
+    this.emit(callId, "consult.asked", {
+      questionId: q.id,
+      seq: q.seq,
+      question: q.question,
+      ...to,
+    });
+    return named(await this.holdConsult(q, holdMs, g, signal), addressee);
   }
 
   /** Waits for the answer, the deadline, the call ending, or an abort — whichever is first. */
   private holdConsult(
     q: ConsultQuestion,
     holdMs: number,
+    g: Guidance,
     signal?: AbortSignal,
   ): Promise<ConsultResult> {
     return new Promise((resolve) => {
@@ -678,14 +994,12 @@ export class CallService {
       };
       const waiter: ConsultWaiter = (r) => {
         if (r.kind === "call_ended") {
-          settle({ status: "call_ended", guidance: CONSULT_GUIDANCE.call_ended });
+          settle({ status: "call_ended", guidance: g.call_ended });
           return;
         }
         const row = this.store.getConsultQuestion(q.callId, q.id);
         settle(
-          row
-            ? this.deliverConsult(row, "held")
-            : { status: "not_found", guidance: CONSULT_GUIDANCE.not_found },
+          row ? this.deliverConsult(row, "held") : { status: "not_found", guidance: g.not_found },
         );
       };
       const onTimeout = () => {
@@ -696,16 +1010,16 @@ export class CallService {
           return;
         }
         if (row?.status === "cancelled") {
-          settle({ status: "call_ended", guidance: CONSULT_GUIDANCE.call_ended });
+          settle({ status: "call_ended", guidance: g.call_ended });
           return;
         }
         this.emit(q.callId, "consult.timed_out", { questionId: q.id, holdMs });
-        settle({ status: "pending", question_id: q.id, guidance: CONSULT_GUIDANCE.pending });
+        settle({ status: "pending", question_id: q.id, guidance: g.pending });
       };
       const onAbort = () =>
         // EL dropped the request (or the listener is closing): release the
         // waiter only. The row keeps its honest state until the call ends.
-        settle({ status: "unavailable", guidance: CONSULT_GUIDANCE.unavailable });
+        settle({ status: "unavailable", guidance: g.unavailable });
       waiters.add(waiter);
       const timer = setTimeout(onTimeout, holdMs);
       timer.unref();
@@ -793,7 +1107,7 @@ export class CallService {
       if (waiters) for (const w of [...waiters]) w({ kind: "call_ended" });
     }
     this.store.deleteConsultToken(callId);
-    this.hostPolls.delete(callId);
+    this.hostPolls.delete(callId); // every addressee's entry with it
     if (cancelled.length > 0) {
       this.emit(callId, "consult.cancelled", { reason, questionIds: cancelled });
     }
@@ -1055,8 +1369,17 @@ export class CallService {
   }
 }
 
-function briefVariant(brief: AgentBrief): { recordVoice: boolean; consult: boolean } {
-  return { recordVoice: brief.recordVoice, consult: brief.consultTool !== undefined };
+function briefVariant(brief: AgentBrief): {
+  recordVoice: boolean;
+  consult: boolean;
+  meeting: boolean;
+} {
+  return {
+    recordVoice: brief.recordVoice,
+    consult: brief.consultTool !== undefined,
+    // Only the ensemble's tool is addressed (PHASE-GC § 3).
+    meeting: brief.consultTool?.addressees !== undefined,
+  };
 }
 
 export { CallRequestError };

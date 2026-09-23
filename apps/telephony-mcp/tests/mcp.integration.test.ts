@@ -74,10 +74,10 @@ afterAll(async () => {
 });
 
 describe("tool surface", () => {
-  it("serves exactly the command registry's 17 tools, with safety annotations", async () => {
+  it("serves exactly the command registry's 18 tools, with safety annotations", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(COMMAND_NAMES).toHaveLength(17);
+    expect(COMMAND_NAMES).toHaveLength(18);
     expect(names).toEqual([...COMMAND_NAMES].sort());
     const place = tools.find((t) => t.name === "place_call");
     expect(place?.annotations?.destructiveHint).toBe(true);
@@ -85,6 +85,10 @@ describe("tool surface", () => {
     // genuinely idempotent inside the dedupe window (D-5)
     expect(place?.annotations?.idempotentHint).toBe(true);
     expect(place?.description).toMatch(/PAID/);
+    // start_meeting dials a real person: annotated exactly like place_call (PHASE-GC Step 7).
+    const meeting = tools.find((t) => t.name === "start_meeting");
+    expect(meeting?.annotations).toEqual(place?.annotations);
+    expect(meeting?.description).toMatch(/PAID/);
     const list = tools.find((t) => t.name === "list_calls");
     expect(list?.annotations?.readOnlyHint).toBe(true);
     const del = tools.find((t) => t.name === "delete_recording");

@@ -70,6 +70,12 @@ export class AdminClient {
     return this.request("POST", "/calls", input);
   }
 
+  startMeeting(
+    input: import("../gateway/call-service.js").StartMeetingInput,
+  ): Promise<import("../gateway/call-service.js").StartMeetingResult> {
+    return this.request("POST", "/meetings", input);
+  }
+
   endCall(callId: string, reason?: string): Promise<{ ok: boolean }> {
     return this.request("POST", `/calls/${callId}/end`, { reason });
   }
@@ -118,16 +124,23 @@ export class AdminClient {
     return this.request("GET", `/calls/${callId}`);
   }
 
+  /**
+   * `nextCursor` is the last event the gateway READ; with `as` (a meeting
+   * member) it can be past the last event returned, because other members'
+   * questions are filtered out (PHASE-GC § 3).
+   */
   getEvents(
     callId: string,
     afterSeq = 0,
     limit = 200,
     waitMs = 0,
-  ): Promise<{ events: CallEvent[] }> {
+    as?: string,
+  ): Promise<{ events: CallEvent[]; nextCursor?: number }> {
     const wait = waitMs > 0 ? `&waitMs=${waitMs}` : "";
+    const member = as !== undefined ? `&as=${encodeURIComponent(as)}` : "";
     return this.request(
       "GET",
-      `/calls/${callId}/events?afterSeq=${afterSeq}&limit=${limit}${wait}`,
+      `/calls/${callId}/events?afterSeq=${afterSeq}&limit=${limit}${wait}${member}`,
     );
   }
 

@@ -8,7 +8,7 @@
  * surprise (INV-8).
  */
 import { z } from "zod";
-import { RecordingPolicySchema } from "../config/schema.js";
+import { MeetingMemberKeySchema, RecordingPolicySchema } from "../config/schema.js";
 import type { AgentPreview } from "../domain/agent-brief.js";
 import type { CallPlan } from "../domain/call-requests.js";
 import type { AgentBrief } from "../domain/ports.js";
@@ -49,6 +49,10 @@ export const WaitMsSchema = z
   .max(55_000)
   .describe("Long-poll timeout in ms (requires the gateway to be running)");
 export const EndReasonSchema = z.string().min(1).max(500);
+/** A meeting member: the session name (`executive`) — PHASE-GC § 4. */
+export const MeetingMemberRefSchema = MeetingMemberKeySchema.describe(
+  "A meeting member key: the session name, e.g. 'executive'",
+);
 export const ConsultQuestionIdSchema = z
   .string()
   .min(1)
@@ -202,8 +206,25 @@ export const AgentBriefSchema: z.ZodType<AgentBrief> = z.object({
       executionMode: z.enum(["immediate", "post_tool_speech"]),
       interruptionMode: z.enum(["allow", "disable_during_tool", "disable_during_tool_and_turn"]),
       toolErrorHandlingMode: z.enum(["auto", "summarized", "passthrough", "hide"]),
+      addressees: z.array(z.string()).optional(),
     })
     .optional(),
+  // Meeting briefs only (PHASE-GC § 1).
+  supportedVoices: z
+    .array(
+      z.object({
+        label: z.string(),
+        voiceId: z.string(),
+        speed: z.number(),
+        stability: z.number().nullable(),
+        similarityBoost: z.number().nullable(),
+        description: z.string(),
+      }),
+    )
+    .optional(),
+  extraSystemTools: z.array(z.literal("skip_turn")).optional(),
+  turnEagerness: z.enum(["patient", "normal", "eager"]).optional(),
+  enableAuth: z.boolean().optional(),
 });
 
 export const AgentPreviewSchema: z.ZodType<AgentPreview> = z.object({

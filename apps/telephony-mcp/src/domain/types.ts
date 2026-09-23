@@ -204,4 +204,19 @@ export interface ConsultQuestion {
   deliveredAtMs: number | null;
   /** "held" (the answer came back on the open request) or "collected" (a later tool call). */
   deliveredVia: string | null;
+  /** Meeting calls only (PHASE-GC § 3): the member key asked. Null on every other consult call. */
+  addressee: string | null;
+}
+
+/** One member of a meeting's roster, as written at dial time (PHASE-GC Step 5). */
+export interface MeetingMember {
+  callId: string;
+  /** The session name (`executive`) — the ask_agent / get_call_events `as` key. */
+  member: string;
+  label: string;
+  displayName: string;
+  voiceProfile: string;
+  /** First get_call_events {as, waitMs} poll from this member (first write wins). */
+  firstPolledMs: number | null;
+  questionsAsked: number;
 }

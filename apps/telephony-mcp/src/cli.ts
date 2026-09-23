@@ -25,7 +25,13 @@ import { buildDispatcher } from "@george43g/mcp-kit";
 import { ZodError, type z } from "zod";
 import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
 import { buildClientRegistry } from "./commands/bind-client.js";
-import { answerConsult, deleteRecording, placeCall, saveVoiceProfile } from "./commands/specs.js";
+import {
+  answerConsult,
+  deleteRecording,
+  placeCall,
+  saveVoiceProfile,
+  startMeeting,
+} from "./commands/specs.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
 import { renderCallHeader, renderNote, renderTurn } from "./console/render.js";
 import {
@@ -665,6 +671,49 @@ program
       const result = await admin(cfg).placeCall(input);
       printJson(result);
       if (!("plan" in result)) console.error(`\nWatch live: tel watch`);
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+program
+  .command("meeting")
+  .description(
+    "Start a group meeting (REAL, PAID): dial <to> into a chaired call with the named member agents — --dry-run previews",
+  )
+  .argument("<to>", "configured recipient alias OR raw E.164 (usually george)")
+  .requiredOption("--member <key...>", "member keys (session names), in poll order")
+  .requiredOption("--agenda <text>", "the meeting's agenda")
+  .option("--brief <member=text...>", "a member's brief, e.g. executive='owns the roadmap'")
+  .option("--context <text>", "extra context for the chair")
+  .option("--record", "record the meeting (needs --acknowledge-third-party-recording)")
+  .option(
+    "--acknowledge-third-party-recording",
+    "accept that the recording is made and held by ElevenLabs",
+  )
+  .option("--dry-run", "preview the ensemble agent, roster and join instructions", false)
+  .option("--idempotency-key <key>", "override the derived dedupe key")
+  .action(async (to: string, opts) => {
+    try {
+      const briefs: Record<string, string> = {};
+      for (const pair of (opts.brief as string[] | undefined) ?? []) {
+        const i = pair.indexOf("=");
+        if (i <= 0) throw new Error(`--brief expects member=text, got "${pair}"`);
+        briefs[pair.slice(0, i)] = pair.slice(i + 1);
+      }
+      const input = parseInput(startMeeting.input, {
+        to,
+        members: opts.member,
+        agenda: opts.agenda,
+        ...(Object.keys(briefs).length > 0 ? { briefs } : {}),
+        ...(opts.context ? { context: opts.context } : {}),
+        ...(opts.record ? { record: true } : {}),
+        ...(opts.acknowledgeThirdPartyRecording ? { acknowledgeThirdPartyRecording: true } : {}),
+        ...(opts.dryRun ? { dryRun: true } : {}),
+        ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
+      });
+      const cfg = loadConfig();
+      printJson(await admin(cfg).startMeeting(input));
     } catch (err) {
       fail(err);
     }

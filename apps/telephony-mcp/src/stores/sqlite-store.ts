@@ -13,6 +13,7 @@ import type {
   CallStatus,
   ConsultQuestion,
   ConsultStatus,
+  MeetingMember,
   RecordingMeta,
   TurnTiming,
   Utterance,
@@ -144,6 +145,18 @@ CREATE TABLE IF NOT EXISTS consult_tokens (
   token_hash TEXT NOT NULL UNIQUE,
   created_at_ms INTEGER NOT NULL
 );
+-- PHASE-GC (group calls). Additive: the roster of a meeting call, written at
+-- dial time; serve is the single writer (INV-9).
+CREATE TABLE IF NOT EXISTS meeting_members (
+  call_id TEXT NOT NULL,
+  member TEXT NOT NULL,
+  label TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  voice_profile TEXT NOT NULL,
+  first_polled_ms INTEGER,
+  questions_asked INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (call_id, member)
+);
 CREATE INDEX IF NOT EXISTS idx_consult_call ON consult_questions (call_id, status);
 CREATE INDEX IF NOT EXISTS idx_events_call ON events (call_id, seq);
 CREATE INDEX IF NOT EXISTS idx_calls_created ON calls (created_at_ms);
@@ -200,6 +213,19 @@ function rowToConsult(r: Record<string, unknown>): ConsultQuestion {
     answeredAtMs: (r.answered_at_ms as number | null) ?? null,
     deliveredAtMs: (r.delivered_at_ms as number | null) ?? null,
     deliveredVia: (r.delivered_via as string | null) ?? null,
+    addressee: (r.addressee as string | null | undefined) ?? null,
+  };
+}
+
+function rowToMember(r: Record<string, unknown>): MeetingMember {
+  return {
+    callId: r.call_id as string,
+    member: r.member as string,
+    label: r.label as string,
+    displayName: r.display_name as string,
+    voiceProfile: r.voice_profile as string,
+    firstPolledMs: (r.first_polled_ms as number | null) ?? null,
+    questionsAsked: r.questions_asked as number,
   };
 }
 
@@ -232,6 +258,13 @@ export class SqliteStore implements EventStore {
     // default, no index — additive and instant on a live WAL database.
     try {
       this.db.exec("ALTER TABLE calls ADD COLUMN phone_leg_sid TEXT");
+    } catch {
+      // column already exists
+    }
+    // PHASE-GC: who a meeting question was addressed to. Nullable, no
+    // default — null on every non-meeting consult call (byte-identical Phase R).
+    try {
+      this.db.exec("ALTER TABLE consult_questions ADD COLUMN addressee TEXT");
     } catch {
       // column already exists
     }
@@ -713,16 +746,27 @@ export class SqliteStore implements EventStore {
     questionNorm: string;
     status: ConsultStatus;
     askedAtMs: number;
+    /** Meeting calls only; null elsewhere. */
+    addressee?: string | null;
   }): ConsultQuestion {
     const next = this.db
       .prepare("SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM consult_questions WHERE call_id = ?")
       .get(q.callId) as { seq: number };
     this.db
       .prepare(
-        `INSERT INTO consult_questions (id, call_id, seq, question, question_norm, status, asked_at_ms)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO consult_questions (id, call_id, seq, question, question_norm, status, asked_at_ms, addressee)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(q.id, q.callId, next.seq, q.question, q.questionNorm, q.status, q.askedAtMs);
+      .run(
+        q.id,
+        q.callId,
+        next.seq,
+        q.question,
+        q.questionNorm,
+        q.status,
+        q.askedAtMs,
+        q.addressee ?? null,
+      );
     return this.getConsultQuestion(q.callId, q.id) as ConsultQuestion;
   }
 
@@ -734,12 +778,21 @@ export class SqliteStore implements EventStore {
     return r ? rowToConsult(r) : null;
   }
 
-  findPendingConsultByNorm(callId: string, questionNorm: string): ConsultQuestion | null {
+  /**
+   * A repeat joins the pending row with the same text AND addressee: the same
+   * words put to two meeting members are two questions. `IS` matches null to
+   * null, so a non-meeting call behaves exactly as before.
+   */
+  findPendingConsultByNorm(
+    callId: string,
+    questionNorm: string,
+    addressee: string | null = null,
+  ): ConsultQuestion | null {
     const r = this.db
       .prepare(
-        "SELECT * FROM consult_questions WHERE call_id = ? AND status = 'pending' AND question_norm = ? ORDER BY seq LIMIT 1",
+        "SELECT * FROM consult_questions WHERE call_id = ? AND status = 'pending' AND question_norm = ? AND addressee IS ? ORDER BY seq LIMIT 1",
       )
-      .get(callId, questionNorm) as Record<string, unknown> | undefined;
+      .get(callId, questionNorm, addressee) as Record<string, unknown> | undefined;
     return r ? rowToConsult(r) : null;
   }
 
@@ -823,6 +876,53 @@ export class SqliteStore implements EventStore {
         .all(callId) as unknown as Array<{ id: string }>
     ).map((r) => r.id);
     return ids.filter((id) => this.transitionConsult(callId, id, "pending", "cancelled"));
+  }
+
+  // -- meeting roster (PHASE-GC) ---------------------------------------------
+
+  /** Written at dial time. OR IGNORE: a deduped retry of the same meeting writes nothing new. */
+  insertMeetingMembers(
+    callId: string,
+    members: Array<Pick<MeetingMember, "member" | "label" | "displayName" | "voiceProfile">>,
+  ): void {
+    const stmt = this.db.prepare(
+      `INSERT OR IGNORE INTO meeting_members (call_id, member, label, display_name, voice_profile)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    for (const m of members) stmt.run(callId, m.member, m.label, m.displayName, m.voiceProfile);
+  }
+
+  /** The roster, in the order it was written; empty for a non-meeting call. */
+  listMeetingMembers(callId: string): MeetingMember[] {
+    let rows: Array<Record<string, unknown>>;
+    try {
+      rows = this.db
+        .prepare("SELECT * FROM meeting_members WHERE call_id = ? ORDER BY rowid")
+        .all(callId) as unknown as Array<Record<string, unknown>>;
+    } catch (err) {
+      // A read-only reader can meet a DB a pre-GC serve still owns (no table = no meeting).
+      if (this.readonly && /no such table/.test((err as Error).message)) return [];
+      throw err;
+    }
+    return rows.map(rowToMember);
+  }
+
+  /** First-write-wins, like stampDeliveredIfUnset (D-60). */
+  stampMemberPolledIfUnset(callId: string, member: string, ms: number): void {
+    this.db
+      .prepare(
+        `UPDATE meeting_members SET first_polled_ms = ?
+         WHERE call_id = ? AND member = ? AND first_polled_ms IS NULL`,
+      )
+      .run(ms, callId, member);
+  }
+
+  incrementMemberQuestions(callId: string, member: string): void {
+    this.db
+      .prepare(
+        "UPDATE meeting_members SET questions_asked = questions_asked + 1 WHERE call_id = ? AND member = ?",
+      )
+      .run(callId, member);
   }
 
   putConsultTokenHash(callId: string, tokenHash: string, nowMs: number): void {

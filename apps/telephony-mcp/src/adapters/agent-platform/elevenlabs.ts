@@ -29,6 +29,7 @@ import type {
   AgentPlatformPort,
   ConsultToolSpec,
   SecretProvider,
+  SupportedVoiceSpec,
 } from "../../domain/ports.js";
 import { AGENT_CONVERSATION_STATUSES } from "../../domain/ports.js";
 
@@ -108,6 +109,10 @@ const ConversationResponse = z.object({
  * EL substitutes the per-call value, keeping it from the LLM.
  */
 export function consultToolBody(spec: ConsultToolSpec): Record<string, unknown> {
+  // Meeting (PHASE-GC § 3): the same webhook, addressed. `enum` on a literal
+  // property is in SDK v2.68.0 `LiteralJsonSchemaProperty` (enum: string[]),
+  // alongside `description` — the LLM writes it, so it needs both.
+  const addressed = spec.addressees !== undefined;
   return {
     type: "webhook",
     name: spec.name,
@@ -126,12 +131,25 @@ export function consultToolBody(spec: ConsultToolSpec): Record<string, unknown> 
       request_headers: { Authorization: { variable_name: spec.bearerVariable } },
       request_body_schema: {
         type: "object",
-        required: ["question", "conversation_id"],
+        required: addressed
+          ? ["agent", "question", "conversation_id"]
+          : ["question", "conversation_id"],
         properties: {
+          ...(addressed
+            ? {
+                agent: {
+                  type: "string",
+                  description:
+                    'The agent to ask: its ask_agent name exactly as the roster gives it (e.g. "executive").',
+                  enum: spec.addressees,
+                },
+              }
+            : {}),
           question: {
             type: "string",
-            description:
-              "One self-contained question for the originator, with everything they need to decide (they cannot hear the call).",
+            description: addressed
+              ? "One self-contained question for that agent's real counterpart, with everything they need to answer (they cannot hear the call)."
+              : "One self-contained question for the originator, with everything they need to decide (they cannot hear the call).",
           },
           collect_question_id: {
             type: "string",
@@ -152,16 +170,52 @@ export function consultToolBody(spec: ConsultToolSpec): Record<string, unknown> 
  * default: `record_voice` false is what keeps an unrecorded call unrecorded.
  */
 /** EL's built-in hang-up, as a system tool. The agent's only way to end a call itself. */
-const END_CALL_TOOL = {
+export const END_CALL_TOOL = {
   type: "system",
   name: "end_call",
   params: { system_tool_type: "end_call" },
 } as const;
 
+/**
+ * Extra system tools (meeting briefs). Wire shape from SDK v2.68.0:
+ * `SystemToolConfigInput` {type: "system", name, params} and
+ * `SystemToolConfigInputParams`, a union discriminated on
+ * `system_tool_type` whose `skip_turn` member is `SkipTurnToolConfig` — an
+ * empty object. So the whole params body is the discriminant, exactly as
+ * END_CALL_TOOL's is (`EndCallToolConfig` is empty too).
+ */
+export const SYSTEM_TOOLS = {
+  skip_turn: { type: "system", name: "skip_turn", params: { system_tool_type: "skip_turn" } },
+} as const;
+
+/** EL multi-voice entries (SDK v2.68.0 `SupportedVoice`; same mapping as the preview agent). */
+export function supportedVoicesBody(voices: SupportedVoiceSpec[]): Record<string, unknown>[] {
+  return voices.map((v) => {
+    const out: Record<string, unknown> = {
+      label: v.label,
+      voice_id: v.voiceId,
+      description: v.description,
+      speed: v.speed,
+    };
+    if (v.stability !== null) out.stability = v.stability;
+    if (v.similarityBoost !== null) out.similarity_boost = v.similarityBoost;
+    return out;
+  });
+}
+
 export function agentRequestBody(brief: AgentBrief): Record<string, unknown> {
   const tts: Record<string, unknown> = { voice_id: brief.voice.voiceId, speed: brief.voice.speed };
   if (brief.voice.stability !== null) tts.stability = brief.voice.stability;
   if (brief.voice.similarityBoost !== null) tts.similarity_boost = brief.voice.similarityBoost;
+  // Meeting-only fields (PHASE-GC Step 4). Each is absent from every other
+  // brief, so delegate and consult bodies stay byte-identical (pinned).
+  if (brief.supportedVoices) tts.supported_voices = supportedVoicesBody(brief.supportedVoices);
+  const extraTools = (brief.extraSystemTools ?? []).map((name) => SYSTEM_TOOLS[name]);
+  const platformSettings: Record<string, unknown> = {
+    privacy: { record_voice: brief.recordVoice },
+  };
+  // AuthSettings.enable_auth (SDK v2.68.0 AgentPlatformSettingsRequestModel.auth).
+  if (brief.enableAuth !== undefined) platformSettings.auth = { enable_auth: brief.enableAuth };
   return {
     name: brief.name,
     conversation_config: {
@@ -178,15 +232,24 @@ export function agentRequestBody(brief: AgentBrief): Record<string, unknown> {
           // end_call rides in `tools` too: when a body carries a `tools` list,
           // EL keeps only that list and drops `built_in_tools` — measured
           // 2026-09-23, the first consult agent could not hang up.
-          ...(brief.consultTool
-            ? { tools: [consultToolBody(brief.consultTool), END_CALL_TOOL] }
+          // A meeting's skip_turn rides in `tools` for the same reason.
+          ...(brief.consultTool || extraTools.length > 0
+            ? {
+                tools: [
+                  ...(brief.consultTool ? [consultToolBody(brief.consultTool)] : []),
+                  END_CALL_TOOL,
+                  ...extraTools,
+                ],
+              }
             : {}),
         },
       },
       tts,
+      // TurnConfig.turn_eagerness (SDK v2.68.0 ConversationalConfig.turn).
+      ...(brief.turnEagerness ? { turn: { turn_eagerness: brief.turnEagerness } } : {}),
       conversation: { max_duration_seconds: brief.maxDurationSec },
     },
-    platform_settings: { privacy: { record_voice: brief.recordVoice } },
+    platform_settings: platformSettings,
   };
 }
 

@@ -68,6 +68,14 @@ and the migration manifest (this tool is slated to move out of life-stack).
   time, handed to EL only as the `secret__consult_bearer` dynamic variable,
   stored only as a SHA-256 hash, and never logged. Tests run the whole loop
   against `FakeAgentPlatform` (`tests/consult-mode.test.ts`).
+- **Group calls** (PHASE-GC, `docs/plans/two-way-calling/PHASE-GC-group-calls.md`):
+  `start_meeting` (`tel meeting`) is a consult call with the meeting variant
+  (D-104). One ElevenLabs ensemble agent, `eqstack-meeting`, chairs the call and
+  speaks for each `meeting.members` entry in its saved voice. `ask_agent` is the
+  consult route with an `agent` field (D-105, no new route). Members listen with
+  `get_call_events {as, waitMs}`. The meeting body keeps `end_call` and
+  `skip_turn` INSIDE `tools`. Tests: `tests/meeting-mode.test.ts`,
+  `src/domain/meeting-brief.test.ts`.
 - **Voice preview** (`tel voices …`, tools `preview_voices` /
   `review_voice_preview` / `save_voice_profile`): George auditions voices on
   ElevenLabs' hosted talk-to page, no phone call. `save_voice_profile` is the
