@@ -183,7 +183,7 @@ phase's work.** If you find yourself wanting to, stop and read
 | **A** rename + kits | Kit dependencies wired; TODO ledger of customisations deliberately dropped | every later phase |
 | **B** command registry | The registry + shared contracts. **`CallMode` must be an open union sized for 4 modes + the consult loop**, not today's `"llm" \| "direct"`. **B stays provably behaviour-neutral** — it does the INV-1 rename and keeps `prepare_call` + `start_call` as two registry entries; it does NOT merge them | C, D, G, H, and every later mode |
 | **C** open dialing | **Both** dial gates deleted; `prepare`+`start` merged into one-shot `place_call` with `dryRun` + idempotency; ad-hoc recipient synthesis | Q, R, T (all modes dial through it) |
-| **D** tunnel + daemon | Stable public hostname; supervised process lifecycle | H (MCP-HTTP needs a stable URL), R (ElevenLabs calls our https MCP endpoint) |
+| **D** tunnel + daemon | Stable public hostname; supervised process lifecycle | H (MCP-HTTP needs a stable URL), R (EL's consult **webhook** tool calls `tools.agentpipe.top` — not an MCP endpoint; [`PHASE-R-consult-mode.md`](./PHASE-R-consult-mode.md) §1, §4) |
 | **E** instrumentation | Real per-turn latency numbers for direct mode | F (how long to mask), R (`response_timeout_secs` must match reality) |
 | **F** thinking sound | `playFrame` builder + the thinking-state lifecycle | K (mode handoff reuses the state machine) |
 | **G** console view | Event-stream parsing + rendering primitives | I (TUI), J (web SPA) |
