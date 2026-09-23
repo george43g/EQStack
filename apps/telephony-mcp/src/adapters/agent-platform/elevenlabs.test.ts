@@ -310,13 +310,20 @@ describe("consult webhook tool block (Phase R, D-90)", () => {
     expect(JSON.stringify(body)).not.toContain("webhook");
   });
 
-  it("a consult body adds exactly one inline webhook tool beside end_call, with SDK 2.68.0 wire names", () => {
+  it("a consult body carries the inline webhook tool AND end_call in `tools`, with SDK 2.68.0 wire names", () => {
     const body = agentRequestBody(consultBrief) as {
       conversation_config: { agent: { prompt: { tools: unknown[]; built_in_tools: unknown } } };
     };
     const prompt = body.conversation_config.agent.prompt;
     expect(prompt.built_in_tools).toBeDefined();
-    expect(prompt.tools).toHaveLength(1);
+    // EL keeps only `tools` when a body carries one, so end_call must ride there
+    // too — without it the first live consult agent could not hang up (2026-09-23).
+    expect(prompt.tools).toHaveLength(2);
+    expect(prompt.tools[1]).toEqual({
+      type: "system",
+      name: "end_call",
+      params: { system_tool_type: "end_call" },
+    });
     expect(prompt.tools[0]).toEqual({
       type: "webhook",
       name: "consult_originator",

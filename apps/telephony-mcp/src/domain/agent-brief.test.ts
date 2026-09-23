@@ -108,7 +108,7 @@ describe("briefHash + planAgentAction (idempotent provisioning)", () => {
     expect(briefHash(brief)).toBe(briefHash(brief));
     expect(briefHash({ ...reordered, voice: brief.voice })).toBe(briefHash(brief));
     expect(briefHash(brief)).toMatch(/^[0-9a-f]{64}$/);
-    expect(AGENT_BRIEF_VERSION).toBe(1);
+    expect(AGENT_BRIEF_VERSION).toBe(2);
   });
 
   it("moves with any profile change", () => {
@@ -150,16 +150,16 @@ describe("consult briefs (Phase R, D-92)", () => {
    */
   it("delegate brief hashes do not move (golden, pre-Phase-R)", () => {
     expect(briefHash(buildBrief(testConfig(), "default", { recordVoice: false }))).toBe(
-      "f59c57d772a5a7352f5679c49e7c343b63162643c9b6167752dda4417c08f863",
+      "7335c514213667f4ed71d7830b0658921735e66bfa2ffc287d7f85ed6eeffee4",
     );
     expect(briefHash(buildBrief(delegateConfig(), "default", { recordVoice: true }))).toBe(
-      "b0efb92f070b2a8d1c54a4d6cfcbb9e035a98bcb91d1f80cbff27e4c9686d7c9",
+      "a6dc0834a98f43a77803dd199c5e9a37cf1caa861b0354d9ddf0519107a633b4",
     );
     // …and configuring consult does not move them either: the block is read only for consult briefs.
     expect(briefHash(buildBrief(consultConfig(), "default", { recordVoice: false }))).toBe(
-      "f59c57d772a5a7352f5679c49e7c343b63162643c9b6167752dda4417c08f863",
+      "7335c514213667f4ed71d7830b0658921735e66bfa2ffc287d7f85ed6eeffee4",
     );
-    expect(AGENT_BRIEF_VERSION).toBe(1);
+    expect(AGENT_BRIEF_VERSION).toBe(2);
   });
 
   it("a delegate brief has consultTool undefined; a consult brief carries the tool spec", () => {
