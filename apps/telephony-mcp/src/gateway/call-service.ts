@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { redactValue } from "@george43g/robustness";
 import type { Config } from "../config/schema.js";
 import { AGENT_PLATFORM_HOLDER, effectiveCallSettings } from "../config/schema.js";
 import {
@@ -32,6 +33,7 @@ import type {
   AgentPlatformPort,
   Clock,
   IdProvider,
+  PhoneLegHangupPort,
   RecordingStore,
   TelephonyAdapter,
 } from "../domain/ports.js";
@@ -112,6 +114,8 @@ export class CallService {
     private metrics?: Metrics,
     /** Holds `mediaPathOffDevice` calls (Phase Q); null when agentPlatform is not configured. */
     private agentPlatform: AgentPlatformPort | null = null,
+    /** Hangs up an off-device call's phone leg (O-30); null = end_call refuses on those calls. */
+    private phoneLegHangup: PhoneLegHangupPort | null = null,
   ) {}
 
   emit(callId: string, type: string, data: Record<string, unknown> = {}): CallEvent {
@@ -232,7 +236,7 @@ export class CallService {
     try {
       if (brief) {
         const agent = await this.ensureAgent(plan.profile, brief);
-        const { conversationId } = await (
+        const { conversationId, phoneLegSid } = await (
           this.agentPlatform as AgentPlatformPort
         ).placeOutboundCall({
           agentId: agent.agentId as string,
@@ -241,9 +245,12 @@ export class CallService {
           dynamicVariables: buildDynamicVariables(plan.objective, plan.context),
         });
         this.store.setProviderCallId(call.id, conversationId);
+        // Kept whether or not a hang-up is configured, so adding one later
+        // (O-30) also covers calls already in flight.
+        if (phoneLegSid) this.store.setPhoneLegSid(call.id, phoneLegSid);
         this.metrics?.counter("tel_calls_total", "Calls dialed").inc();
-        // No duration timer: the platform enforces max_duration_seconds itself,
-        // and we have no hang-up to arm one with. The poller carries a deadline.
+        // No duration timer: the platform enforces max_duration_seconds itself.
+        // The poller carries a deadline.
         this.startDelegatePoller(this.store.getCall(call.id) as CallRecord);
         return {
           dryRun: false,
@@ -457,12 +464,10 @@ export class CallService {
   async endCall(callId: string, reason: string): Promise<void> {
     const call = this.requireCall(callId);
     if (TERMINAL_STATUSES.has(call.status)) return;
-    this.refuseIfOffDevice(
-      call,
-      "end_call",
-      (holder) =>
-        `${holder} holds the phone leg and exposes no API that hangs up a live conversation. The agent ends the call itself (its end_call tool) or at the profile's max duration (${call.maxDurationSec}s); get_call_events will then deliver call.ended.`,
-    );
+    if (CALL_MODE_SPECS[this.modeOf(call)].mediaPathOffDevice) {
+      await this.endOffDeviceCall(call, reason);
+      return;
+    }
     this.sessions.get(callId)?.end(reason);
     if (call.providerCallId) {
       try {
@@ -480,6 +485,45 @@ export class CallService {
     });
     this.emit(callId, "call.ended", { reason });
     this.clearTimer(callId);
+  }
+
+  /**
+   * O-30: hang an off-device call up at the carrier. The platform cannot end
+   * the conversation (D-79), but the carrier holds the phone leg.
+   *
+   * This does NOT write call.ended or a terminal status. The platform only
+   * hands over the transcript once the conversation is `done` (D-83), and the
+   * poller stops the moment the call record goes terminal — so closing the
+   * record here would lose the whole transcript. Instead the hang-up is
+   * announced as `call.hangup_requested` and the poller writes call.ended
+   * exactly once, under its `el:terminal` claim, when the platform reports the
+   * conversation over. The observer's contract is unchanged: follow
+   * get_call_events until call.ended, then read get_transcript.
+   */
+  private async endOffDeviceCall(call: CallRecord, reason: string): Promise<void> {
+    const hangup = this.phoneLegHangup;
+    const sid = hangup ? this.store.getPhoneLegSid(call.id) : null;
+    if (!hangup || !sid) {
+      this.refuseIfOffDevice(call, "end_call", (holder) =>
+        !hangup
+          ? `${holder} holds the phone leg and exposes no API that hangs up a live conversation, and no carrier hang-up is configured (agentPlatform.twilioHangup). The agent ends the call itself (its end_call tool) or at the profile's max duration (${call.maxDurationSec}s); get_call_events will then deliver call.ended.`
+          : `no phone-leg call SID is recorded for this call (${holder} did not return one, or the call predates hang-up support), so it cannot be hung up at the carrier. The agent ends it itself (its end_call tool) or at the profile's max duration (${call.maxDurationSec}s); get_call_events will then deliver call.ended.`,
+      );
+      return;
+    }
+    let outcome: "ended" | "already-ended";
+    try {
+      outcome = await hangup.hangUp(sid);
+    } catch (err) {
+      const error = String(redactValue((err as Error).message)).slice(0, 400);
+      logger.warn("phone-leg hang-up failed", { callId: call.id, via: hangup.id, error });
+      throw new CallServiceError(`end_call could not hang up through ${hangup.id}: ${error}`, 502);
+    }
+    logger.info("phone-leg hang-up", { callId: call.id, via: hangup.id, outcome });
+    // One event however many times end_call is repeated.
+    if (this.store.recordProviderEvent(call.id, "tel:hangup")) {
+      this.emit(call.id, "call.hangup_requested", { reason, via: hangup.id, outcome });
+    }
   }
 
   /**
