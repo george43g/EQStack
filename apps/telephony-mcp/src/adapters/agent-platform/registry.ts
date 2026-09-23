@@ -10,8 +10,9 @@
  * it every direct and byo-model call.
  */
 import type { AgentPlatformConfig } from "../../config/schema.js";
-import type { AgentPlatformPort, SecretProvider } from "../../domain/ports.js";
+import type { AgentPlatformPort, SecretProvider, VoicePreviewPort } from "../../domain/ports.js";
 import { ElevenLabsAgentPlatform } from "./elevenlabs.js";
+import { ElevenLabsVoicePreview } from "./elevenlabs-preview.js";
 
 export function buildAgentPlatform(
   cfg: AgentPlatformConfig,
@@ -21,6 +22,23 @@ export function buildAgentPlatform(
   switch (cfg.type) {
     case "elevenlabs-managed":
       return new ElevenLabsAgentPlatform({
+        apiKeyRef: cfg.apiKeyRef,
+        secrets,
+        fetchImpl,
+        baseUrl: cfg.baseUrl,
+      });
+  }
+}
+
+/** The voice-preview client for the same platform block (same key, same base URL). */
+export function buildVoicePreview(
+  cfg: AgentPlatformConfig,
+  secrets: SecretProvider,
+  fetchImpl: typeof fetch = fetch,
+): VoicePreviewPort {
+  switch (cfg.type) {
+    case "elevenlabs-managed":
+      return new ElevenLabsVoicePreview({
         apiKeyRef: cfg.apiKeyRef,
         secrets,
         fetchImpl,

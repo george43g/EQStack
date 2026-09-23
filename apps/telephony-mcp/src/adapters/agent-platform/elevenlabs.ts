@@ -112,7 +112,11 @@ export function agentRequestBody(brief: AgentBrief): Record<string, unknown> {
   };
 }
 
-function parseOrThrow<T extends z.ZodTypeAny>(schema: T, json: unknown, what: string): z.infer<T> {
+export function parseOrThrow<T extends z.ZodTypeAny>(
+  schema: T,
+  json: unknown,
+  what: string,
+): z.infer<T> {
   const parsed = schema.safeParse(json);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -135,7 +139,8 @@ export class ElevenLabsAgentPlatform implements AgentPlatformPort {
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
-  private async request(
+  /** Shared with the voice-preview client (elevenlabs-preview.ts): one key path, one redaction path. */
+  protected async request(
     method: "GET" | "POST" | "PATCH",
     path: string,
     /** Path without ids, for error messages. */

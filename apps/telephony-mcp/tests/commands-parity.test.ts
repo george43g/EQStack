@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildClientRegistry } from "../src/commands/bind-client.js";
-import { ALL_COMMANDS, COMMAND_NAMES } from "../src/commands/specs.js";
+import { ALL_COMMANDS, COMMAND_NAMES, LOCAL_COMMANDS } from "../src/commands/specs.js";
 import { ROUTED_COMMANDS } from "../src/gateway/admin-server.js";
 
 const registry = buildClientRegistry({
@@ -18,7 +18,7 @@ const registry = buildClientRegistry({
 });
 
 describe("command surface parity", () => {
-  it("golden pin: exactly these 13 commands exist (Phase E adds get_latency_report)", () => {
+  it("golden pin: exactly these 16 commands exist (voice preview adds three)", () => {
     expect([...COMMAND_NAMES].sort()).toEqual(
       [
         "place_call",
@@ -34,6 +34,9 @@ describe("command surface parity", () => {
         "search_calls",
         "get_recording_metadata",
         "delete_recording",
+        "preview_voices",
+        "review_voice_preview",
+        "save_voice_profile",
       ].sort(),
     );
   });
@@ -43,20 +46,28 @@ describe("command surface parity", () => {
     for (const name of COMMAND_NAMES) expect(registry.get(name)).toBeDefined();
   });
 
-  it("every mutating command has a REST route row", () => {
+  it("every mutating command has a REST route row, or is a pinned local command", () => {
     const mutating = ALL_COMMANDS.filter((c) => c.annotations.readOnlyHint !== true).map(
       (c) => c.name,
     );
-    for (const name of mutating) expect(ROUTED_COMMANDS).toContain(name);
+    for (const name of mutating) {
+      if (LOCAL_COMMANDS.includes(name)) continue;
+      expect(ROUTED_COMMANDS).toContain(name);
+    }
+  });
+
+  it("local commands are pinned: they never touch the call DB, so they skip the admin API", () => {
+    expect([...LOCAL_COMMANDS].sort()).toEqual(["preview_voices", "save_voice_profile"]);
+    for (const name of LOCAL_COMMANDS) expect(ROUTED_COMMANDS).not.toContain(name);
   });
 
   it("every REST route row maps to a registered command", () => {
     for (const name of ROUTED_COMMANDS) expect(registry.get(name)).toBeDefined();
   });
 
-  it("console/MCP listing derives from the registry (13 tools, schemas attached)", () => {
+  it("console/MCP listing derives from the registry (16 tools, schemas attached)", () => {
     const tools = registry.toMcpTools();
-    expect(tools).toHaveLength(13);
+    expect(tools).toHaveLength(16);
     for (const t of tools) {
       expect(t.inputSchema).toBeDefined();
       expect(t.description?.length ?? 0).toBeGreaterThan(0);

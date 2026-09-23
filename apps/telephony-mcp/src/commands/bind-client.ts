@@ -16,6 +16,7 @@ import type { AdminClient } from "../client/admin-client.js";
 import { buildLatencyReport } from "../domain/latency-report.js";
 import type { CallEvent, Utterance } from "../domain/types.js";
 import type { SqliteStore } from "../stores/sqlite-store.js";
+import type { VoicePreviewService } from "../voice-preview/service.js";
 import type { CommandSpec } from "./specs.js";
 import {
   deleteRecording,
@@ -28,6 +29,9 @@ import {
   listCalls,
   placeCall,
   playDisclosure,
+  previewVoices,
+  reviewVoicePreview,
+  saveVoiceProfile,
   sayOnCall,
   searchCalls,
   setRecording,
@@ -37,6 +41,12 @@ export interface CommandDeps {
   admin: AdminClient;
   /** Open the read-only store, or null when no state DB exists yet. */
   openReadStore: () => SqliteStore | null;
+  /**
+   * The voice-preview workflow, built on first use (it needs the
+   * agentPlatform block and resolves the platform key by name — INV-12).
+   * Absent → the three preview commands refuse with a pointer to config.
+   */
+  voicePreview?: () => VoicePreviewService;
 }
 
 /** Third-party speech exits here: strip control chars, mark callee text untrusted. */
@@ -80,6 +90,15 @@ export function buildClientDefinitions(deps: CommandDeps): AnyToolDefinition[] {
     } finally {
       store.close();
     }
+  };
+
+  const preview = (): VoicePreviewService => {
+    if (!deps.voicePreview) {
+      throw new Error(
+        "voice preview needs an agentPlatform block in config (the ElevenLabs account the audition runs on)",
+      );
+    }
+    return deps.voicePreview();
   };
 
   return [
@@ -150,6 +169,24 @@ export function buildClientDefinitions(deps: CommandDeps): AnyToolDefinition[] {
     })),
     bind(deleteRecording, async ({ recordingSid, scope, confirm }) =>
       admin.deleteRecording(recordingSid, scope, confirm),
+    ),
+    bind(previewVoices, async ({ candidates, reset, applyFrom }) =>
+      preview().preview({
+        ...(candidates !== undefined ? { candidates } : {}),
+        ...(reset !== undefined ? { reset } : {}),
+        ...(applyFrom !== undefined ? { applyFrom } : {}),
+      }),
+    ),
+    bind(reviewVoicePreview, async ({ conversation }) => preview().review(conversation)),
+    bind(saveVoiceProfile, async (input) =>
+      preview().save({
+        ...(input.conversation !== undefined ? { conversation: input.conversation } : {}),
+        ...(input.label !== undefined ? { label: input.label } : {}),
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.base !== undefined ? { base: input.base } : {}),
+        ...(input.overwrite !== undefined ? { overwrite: input.overwrite } : {}),
+        ...(input.dryRun !== undefined ? { dryRun: input.dryRun } : {}),
+      }),
     ),
   ];
 }
