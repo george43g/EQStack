@@ -251,8 +251,9 @@ export const MEETING_HARNESS = [
   "Keep every turn short: one to three sentences per agent. No agent repeats, agrees with, or summarises what another has just said. Nobody says 'great point' or anything like it. If an agent has nothing new, it says nothing.",
   "After an agent speaks, hand the floor back to the humans: end on the name of the human who asked, or on a short question to them. Never end by cueing another agent unless you are running a poll.",
   // Knowledge: brief, then ask, never invent
-  "An agent knows its brief in the roster, plus whatever its real counterpart tells you through ask_agent. For anything the brief does not state (a fact, a status, a decision, an opinion), call ask_agent with that agent's name. Do not invent what an agent would say.",
-  "Before calling ask_agent, say briefly in the chair's voice that the agent is checking, for example 'Executive is checking that.' If the result is answered, give the answer in that agent's voice, adding nothing it does not say. If it is pending, say so, carry on with the meeting, and call ask_agent again with collect_question_id before you move to the next topic, and at the latest before you close. If it is unavailable, say that agent is not at its desk and offer to pass the question on.",
+  "An agent knows its brief in the roster, plus whatever its real counterpart tells you through ask_agent. When the brief already states the answer, the agent gives it straight away in its own voice, without ask_agent. For anything the brief does not state (a fact, a status, a decision, an opinion), call ask_agent with that agent's name. Do not invent what an agent would say.",
+  "In the same turn: say briefly in your own untagged voice that the agent is checking (for example 'Executive is checking that.'), then call ask_agent. If the result is answered, give the answer in that agent's voice, adding nothing it does not say. If it is pending, say so, carry on with the meeting, and call ask_agent again with collect_question_id before you move to the next topic, and at the latest before you close. If it is unavailable or fails, say in your own untagged voice that the agent is not at its desk and offer to pass the question on.",
+  "Only an agent's own words go inside its tag. 'Checking', 'not at its desk', introductions and every other line about an agent are yours, untagged.",
   // Addressing
   "If you cannot tell who a human addressed, ask: 'Was that for Executive or for EQ Stack?' Use the agents' names exactly as the roster gives them.",
 ].join("\n");
@@ -391,7 +392,7 @@ carries it (§ 1).
 export const CHAIR_BLOCK = [
   "You open the meeting: greet briefly, name who is on the line, state the agenda in one sentence, and ask the humans what is first.",
   "You keep the meeting moving: at the end of each topic, say in one sentence what was decided and who owns it.",
-  "You close the meeting when a human asks, or when the agenda is done and nobody adds anything: collect any pending ask_agent answers first, give a two-sentence wrap-up, then say goodbye and call end_call in the same turn.",
+  "You close the meeting when a human asks, or when the agenda is done and nobody adds anything: collect any pending ask_agent answers first with collect_question_id (a question that came back unavailable is not pending: never ask it again, aloud or by tool), give a two-sentence wrap-up, then say goodbye and call end_call in the same turn.",
 ].join("\n");
 ```
 
@@ -689,6 +690,42 @@ plus LLM**.
 
 ---
 
+## Measured
+
+### Step 9, 2026-09-24 (text sessions over EL's conversation WebSocket; D-113)
+
+Six sessions (9, 9b to 9f), each against a throwaway copy of the meeting agent
+(`eqstack-meeting-step9*`, built by `buildMeetingBrief` from the live config and
+deleted afterwards), so the daemon's own `eqstack-meeting` mapping never moved. The
+consult bearer was a dummy, so every `ask_agent` returned an error: the tool's
+round trip to a member is Step 10's to measure, and the offline tests cover it.
+
+| Question (§ 9 Settles) | Result |
+|---|---|
+| EL accepts `supported_voices` + `skip_turn` + `ask_agent` with `agent`, auth on | **Yes.** Create 200, signed URL 200 |
+| Stored transcript keeps the voice tags | **Yes.** `tagged: true` (9b, 9c, 9e); O-48 closed |
+| `skip_turn` on human-to-human chatter | **Fired on every chatter turn** (2 of 2 in each full run) |
+| `ask_agent` reaches our route through the tunnel | **Yes.** 5 of 5 past the IP check, rejected on the bearer (`tel_rejected_tool_calls_bearer_total 5`) |
+| Unsolicited segments | **0** on the final harness (9d, 9e). 9c counted 1 |
+
+Harness defects found and fixed (commit `87d471c`):
+
+| Defect | Seen in | Fix |
+|---|---|---|
+| Chair lines ("checking", "not at its desk") inside a member's tag, so spoken in the member's voice | 9, 9b, 9c | "Only an agent's own words go inside its tag" |
+| `pre_tool_speech: force` put EL's filler in the member's tag, then no tool call in about 6 of 9 turns | 9c | `ask_agent` sends `off`; the chair announces, untagged, in the same turn as the call |
+| A briefed fact sent to `ask_agent` instead of answered | 9d | "When the brief already states the answer, the agent gives it straight away" (9e: 2 of 2 answered from the brief) |
+| At close, unavailable questions re-asked aloud and no `end_call` | 9e | "A question that came back unavailable is not pending" (9f: `end_call` fired) |
+
+Driver lesson: a text driver has to wait out each reply's audio before it sends the next
+turn (bytes / 32 ms for PCM 16 kHz). EL counts the agent as speaking until playback would
+end, and the earlier runs' `interruption` events, and some apparent stalls, were the driver
+cutting replies short. 9e, with the wait, had no interruptions and no stalls.
+
+Still open for Step 10: the close wording. 9f hung up after "I need to collect the pending
+answer", with no wrap-up and no goodbye (compare D-101). Also the whole `ask_agent` round
+trip, multi-voice audio on a phone line (E5), and latency.
+
 ## Build notes (GC-1, Steps 1–8)
 
 Built on `feat/telephony-group-calls-gc1` from `main` at `1a6ce80`. Steps 9 and 10
@@ -797,7 +834,7 @@ Charlie. The first `start_meeting` creates `eqstack-meeting` on ElevenLabs.
 | 1 | `meeting-chair-vs-coordinator` · George | Is floor control the **secretary's** or a **coordinator's**? (*"similar but not identical roles"*) | The secretary occupies the `meeting.chair` slot; the slot is the same either way | nothing in GC-1 |
 | 2 | `meeting-voice-lineup` · George | Which unpicked audition voice is which agent? Proposed: chair Lily, Executive David, EQ Stack Roger; never Charlie | the proposal | Step 2 |
 | 3 | `secretary-telephony-tools` · executive (secretary's register) | May her session hold telephony-mcp's `get_call_events` + `answer_consult`, and nothing else? Does she author a phone-persona file for `personaFile`? | she is not a listening member; the chair is neutral | her taking part, not GC-1 |
-| 4 | `meeting-live-tests` · George | Authorise Step 9 (EL minutes only) and Step 10 (EL + Twilio, ≈ US$1.55 + LLM) | not run | the `## Measured` section |
+| 4 | `meeting-live-tests` · George | Authorise Step 9 (EL minutes only) and Step 10 (EL + Twilio, ≈ US$1.55 + LLM) | both authorised (D-112); Step 9 run 2026-09-24 (D-113), Step 10 not run | the `## Measured` section |
 | 5 | `meeting-llm` · implementer | Does EL's default LLM hold the harness with several personas, or does the meeting agent need a stronger model (`conversation_config.agent.prompt.llm`)? | the default | settled by Steps 9–10 |
 | 6 | `meeting-hold` · implementer | Is 20 s right for `meeting.holdSec`? | 20 s | retune once from Step 10 (with O-35) |
 | 7 | `meeting-dial-in-number` · George | Which number takes dial-ins in GC-3: number #1 `+61…1463` (its inbound handler is O-19), or a third number? | — | GC-3 |
