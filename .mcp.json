@@ -37,13 +37,8 @@
       ]
     },
     "elevenlabs": {
-      "command": "uvx",
-      "args": [
-        "elevenlabs-mcp==0.12.2"
-      ],
-      "env": {
-        "ELEVENLABS_API_KEY": "${ELEVENLABS_API_KEY}"
-      }
+      "type": "http",
+      "url": "https://api.us.elevenlabs.io/v1/mcp"
     }
   }
 }
