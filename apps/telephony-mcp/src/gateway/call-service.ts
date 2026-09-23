@@ -6,7 +6,7 @@
  * subscribers (SSE / `tel watch`).
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { redactValue } from "@george43g/robustness";
 import type { Config } from "../config/schema.js";
@@ -39,7 +39,13 @@ import type {
 } from "../domain/ports.js";
 import { systemClock } from "../domain/ports.js";
 import { resolveRecipient } from "../domain/recipients.js";
-import type { CallEvent, CallMode, CallRecord, CallStatus } from "../domain/types.js";
+import type {
+  CallEvent,
+  CallMode,
+  CallRecord,
+  CallStatus,
+  ConsultQuestion,
+} from "../domain/types.js";
 import { CALL_MODE_SPECS, CALL_STATUS_RANK, TERMINAL_STATUSES } from "../domain/types.js";
 import { logger } from "../log.js";
 import { ensureStateDir } from "../paths.js";
@@ -91,10 +97,60 @@ export type PlaceCallResult =
       notices?: string[];
     };
 
+// ── Consult (Phase R, D-90..D-94) ──────────────────────────────────────────
+
+/** What `serve` answers EL's consult tool with — always a 200 body we worded (D-93). */
+export type ConsultResult =
+  | { status: "answered"; question_id: string; answer: string }
+  | { status: "pending"; question_id: string; guidance: string }
+  | { status: "unavailable"; guidance: string }
+  | { status: "busy"; guidance: string }
+  | { status: "call_ended"; guidance: string }
+  | { status: "not_found"; guidance: string };
+
+export type ConsultOutcome = ConsultResult["status"];
+
+export const CONSULT_GUIDANCE = {
+  pending:
+    "No answer yet. Tell the person you have not heard back, offer to carry on, and before the call ends call consult_originator once more with collect_question_id set to this question_id.",
+  unavailable:
+    "The originator cannot be reached right now. Do not retry. Tell the person you will pass the question on and someone will follow up.",
+  busy: "Too many questions are already waiting. Do not retry. Tell the person you will pass the question on and someone will follow up.",
+  call_ended: "This call has ended.",
+  not_found: "There is no such question on this call. Do not retry.",
+} as const;
+
+/** Wide buckets for a human-in-the-loop answer (D-27): seconds to minutes. */
+export const CONSULT_ANSWER_BUCKETS_MS = [
+  1000, 2000, 5000, 10_000, 15_000, 20_000, 30_000, 45_000, 60_000, 120_000, 300_000,
+];
+
+/** A repeat of a pending question (EL retry, or the agent re-asking) joins its row. */
+export function normalizeQuestion(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/** The bearer is only ever stored and compared as this hash (INV-11/INV-12). */
+export function hashConsultToken(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+type ConsultWaiter = (r: { kind: "answered"; answer: string } | { kind: "call_ended" }) => void;
+
 export const defaultIds: IdProvider = {
   newId: () => randomUUID(),
   newToken: () => randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", ""),
 };
+
+/** Events written right after a call record goes terminal (see `emit`). */
+const TERMINAL_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "call.ended",
+  "call.completed",
+  "call.failed",
+]);
 
 export class CallService {
   readonly events = new EventEmitter();
@@ -103,6 +159,10 @@ export class CallService {
   private pollers = new Map<string, DelegatePoller>();
   /** Single-flight agent provisioning per agent key (serve is the one writer — INV-9). */
   private provisioning = new Map<string, Promise<AgentPreview>>();
+  /** Held consult requests, per question id (in memory — lost on restart, by design). */
+  private consultWaiters = new Map<string, Set<ConsultWaiter>>();
+  /** Per call: when a host last polled get_call_events, and how many long-polls are open. */
+  private hostPolls = new Map<string, { lastMs: number; open: number }>();
 
   constructor(
     readonly cfg: Config,
@@ -122,6 +182,11 @@ export class CallService {
     const event = this.store.appendEvent(callId, type, data);
     this.events.emit("event", event);
     this.metrics?.counter("tel_events_total", "Events appended").inc();
+    // The single place a call's terminal transition is observed: every path
+    // (relay end, Twilio status callback, the delegate poller's call.ended
+    // and poll deadline, a failed dial) writes one of these events right
+    // after the record goes terminal. Consult state dies here (PHASE-R § 3).
+    if (TERMINAL_EVENT_TYPES.has(type)) this.cancelConsults(callId, "call_ended");
     return event;
   }
 
@@ -157,7 +222,10 @@ export class CallService {
           500,
         );
       }
-      brief = buildBrief(this.cfg, plan.profile, plan.recordingEnabled);
+      brief = buildBrief(this.cfg, plan.profile, {
+        recordVoice: plan.recordingEnabled,
+        consult: CALL_MODE_SPECS[plan.mode].supportsConsult,
+      });
     }
     // dryRun creates NOTHING — not here, not on the platform (reads only).
     if (input.dryRun) {
@@ -223,6 +291,16 @@ export class CallService {
     };
     this.store.createCall(call);
     this.store.markRequestStarted(request.id, call.id);
+    // Consult (D-90/D-91): a per-call bearer, minted before the dial and
+    // stored only as its hash. The plaintext lives in this stack frame until
+    // it is handed to the platform as a `secret__` dynamic variable — never
+    // logged, never returned, never persisted. dryRun returned above: it
+    // mints nothing.
+    let consultToken: string | null = null;
+    if (CALL_MODE_SPECS[plan.mode].supportsConsult) {
+      consultToken = randomBytes(32).toString("base64url");
+      this.store.putConsultTokenHash(call.id, hashConsultToken(consultToken), now);
+    }
     // No relay token for an off-device call: nothing may ever attach to /relay/.
     const token = offDevice ? null : this.ids.newToken();
     if (token) this.store.putRelayToken(token, call.id);
@@ -242,8 +320,9 @@ export class CallService {
           agentId: agent.agentId as string,
           phoneNumberId: this.cfg.agentPlatform?.phoneNumberId as string,
           to: number,
-          dynamicVariables: buildDynamicVariables(plan.objective, plan.context),
+          dynamicVariables: buildDynamicVariables(plan.objective, plan.context, consultToken),
         });
+        consultToken = null;
         this.store.setProviderCallId(call.id, conversationId);
         // Kept whether or not a hang-up is configured, so adding one later
         // (O-30) also covers calls already in flight.
@@ -299,7 +378,7 @@ export class CallService {
   /** dryRun: what provisioning WOULD do, from a store read. Creates nothing. */
   private previewAgent(plan: CallPlan, brief: AgentBrief): AgentPreview {
     const hash = briefHash(brief);
-    const existing = this.store.getAgentProfile(agentKey(plan.profile, brief.recordVoice));
+    const existing = this.store.getAgentProfile(agentKey(plan.profile, briefVariant(brief)));
     return {
       platform: (this.agentPlatform as AgentPlatformPort).id,
       name: brief.name,
@@ -317,7 +396,7 @@ export class CallService {
    * racing on a new profile create ONE agent.
    */
   private ensureAgent(profile: string, brief: AgentBrief): Promise<AgentPreview> {
-    const key = agentKey(profile, brief.recordVoice);
+    const key = agentKey(profile, briefVariant(brief));
     const inflight = this.provisioning.get(key);
     if (inflight) return inflight;
     const run = this.provisionAgent(key, brief).finally(() => this.provisioning.delete(key));
@@ -439,6 +518,292 @@ export class CallService {
     );
     timer.unref();
     this.durationTimers.set(callId, timer);
+  }
+
+  // -- consult (Phase R) ----------------------------------------------------
+
+  /**
+   * The tool listener's bearer check: hash, then look the hash up. Resolves
+   * only while the call is live — the row is deleted when it ends.
+   */
+  resolveConsultBearer(token: string): CallRecord | null {
+    const callId = this.store.getCallIdForConsultTokenHash(hashConsultToken(token));
+    if (!callId) return null;
+    const call = this.store.getCall(callId);
+    if (!call || TERMINAL_STATUSES.has(call.status)) return null;
+    if (!CALL_MODE_SPECS[this.modeOf(call)].supportsConsult) return null;
+    return call;
+  }
+
+  /**
+   * A host began (or finished) a get_call_events poll for this call. Feeds
+   * `unavailable`: a question is only held while someone is listening (O-38).
+   * Returns the matching `end` for a long-poll.
+   */
+  noteHostPoll(callId: string): () => void {
+    const entry = this.hostPolls.get(callId) ?? { lastMs: 0, open: 0 };
+    entry.lastMs = this.clock.nowMs();
+    entry.open += 1;
+    this.hostPolls.set(callId, entry);
+    let ended = false;
+    return () => {
+      if (ended) return;
+      ended = true;
+      entry.open = Math.max(0, entry.open - 1);
+      entry.lastMs = this.clock.nowMs();
+    };
+  }
+
+  /** A long-poll in progress counts as listening; otherwise the last poll must be recent. */
+  isHostListening(callId: string): boolean {
+    const consult = this.cfg.agentPlatform?.consult;
+    const entry = this.hostPolls.get(callId);
+    if (!consult || !entry) return false;
+    if (entry.open > 0) return true;
+    return this.clock.nowMs() - entry.lastMs <= consult.hostIdleSec * 1000;
+  }
+
+  /** consult.pickup: the first time a polling host is handed this question. */
+  markConsultPickedUp(callId: string, questionId: string): void {
+    this.store.stampConsultPickupIfUnset(callId, questionId, this.clock.nowMs());
+  }
+
+  private consultOutcome(status: ConsultOutcome): void {
+    this.metrics
+      ?.counter("tel_consult_outcomes_total", "Consult tool calls answered, any outcome")
+      .inc();
+    this.metrics
+      ?.counter(`tel_consult_outcome_${status}_total`, `Consult outcome: ${status}`)
+      .inc();
+  }
+
+  private finish(result: ConsultResult): ConsultResult {
+    this.consultOutcome(result.status);
+    return result;
+  }
+
+  /**
+   * EL's agent asks the originator (PHASE-R § 2–3). ALWAYS resolves — within
+   * `holdSec`, before EL's `response_timeout_secs` — with a result we worded.
+   * `signal` aborts the hold when EL drops the request or the listener
+   * closes; the row then stays as it is (an honest `pending`).
+   */
+  async askConsult(
+    callId: string,
+    input: { question?: string | undefined; collectQuestionId?: string | undefined },
+    signal?: AbortSignal,
+  ): Promise<ConsultResult> {
+    const consult = this.cfg.agentPlatform?.consult;
+    const call = this.store.getCall(callId);
+    if (!consult || !call || TERMINAL_STATUSES.has(call.status)) {
+      return this.finish({ status: "call_ended", guidance: CONSULT_GUIDANCE.call_ended });
+    }
+    const holdMs = consult.holdSec * 1000;
+
+    if (input.collectQuestionId) {
+      // Scoped to THIS call: another call's id is indistinguishable from none.
+      const q = this.store.getConsultQuestion(callId, input.collectQuestionId);
+      if (!q) return this.finish({ status: "not_found", guidance: CONSULT_GUIDANCE.not_found });
+      if (q.status === "answered" || q.status === "delivered") {
+        return this.finish(this.deliverConsult(q, "collected"));
+      }
+      if (q.status === "cancelled") {
+        return this.finish({ status: "call_ended", guidance: CONSULT_GUIDANCE.call_ended });
+      }
+      if (q.status === "unanswered") {
+        return this.finish({ status: "unavailable", guidance: CONSULT_GUIDANCE.unavailable });
+      }
+      // Still pending: hold for whatever is left of the original hold window.
+      const remaining = this.isHostListening(callId)
+        ? Math.max(0, q.askedAtMs + holdMs - this.clock.nowMs())
+        : 0;
+      return this.finish(await this.holdConsult(q, remaining, signal));
+    }
+
+    const question = (input.question ?? "").trim();
+    const norm = normalizeQuestion(question);
+    // A repeat of a pending question joins it: no new row, no second notice.
+    const existing = norm ? this.store.findPendingConsultByNorm(callId, norm) : null;
+    if (existing) {
+      const remaining = Math.max(0, existing.askedAtMs + holdMs - this.clock.nowMs());
+      return this.finish(await this.holdConsult(existing, remaining, signal));
+    }
+    if (this.store.countPendingConsults(callId) >= consult.maxPendingPerCall) {
+      return this.finish({ status: "busy", guidance: CONSULT_GUIDANCE.busy });
+    }
+    const q = this.store.insertConsultQuestion({
+      id: this.ids.newId(),
+      callId,
+      question,
+      questionNorm: norm,
+      status: "pending",
+      askedAtMs: this.clock.nowMs(),
+    });
+    if (!this.isHostListening(callId)) {
+      // Nobody is polling: don't leave the callee on hold for no one.
+      this.store.transitionConsult(callId, q.id, "pending", "unanswered");
+      this.emit(callId, "consult.unanswered", {
+        questionId: q.id,
+        seq: q.seq,
+        question: q.question,
+        reason: "no_listener",
+      });
+      return this.finish({ status: "unavailable", guidance: CONSULT_GUIDANCE.unavailable });
+    }
+    this.emit(callId, "consult.asked", { questionId: q.id, seq: q.seq, question: q.question });
+    return this.finish(await this.holdConsult(q, holdMs, signal));
+  }
+
+  /** Waits for the answer, the deadline, the call ending, or an abort — whichever is first. */
+  private holdConsult(
+    q: ConsultQuestion,
+    holdMs: number,
+    signal?: AbortSignal,
+  ): Promise<ConsultResult> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const waiters = this.consultWaiters.get(q.id) ?? new Set<ConsultWaiter>();
+      this.consultWaiters.set(q.id, waiters);
+      const cleanup = () => {
+        clearTimeout(timer);
+        waiters.delete(waiter);
+        if (waiters.size === 0) this.consultWaiters.delete(q.id);
+        signal?.removeEventListener("abort", onAbort);
+      };
+      const settle = (r: ConsultResult) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(r);
+      };
+      const waiter: ConsultWaiter = (r) => {
+        if (r.kind === "call_ended") {
+          settle({ status: "call_ended", guidance: CONSULT_GUIDANCE.call_ended });
+          return;
+        }
+        const row = this.store.getConsultQuestion(q.callId, q.id);
+        settle(
+          row
+            ? this.deliverConsult(row, "held")
+            : { status: "not_found", guidance: CONSULT_GUIDANCE.not_found },
+        );
+      };
+      const onTimeout = () => {
+        // The answer may have landed between the timer and now: re-read.
+        const row = this.store.getConsultQuestion(q.callId, q.id);
+        if (row && (row.status === "answered" || row.status === "delivered")) {
+          settle(this.deliverConsult(row, "held"));
+          return;
+        }
+        if (row?.status === "cancelled") {
+          settle({ status: "call_ended", guidance: CONSULT_GUIDANCE.call_ended });
+          return;
+        }
+        this.emit(q.callId, "consult.timed_out", { questionId: q.id, holdMs });
+        settle({ status: "pending", question_id: q.id, guidance: CONSULT_GUIDANCE.pending });
+      };
+      const onAbort = () =>
+        // EL dropped the request (or the listener is closing): release the
+        // waiter only. The row keeps its honest state until the call ends.
+        settle({ status: "unavailable", guidance: CONSULT_GUIDANCE.unavailable });
+      waiters.add(waiter);
+      const timer = setTimeout(onTimeout, holdMs);
+      timer.unref();
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  /** answered → delivered (first delivery wins the stamp); the answer is returned either way. */
+  private deliverConsult(q: ConsultQuestion, via: "held" | "collected"): ConsultResult {
+    const now = this.clock.nowMs();
+    if (
+      q.status === "answered" &&
+      this.store.transitionConsult(q.callId, q.id, "answered", "delivered", {
+        deliveredAtMs: now,
+        deliveredVia: via,
+      })
+    ) {
+      this.emit(q.callId, "consult.delivered", {
+        questionId: q.id,
+        via,
+        waitedMs: now - q.askedAtMs,
+      });
+    }
+    return { status: "answered", question_id: q.id, answer: q.answer ?? "" };
+  }
+
+  /**
+   * The originating agent answers (answer_consult). First answer wins: the
+   * guarded pending → answered UPDATE is the claim (D-94); a second gets 409.
+   */
+  answerConsult(
+    callId: string,
+    questionId: string,
+    answer: string,
+  ): { status: "answered"; delivered: boolean; collectable: boolean } {
+    const call = this.requireCall(callId);
+    const q = this.store.getConsultQuestion(callId, questionId);
+    if (!q) throw new CallServiceError(`unknown question ${questionId} on call ${callId}`, 404);
+    if (q.status === "cancelled" || TERMINAL_STATUSES.has(call.status)) {
+      throw new CallServiceError("call ended; the answer was not delivered", 409);
+    }
+    const text = answer.trim();
+    if (!text) throw new CallServiceError("answer must be non-empty");
+    const now = this.clock.nowMs();
+    if (
+      !this.store.transitionConsult(callId, questionId, "pending", "answered", {
+        answer: text,
+        answeredAtMs: now,
+      })
+    ) {
+      const current = this.store.getConsultQuestion(callId, questionId);
+      throw new CallServiceError(
+        current?.status === "unanswered"
+          ? "question is closed: nobody was listening when it was asked, and the agent was told so"
+          : current?.status === "cancelled"
+            ? "call ended; the answer was not delivered"
+            : "already answered",
+        409,
+      );
+    }
+    this.metrics
+      ?.histogram("tel_consult_answer_ms", "Consult asked → answered", CONSULT_ANSWER_BUCKETS_MS)
+      .observe(now - q.askedAtMs);
+    this.emit(callId, "consult.answered", {
+      questionId,
+      answer: text,
+      answerMs: now - q.askedAtMs,
+    });
+    const waiters = this.consultWaiters.get(questionId);
+    const held = waiters !== undefined && waiters.size > 0;
+    if (waiters) for (const w of [...waiters]) w({ kind: "answered", answer: text });
+    return { status: "answered", delivered: held, collectable: !held };
+  }
+
+  /**
+   * The call is over: release every held request with `call_ended`, close
+   * pending rows, and delete the bearer so a leaked token dies with its call.
+   * Idempotent; runs from `emit` on every terminal event and at startup.
+   */
+  cancelConsults(callId: string, reason: string): void {
+    const cancelled = this.store.cancelPendingConsults(callId);
+    for (const id of cancelled) {
+      const waiters = this.consultWaiters.get(id);
+      if (waiters) for (const w of [...waiters]) w({ kind: "call_ended" });
+    }
+    this.store.deleteConsultToken(callId);
+    this.hostPolls.delete(callId);
+    if (cancelled.length > 0) {
+      this.emit(callId, "consult.cancelled", { reason, questionIds: cancelled });
+    }
+  }
+
+  /** After a restart: consult state left on calls that went terminal while serve was down. */
+  sweepEndedConsults(): number {
+    const ids = this.store.terminalCallsWithConsultState();
+    for (const id of ids) this.cancelConsults(id, "call_ended");
+    return ids.length;
   }
 
   // -- live control ---------------------------------------------------------
@@ -686,7 +1051,12 @@ export class CallService {
     this.pollers.clear();
     for (const s of this.sessions.values()) s.end("shutdown");
     this.sessions.clear();
+    this.hostPolls.clear();
   }
+}
+
+function briefVariant(brief: AgentBrief): { recordVoice: boolean; consult: boolean } {
+  return { recordVoice: brief.recordVoice, consult: brief.consultTool !== undefined };
 }
 
 export { CallRequestError };

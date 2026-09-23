@@ -79,3 +79,15 @@ describe("buildLatencyReport", () => {
     expect(r.legs["direct.turn"]).toBeUndefined();
   });
 });
+
+describe("consult legs (Phase R)", () => {
+  it("consult.pickup and consult.answer come from question rows; open questions add nothing", () => {
+    const report = buildLatencyReport([], 1, [
+      { askedAtMs: 1000, firstDeliveredMs: 1200, answeredAtMs: 9000 },
+      { askedAtMs: 2000, firstDeliveredMs: 2600, answeredAtMs: 30_000 },
+      { askedAtMs: 3000, firstDeliveredMs: null, answeredAtMs: null },
+    ]);
+    expect(report.legs["consult.pickup"]).toMatchObject({ n: 2, p50: 200, maxMs: 600 });
+    expect(report.legs["consult.answer"]).toMatchObject({ n: 2, p50: 8000, maxMs: 28_000 });
+  });
+});

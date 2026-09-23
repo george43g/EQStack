@@ -178,3 +178,78 @@ describe("agentPlatform + consent blocks (Phase Q, D-75/D-76)", () => {
     expect(parseConfig(cfg).telephony.type).toBe("elevenlabs-managed");
   });
 });
+
+describe("agentPlatform.consult + tools listener (Phase R, D-91/D-93)", () => {
+  function withConsult(consult: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+    return {
+      ...base(),
+      server: { publicBaseUrl: "https://gw.example.invalid" },
+      agentPlatform: { type: "elevenlabs-managed", phoneNumberId: "phnum_7001abc", consult },
+      ...extra,
+    };
+  }
+
+  it("defaults: toolsPort 8792, hold 45 s, cap 3, host idle 90 s, ElevenLabs' US egress IPs", () => {
+    const cfg = parseConfig(withConsult({ toolsBaseUrl: "https://tools.example.invalid" }));
+    expect(cfg.server.toolsPort).toBe(8792);
+    expect(cfg.agentPlatform?.consult).toEqual({
+      toolsBaseUrl: "https://tools.example.invalid",
+      holdSec: 45,
+      maxPendingPerCall: 3,
+      hostIdleSec: 90,
+      allowedSourceIps: ["34.67.146.145", "34.59.11.47"],
+    });
+  });
+
+  it("toolsBaseUrl is required and https-only; holdSec keeps holdSec + 15 inside EL's 5..300", () => {
+    expect(() => parseConfig(withConsult({}))).toThrow(ConfigError);
+    expect(() =>
+      parseConfig(withConsult({ toolsBaseUrl: "http://tools.example.invalid" })),
+    ).toThrow(/toolsBaseUrl/);
+    const at = (holdSec: number) =>
+      parseConfig(withConsult({ toolsBaseUrl: "https://tools.example.invalid", holdSec }));
+    expect(() => at(4)).toThrow(/holdSec/);
+    expect(() => at(286)).toThrow(/holdSec/);
+    expect(at(285).agentPlatform?.consult?.holdSec).toBe(285);
+  });
+
+  it("allowedSourceIps must be IP addresses; [] is allowed (disables the check, serve warns)", () => {
+    expect(() =>
+      parseConfig(
+        withConsult({ toolsBaseUrl: "https://tools.example.invalid", allowedSourceIps: ["x"] }),
+      ),
+    ).toThrow(/allowedSourceIps/);
+    expect(
+      parseConfig(
+        withConsult({ toolsBaseUrl: "https://tools.example.invalid", allowedSourceIps: [] }),
+      ).agentPlatform?.consult?.allowedSourceIps,
+    ).toEqual([]);
+  });
+
+  it("the tools host must differ from the Twilio host (D-59/D-91)", () => {
+    expect(() => parseConfig(withConsult({ toolsBaseUrl: "https://gw.example.invalid" }))).toThrow(
+      /its own hostname/,
+    );
+  });
+
+  it("tunnel.toolsHostname must match the toolsBaseUrl host (sibling of the hostname check)", () => {
+    const tunnel = {
+      enabled: true,
+      tunnelName: "telephony",
+      hostname: "gw.example.invalid",
+      toolsHostname: "tools.example.invalid",
+    };
+    expect(
+      parseConfig(withConsult({ toolsBaseUrl: "https://tools.example.invalid" }, { tunnel })).tunnel
+        .toolsHostname,
+    ).toBe("tools.example.invalid");
+    expect(() =>
+      parseConfig(
+        withConsult(
+          { toolsBaseUrl: "https://tools.example.invalid" },
+          { tunnel: { ...tunnel, toolsHostname: "other.example.invalid" } },
+        ),
+      ),
+    ).toThrow(/toolsHostname/);
+  });
+});

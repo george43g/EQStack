@@ -49,6 +49,17 @@ export const WaitMsSchema = z
   .max(55_000)
   .describe("Long-poll timeout in ms (requires the gateway to be running)");
 export const EndReasonSchema = z.string().min(1).max(500);
+export const ConsultQuestionIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9_-]+$/, "a consult question id (from the consult.asked event)")
+  .describe("questionId from the consult.asked event");
+export const ConsultAnswerSchema = z
+  .string()
+  .min(1)
+  .max(2000)
+  .describe("Your answer — short, speakable, self-contained; the agent relays it aloud");
 export const SearchQuerySchema = z.string().min(1);
 
 /**
@@ -59,7 +70,7 @@ export const CallModeInputSchema = z
   .enum([...CALL_MODES, ...(Object.keys(LEGACY_MODE_ALIASES) as ["llm"])])
   .transform((m) => normalizeCallMode(m))
   .describe(
-    "Conversation driver. 'byo-model' (default; legacy alias 'llm'): the configured LLM conducts the call from the objective. 'direct': YOU (the MCP host) are the conversational brain — loop get_call_events { waitMs } for turn.user, then reply with say_on_call. 'delegate': a briefed ElevenLabs agent holds the whole call off-device (needs the agentPlatform config block) — follow it with get_call_events { waitMs } until call.ended, and read the words with get_transcript; say_on_call, play_disclosure and set_recording are refused because the agent, not this tool, holds the line; end_call works only when agentPlatform.twilioHangup is configured. 'consult' is reserved and refuses until implemented.",
+    "Conversation driver. 'byo-model' (default; legacy alias 'llm'): the configured LLM conducts the call from the objective. 'direct': YOU (the MCP host) are the conversational brain — loop get_call_events { waitMs } for turn.user, then reply with say_on_call. 'delegate': a briefed ElevenLabs agent holds the whole call off-device (needs the agentPlatform config block) — follow it with get_call_events { waitMs } until call.ended, and read the words with get_transcript; say_on_call, play_disclosure and set_recording are refused because the agent, not this tool, holds the line; end_call works only when agentPlatform.twilioHangup is configured. 'consult': 'delegate' plus a line back to you — the agent may ask you questions mid-call; stay in a get_call_events { waitMs } loop until call.ended and answer each consult.asked with answer_consult (needs the agentPlatform.consult config block).",
   );
 
 export const CallModeSchema = z.enum(CALL_MODES);
@@ -178,6 +189,21 @@ export const AgentBriefSchema: z.ZodType<AgentBrief> = z.object({
   }),
   maxDurationSec: z.number(),
   recordVoice: z.boolean(),
+  consultTool: z
+    .object({
+      name: z.string(),
+      description: z.string(),
+      url: z.string(),
+      responseTimeoutSecs: z.number(),
+      bearerVariable: z.string(),
+      preToolSpeech: z.enum(["auto", "force", "off"]),
+      toolCallSound: z.enum(["typing", "elevator1", "elevator2", "elevator3", "elevator4"]),
+      toolCallSoundBehavior: z.enum(["auto", "always"]),
+      executionMode: z.enum(["immediate", "post_tool_speech"]),
+      interruptionMode: z.enum(["allow", "disable_during_tool", "disable_during_tool_and_turn"]),
+      toolErrorHandlingMode: z.enum(["auto", "summarized", "passthrough", "hide"]),
+    })
+    .optional(),
 });
 
 export const AgentPreviewSchema: z.ZodType<AgentPreview> = z.object({

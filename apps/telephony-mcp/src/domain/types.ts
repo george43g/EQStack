@@ -71,8 +71,9 @@ export interface RecordingMeta {
  *   direct     — the MCP host IS the conversational brain: it waits for each
  *                turn.user event and answers verbatim via say_on_call.
  *   delegate   — a briefed ElevenLabs agent runs the whole call off-device.
- *   consult    — delegate, plus the EL agent may call back into our MCP
- *                mid-call and speak the answer.
+ *   consult    — delegate, plus the EL agent may ask the originating MCP
+ *                host a question mid-call (a webhook tool → serve's tool
+ *                listener → consult.asked → answer_consult) and speak the answer.
  *   byo-model  — our gateway streams a configured model's replies (today's
  *                implemented LLM loop; the legacy persisted name is "llm").
  *
@@ -118,7 +119,7 @@ export const CALL_MODE_SPECS: Record<CallMode, CallModeSpec> = {
     hostAnswersTurns: false,
     mediaPathOffDevice: true,
     supportsConsult: true,
-    implemented: false,
+    implemented: true, // Phase R
   },
   "byo-model": {
     gatewayDrivesTurns: true,
@@ -170,4 +171,37 @@ export interface TurnTiming {
   deliveredToHostMs: number | null;
   /** Direct mode: the host's say_on_call reply reached the gateway. */
   replyReceivedMs: number | null;
+}
+
+/**
+ * A consult question's lifecycle (Phase R, D-94). `answered` = an answer
+ * exists but has not reached the EL agent yet; `delivered` = it has (held or
+ * collected); `unanswered` = nobody was listening when it was asked;
+ * `cancelled` = the call ended while it was pending.
+ */
+export const CONSULT_STATUSES = [
+  "pending",
+  "answered",
+  "delivered",
+  "unanswered",
+  "cancelled",
+] as const;
+export type ConsultStatus = (typeof CONSULT_STATUSES)[number];
+
+export interface ConsultQuestion {
+  id: string;
+  callId: string;
+  /** Per-call sequence. */
+  seq: number;
+  /** Conversation content, written by the EL agent from what the callee said — untrusted. */
+  question: string;
+  status: ConsultStatus;
+  answer: string | null;
+  askedAtMs: number;
+  /** consult.pickup: first delivery of consult.asked to a polling host (first wins). */
+  firstDeliveredMs: number | null;
+  answeredAtMs: number | null;
+  deliveredAtMs: number | null;
+  /** "held" (the answer came back on the open request) or "collected" (a later tool call). */
+  deliveredVia: string | null;
 }

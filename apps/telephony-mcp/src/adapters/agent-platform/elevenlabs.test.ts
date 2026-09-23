@@ -7,7 +7,7 @@
  * (INV-12).
  */
 import { describe, expect, it } from "vitest";
-import { FakeSecrets, testConfig } from "../../../tests/helpers.js";
+import { consultConfig, FakeSecrets, testConfig } from "../../../tests/helpers.js";
 import { buildBrief } from "../../domain/agent-brief.js";
 import { agentRequestBody, ElevenLabsAgentPlatform, ElevenLabsApiError } from "./elevenlabs.js";
 
@@ -44,7 +44,7 @@ function adapter(fetchImpl: typeof fetch, secrets = new FakeSecrets({ ELEVENLABS
   return new ElevenLabsAgentPlatform({ apiKeyRef: "ELEVENLABS_API_KEY", secrets, fetchImpl });
 }
 
-const brief = buildBrief(testConfig(), "default", false);
+const brief = buildBrief(testConfig(), "default", { recordVoice: false });
 
 /** The error a promise rejects with; fails the test if it resolves. */
 async function rejection(p: Promise<unknown>): Promise<ElevenLabsApiError> {
@@ -293,5 +293,75 @@ describe("errors and secrets", () => {
     expect((err as Error).message).toMatch(/→ 401/);
     expect((err as Error).message).not.toContain(KEY);
     expect((err as Error).message).toContain("[redacted]");
+  });
+});
+
+describe("consult webhook tool block (Phase R, D-90)", () => {
+  const consultBrief = buildBrief(consultConfig(), "default", {
+    recordVoice: false,
+    consult: true,
+  });
+
+  it("a delegate body carries no tools array at all — byte-identical to Phase Q", () => {
+    const body = agentRequestBody(brief) as {
+      conversation_config: { agent: { prompt: Record<string, unknown> } };
+    };
+    expect(body.conversation_config.agent.prompt).not.toHaveProperty("tools");
+    expect(JSON.stringify(body)).not.toContain("webhook");
+  });
+
+  it("a consult body adds exactly one inline webhook tool beside end_call, with SDK 2.68.0 wire names", () => {
+    const body = agentRequestBody(consultBrief) as {
+      conversation_config: { agent: { prompt: { tools: unknown[]; built_in_tools: unknown } } };
+    };
+    const prompt = body.conversation_config.agent.prompt;
+    expect(prompt.built_in_tools).toBeDefined();
+    expect(prompt.tools).toHaveLength(1);
+    expect(prompt.tools[0]).toEqual({
+      type: "webhook",
+      name: "consult_originator",
+      description: expect.stringMatching(/Consult rather than guess/),
+      response_timeout_secs: 60,
+      pre_tool_speech: "force",
+      tool_call_sound: "typing",
+      tool_call_sound_behavior: "always",
+      execution_mode: "immediate",
+      interruption_mode: "allow",
+      tool_error_handling_mode: "summarized",
+      api_schema: {
+        url: "https://tools.test.invalid/v1/consult",
+        method: "POST",
+        content_type: "application/json",
+        request_headers: { Authorization: { variable_name: "secret__consult_bearer" } },
+        request_body_schema: {
+          type: "object",
+          required: ["question", "conversation_id"],
+          properties: {
+            question: { type: "string", description: expect.any(String) },
+            collect_question_id: { type: "string", description: expect.any(String) },
+            // EL fills these; the LLM never writes them (no description).
+            conversation_id: { type: "string", dynamic_variable: "system__conversation_id" },
+            call_sid: { type: "string", dynamic_variable: "system__call_sid" },
+          },
+        },
+      },
+    });
+  });
+
+  it("the timeout follows holdSec + 15 and stays inside EL's 5..300 bound", () => {
+    for (const holdSec of [5, 45, 285]) {
+      const b = buildBrief(consultConfig({ holdSec }), "default", {
+        recordVoice: false,
+        consult: true,
+      });
+      const tool = (
+        agentRequestBody(b) as {
+          conversation_config: { agent: { prompt: { tools: Array<Record<string, number>> } } };
+        }
+      ).conversation_config.agent.prompt.tools[0];
+      expect(tool?.response_timeout_secs).toBe(holdSec + 15);
+      expect(tool?.response_timeout_secs).toBeGreaterThanOrEqual(5);
+      expect(tool?.response_timeout_secs).toBeLessThanOrEqual(300);
+    }
   });
 });

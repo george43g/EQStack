@@ -89,3 +89,18 @@ describe("cli schema validation (L-9/L-10 replaced by command specs)", () => {
     expect(stdout).toContain("console");
   }, 30_000);
 });
+
+describe("tel answer (Phase R) validates with answer_consult's schema before any config", () => {
+  it("an empty answer exits 1 with a one-line schema error", async () => {
+    const { code, stderr } = await runCli(["answer", "call-1", "q-1", ""]);
+    expect(code).toBe(1);
+    expect(stderr).toMatch(/^tel: answer: /);
+    expect(stderr.trim().split("\n")).toHaveLength(1);
+  });
+
+  it("a malformed question id exits 1 naming the field", async () => {
+    const { code, stderr } = await runCli(["answer", "call-1", "../../etc", "yes"]);
+    expect(code).toBe(1);
+    expect(stderr).toMatch(/^tel: questionId: /);
+  });
+});

@@ -25,7 +25,7 @@ import { buildDispatcher } from "@george43g/mcp-kit";
 import { ZodError, type z } from "zod";
 import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
 import { buildClientRegistry } from "./commands/bind-client.js";
-import { deleteRecording, placeCall, saveVoiceProfile } from "./commands/specs.js";
+import { answerConsult, deleteRecording, placeCall, saveVoiceProfile } from "./commands/specs.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
 import { renderCallHeader, renderNote, renderTurn } from "./console/render.js";
 import {
@@ -567,6 +567,15 @@ program
           ? `${cfg.agentPlatform.type} configured — mode "delegate" available; end_call ${cfg.agentPlatform.twilioHangup ? "hangs up through Twilio" : "refused (no twilioHangup)"}`
           : 'not configured — mode "delegate" refuses until an agentPlatform block is added',
       );
+      // Phase R. INV-11: the tools URL and hostname are never printed.
+      const consult = cfg.agentPlatform?.consult;
+      push(
+        "consult",
+        true,
+        consult
+          ? `configured — mode "consult" available; tool listener on 127.0.0.1:${cfg.server.toolsPort}, hold ${consult.holdSec}s, ${consult.allowedSourceIps.length === 0 ? "source-IP check DISABLED" : `${consult.allowedSourceIps.length} allowed source IPs`}${cfg.tunnel.enabled && !cfg.tunnel.toolsHostname ? "; tunnel.toolsHostname not set (the tools hostname is not checked against toolsBaseUrl)" : ""}`
+          : 'not configured — mode "consult" refuses until an agentPlatform.consult block is added',
+      );
       push(
         "recipients",
         true, // informational since Phase C (INV-2): aliases are nicknames, not permissions
@@ -626,7 +635,7 @@ program
   .option("--no-record", "request no recording")
   .option(
     "--mode <mode>",
-    "conversation driver: byo-model (default; legacy alias llm) | direct (host replies via say) | delegate (an ElevenLabs agent holds the call)",
+    "conversation driver: byo-model (default; legacy alias llm) | direct (host replies via say) | delegate (an ElevenLabs agent holds the call) | consult (delegate, and the agent can ask you — answer with `tel answer`)",
   )
   .option(
     "--acknowledge-third-party-recording",
@@ -671,6 +680,22 @@ program
       const cfg = loadConfig();
       await admin(cfg).say(callId, text);
       printJson({ ok: true, spokenChars: text.length });
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+program
+  .command("answer")
+  .description("Answer a consult call's question (the consult.asked event) — spoken to the callee")
+  .argument("<callId>", "live consult call id")
+  .argument("<questionId>", "questionId from the consult.asked event")
+  .argument("<answer>", "short, speakable, self-contained answer")
+  .action(async (callId: string, questionId: string, answer: string) => {
+    try {
+      const input = parseInput(answerConsult.input, { callId, questionId, answer });
+      const cfg = loadConfig();
+      printJson(await admin(cfg).answerConsult(input.callId, input.questionId, input.answer));
     } catch (err) {
       fail(err);
     }

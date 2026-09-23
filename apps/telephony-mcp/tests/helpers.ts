@@ -83,6 +83,51 @@ export function delegateConfig(overrides: Record<string, unknown> = {}): Config 
   });
 }
 
+/** Documentation-range address (RFC 5737) standing in for an EL egress IP in tests. */
+export const TEST_EL_EGRESS_IP = "192.0.2.10";
+
+/**
+ * delegateConfig plus agentPlatform.consult (Phase R). `.invalid` hostnames
+ * only; the allowlist holds a documentation address so tests choose the
+ * CF-Connecting-IP explicitly. Pair with FakeAgentPlatform, never the real
+ * adapter (INV-14).
+ */
+export function consultConfig(
+  consult: Record<string, unknown> = {},
+  overrides: Record<string, unknown> = {},
+): Config {
+  return testConfig({
+    server: {
+      publicBaseUrl: "https://gw.test.invalid",
+      publicPort: 18790,
+      adminPort: 18791,
+      toolsPort: 18792,
+    },
+    agentPlatform: {
+      type: "elevenlabs-managed",
+      phoneNumberId: TEST_PHONE_NUMBER_ID,
+      pollIntervalMs: 60_000,
+      consult: {
+        toolsBaseUrl: "https://tools.test.invalid",
+        allowedSourceIps: [TEST_EL_EGRESS_IP],
+        ...consult,
+      },
+    },
+    ...overrides,
+  });
+}
+
+/**
+ * Shorten the hold AFTER validation (the schema's 5 s floor is EL's, not a
+ * logic rule), so hold-deadline tests run in milliseconds with real timers.
+ */
+export function withHoldMs(cfg: Config, holdMs: number): Config {
+  const consult = cfg.agentPlatform?.consult;
+  if (!consult) throw new Error("not a consult config");
+  consult.holdSec = holdMs / 1000;
+  return cfg;
+}
+
 export function tempStateDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "voice-mcp-test-"));
   process.env.TEL_STATE_DIR = dir;

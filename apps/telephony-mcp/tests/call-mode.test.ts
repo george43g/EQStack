@@ -12,7 +12,12 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CallModeInputSchema } from "../src/commands/contracts.js";
-import { buildCallPlan, CallRequestError, createCallRequest } from "../src/domain/call-requests.js";
+import {
+  buildCallPlan,
+  CallRequestError,
+  CONSULT_HOST_NOTICE,
+  createCallRequest,
+} from "../src/domain/call-requests.js";
 import { resolveRecipient } from "../src/domain/recipients.js";
 import {
   CALL_MODE_SPECS,
@@ -21,7 +26,14 @@ import {
   normalizeCallMode,
 } from "../src/domain/types.js";
 import { SqliteStore } from "../src/stores/sqlite-store.js";
-import { delegateConfig, FixedClock, seqIds, tempStateDir, testConfig } from "./helpers.js";
+import {
+  consultConfig,
+  delegateConfig,
+  FixedClock,
+  seqIds,
+  tempStateDir,
+  testConfig,
+} from "./helpers.js";
 
 const SPEC_KEYS: ReadonlyArray<keyof CallModeSpec> = [
   "gatewayDrivesTurns",
@@ -164,16 +176,38 @@ describe("buildCallPlan refuses unimplemented modes", () => {
     }
   }
 
-  it("refuses 'consult' until its phase ships (Phase R)", () => {
-    withStore(() => {
-      const attempt = () =>
-        buildCallPlan(cfg, resolveRecipient(cfg, "george"), {
-          to: "george",
-          objective: "x",
-          mode: "consult",
-        });
-      expect(attempt).toThrow(CallRequestError);
-      expect(attempt).toThrow(/not implemented/);
+  it("'consult' is implemented (Phase R) but refuses without its config blocks, naming each", () => {
+    expect(CALL_MODE_SPECS.consult.implemented).toBe(true);
+    const noPlatform = () =>
+      buildCallPlan(cfg, resolveRecipient(cfg, "george"), {
+        to: "george",
+        objective: "x",
+        mode: "consult",
+      });
+    expect(noPlatform).toThrow(CallRequestError);
+    expect(noPlatform).toThrow(/'consult' needs the "agentPlatform" config block/);
+    const dcfg = delegateConfig();
+    const noConsult = () =>
+      buildCallPlan(dcfg, resolveRecipient(dcfg, "george"), {
+        to: "george",
+        objective: "x",
+        mode: "consult",
+      });
+    expect(noConsult).toThrow(CallRequestError);
+    expect(noConsult).toThrow(/'consult' needs the "agentPlatform.consult" config block/);
+  });
+
+  it("'consult' plans once agentPlatform.consult is configured, with the host notice", () => {
+    const ccfg = consultConfig();
+    withStore((store) => {
+      const plan = buildCallPlan(ccfg, resolveRecipient(ccfg, "george"), {
+        to: "george",
+        objective: "x",
+        mode: "consult",
+      });
+      expect(plan.notices).toContain(CONSULT_HOST_NOTICE);
+      const request = createCallRequest(plan, store, clock, seqIds());
+      expect(request.mode).toBe("consult");
     });
   });
 

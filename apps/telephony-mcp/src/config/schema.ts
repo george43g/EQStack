@@ -133,6 +133,47 @@ export const TwilioHangupSchema = z
 export type TwilioHangupConfig = z.infer<typeof TwilioHangupSchema>;
 
 /**
+ * ElevenLabs' published egress addresses, US default region (D-91 layer 3).
+ * Source: https://elevenlabs.io/docs/overview/administration/ip-allowlisting —
+ * "All outbound requests from ElevenLabs services—including webhooks, WebSocket
+ * connections, and MCP server requests—originate from these addresses." Other
+ * regions and data-residency workspaces use other lists on the same page; set
+ * `agentPlatform.consult.allowedSourceIps` to match the workspace.
+ */
+export const ELEVENLABS_US_EGRESS_IPS = ["34.67.146.145", "34.59.11.47"] as const;
+
+/**
+ * Consult mode (Phase R, D-90..D-94). Opt-in: without this block a `consult`
+ * call refuses at plan time and the tool listener never starts.
+ */
+export const ConsultSchema = z
+  .object({
+    /**
+     * Public HTTPS base of the tool listener, reached through the tunnel's
+     * second hostname (D-91). INV-11: a tunnel URL — never logged.
+     */
+    toolsBaseUrl: z.string().url().startsWith("https://"),
+    /** How long `serve` holds a question open before answering `pending` (D-93). */
+    holdSec: z.number().int().min(5).max(285).default(45),
+    /** More pending questions than this on one call answer `busy`. */
+    maxPendingPerCall: z.number().int().min(1).max(20).default(3),
+    /** No host long-poll within this many seconds → `unavailable` at once (O-38). */
+    hostIdleSec: z.number().int().min(1).max(3600).default(90),
+    /**
+     * CF-Connecting-IP must be one of these. Empty disables the check (and
+     * serve warns at startup) — never the default.
+     */
+    allowedSourceIps: z.array(z.string().ip()).default([...ELEVENLABS_US_EGRESS_IPS]),
+  })
+  .strict();
+export type ConsultConfig = z.infer<typeof ConsultSchema>;
+
+/** EL's timeout for the consult tool: always past our own hold, so serve answers first (D-93). */
+export function consultResponseTimeoutSecs(consult: Pick<ConsultConfig, "holdSec">): number {
+  return consult.holdSec + 15;
+}
+
+/**
  * The agent platform that holds `delegate` calls (Phase Q, D-75). Optional:
  * without it, delegate calls refuse at plan time and nothing else changes.
  */
@@ -152,6 +193,8 @@ export const AgentPlatformSchema = z
     pollIntervalMs: z.number().int().min(500).max(60_000).default(2_000),
     /** Lets end_call hang a delegate call up through Twilio (O-30). Optional. */
     twilioHangup: TwilioHangupSchema.optional(),
+    /** Enables mode `consult` (Phase R). Optional. */
+    consult: ConsultSchema.optional(),
   })
   .strict();
 export type AgentPlatformConfig = z.infer<typeof AgentPlatformSchema>;
@@ -180,6 +223,11 @@ export const ServerSchema = z
     publicPort: z.number().int().min(1).max(65535).default(8790),
     /** Admin/observability listener binds 127.0.0.1 only — never public. */
     adminPort: z.number().int().min(1).max(65535).default(8791),
+    /**
+     * Consult tool listener (Phase R, D-91) — binds 127.0.0.1; only
+     * cloudflared reaches it. Starts only with agentPlatform.consult.
+     */
+    toolsPort: z.number().int().min(1).max(65535).default(8792),
   })
   .strict()
   .default({});
@@ -208,6 +256,8 @@ export const TunnelSchema = z
     /** Tunnel NAME (loggable). The hostname is INV-11-sensitive; never log it. */
     tunnelName: z.string().min(1).optional(),
     hostname: z.string().min(1).optional(),
+    /** Second hostname on the same tunnel, for the consult tool listener (D-91). INV-11 as above. */
+    toolsHostname: z.string().min(1).optional(),
     /** Secret NAME resolved via env → opkeep (INV-12) — never a value. */
     tokenRef: z.string().nullable().default("CLOUDFLARE_TUNNEL_TOKEN"),
     /** Locally-managed style only; null with the remotely-managed token. */
@@ -289,6 +339,19 @@ export const ConfigSchema = z
           message: `tunnel.hostname must equal the publicBaseUrl host (${new URL(cfg.server.publicBaseUrl).host}) — a mismatch 403s every Twilio webhook`,
         });
       }
+      const consult = cfg.agentPlatform?.consult;
+      if (
+        cfg.tunnel.toolsHostname &&
+        consult &&
+        new URL(consult.toolsBaseUrl).host !== cfg.tunnel.toolsHostname
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tunnel", "toolsHostname"],
+          message:
+            "tunnel.toolsHostname must equal the agentPlatform.consult.toolsBaseUrl host — a mismatch sends every consult question to the wrong place",
+        });
+      }
       if (!cfg.tunnel.tunnelName) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -296,6 +359,21 @@ export const ConfigSchema = z
           message: "tunnel.enabled requires tunnel.tunnelName",
         });
       }
+    }
+    // D-59/D-91: the tool channel has its own hostname and trust model; on the
+    // Twilio host every consult request would 404 at the public listener.
+    const toolsBase = cfg.agentPlatform?.consult?.toolsBaseUrl;
+    if (
+      toolsBase &&
+      cfg.server.publicBaseUrl &&
+      new URL(toolsBase).host === new URL(cfg.server.publicBaseUrl).host
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["agentPlatform", "consult", "toolsBaseUrl"],
+        message:
+          "agentPlatform.consult.toolsBaseUrl must use its own hostname, not the publicBaseUrl host (D-91)",
+      });
     }
     if (!cfg.profiles.default) {
       ctx.addIssue({

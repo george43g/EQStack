@@ -19,6 +19,7 @@ import type { SqliteStore } from "../stores/sqlite-store.js";
 import type { VoicePreviewService } from "../voice-preview/service.js";
 import type { CommandSpec } from "./specs.js";
 import {
+  answerConsult,
   deleteRecording,
   endCall,
   getCall,
@@ -55,10 +56,19 @@ export function cleanUtterance(u: Utterance): Utterance {
   return { ...u, text: u.role === "user" ? wrapUntrusted(text) : text };
 }
 
+/**
+ * Third-party text in an event is marked untrusted before it reaches a host:
+ * `text` (callee speech) and `question` (a consult question, written by the
+ * EL agent from what the callee said — a prompt-injection path into a
+ * session that holds tools, PHASE-R § 6).
+ */
 export function cleanEvent(e: CallEvent): CallEvent {
-  return typeof e.data.text === "string"
-    ? { ...e, data: { ...e.data, text: wrapUntrusted(sanitizeContent(e.data.text)) } }
-    : e;
+  let data = e.data;
+  for (const key of ["text", "question"] as const) {
+    const v = data[key];
+    if (typeof v === "string") data = { ...data, [key]: wrapUntrusted(sanitizeContent(v)) };
+  }
+  return data === e.data ? e : { ...e, data };
 }
 
 function bind<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(
@@ -161,7 +171,11 @@ export function buildClientDefinitions(deps: CommandDeps): AnyToolDefinition[] {
           const mode = s.getCallRequest(c.requestId)?.mode ?? "byo-model";
           return s.getTimings(c.id).map((timing) => ({ timing, mode }));
         });
-        return buildLatencyReport(rows, calls.length);
+        return buildLatencyReport(
+          rows,
+          calls.length,
+          calls.flatMap((c) => s.listConsultQuestions(c.id)),
+        );
       }),
     ),
     bind(getRecordingMetadata, async ({ callId }) => ({
@@ -169,6 +183,9 @@ export function buildClientDefinitions(deps: CommandDeps): AnyToolDefinition[] {
     })),
     bind(deleteRecording, async ({ recordingSid, scope, confirm }) =>
       admin.deleteRecording(recordingSid, scope, confirm),
+    ),
+    bind(answerConsult, async ({ callId, questionId, answer }) =>
+      admin.answerConsult(callId, questionId, answer),
     ),
     bind(previewVoices, async ({ candidates, reset, applyFrom }) =>
       preview().preview({

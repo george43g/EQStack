@@ -4,7 +4,7 @@
  * observability: SSE event feed and Prometheus metrics. Never reachable
  * through the tunnel; the public listener knows none of these routes.
  *
- * Inverted, not deleted (D-8): the seven mutating routes are a declarative
+ * Inverted, not deleted (D-8): the mutating routes are a declarative
  * table parsing with the SAME Zod schemas as every other surface
  * (src/commands/specs.ts — INV-5/INV-6, fixing the D-31 coercion bugs), while
  * the transport concerns the registry has no opinion about — loopback bind,
@@ -22,6 +22,7 @@ import {
 } from "../commands/contracts.js";
 import type { CommandSpec } from "../commands/specs.js";
 import {
+  answerConsult,
   deleteRecording,
   endCall,
   placeCall,
@@ -117,7 +118,7 @@ function route<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(row: {
 }
 
 /**
- * The six mutating routes as data. Each row is: match → merge path captures
+ * The mutating routes as data. Each row is: match → merge path captures
  * over the body (path wins) → `spec.input.parse` → call CallService directly
  * (this process is the single writer — INV-9). URL shapes are unchanged so
  * AdminClient does not fork; response codes and bodies are today's.
@@ -174,6 +175,15 @@ const MUTATING_ROUTES: readonly AdminRoute[] = [
       await service.setRecording(callId, enabled);
       return { ok: true };
     },
+  }),
+  route({
+    method: "POST",
+    pattern: /^\/calls\/([\w-]+)\/consult\/([\w-]+)\/answer$/,
+    spec: answerConsult,
+    status: 200,
+    toArgs: (match, body) => ({ ...body, callId: match[1], questionId: match[2] }),
+    run: async (service, { callId, questionId, answer }) =>
+      service.answerConsult(callId, questionId, answer),
   }),
   route({
     method: "DELETE",
@@ -264,10 +274,18 @@ export class AdminServer {
       const limit = query.limit ?? 200;
       // Same clamp as before the inversion — out-of-range waits degrade, they don't 400.
       const waitMs = Math.min(Math.max(query.waitMs ?? 0, 0), 55_000);
-      let events = this.service.store.getEvents(callId, afterSeq, limit);
-      if (events.length === 0 && waitMs > 0) {
-        await this.waitForCallEvent(callId, waitMs, res);
+      // Phase R: any poll through serve marks a host as listening on this call;
+      // an open long-poll counts for its whole wait (O-38, `unavailable`).
+      const endPoll = this.service.noteHostPoll(callId);
+      let events: CallEvent[];
+      try {
         events = this.service.store.getEvents(callId, afterSeq, limit);
+        if (events.length === 0 && waitMs > 0) {
+          await this.waitForCallEvent(callId, waitMs, res);
+          events = this.service.store.getEvents(callId, afterSeq, limit);
+        }
+      } finally {
+        endPoll();
       }
       // Phase E: the pickup mark — the FIRST delivery of each turn.user wins
       // (COALESCE in upsertTiming; a re-poll of the same cursor cannot move it).
@@ -275,6 +293,10 @@ export class AdminServer {
         if (ev.type === "turn.user") {
           const parsed = z.object({ turn: z.number().int() }).safeParse(ev.data);
           if (parsed.success) this.service.markDelivered(callId, parsed.data.turn);
+        } else if (ev.type === "consult.asked") {
+          // consult.pickup: the first hand-off of the question to a host wins.
+          const parsed = z.object({ questionId: z.string() }).safeParse(ev.data);
+          if (parsed.success) this.service.markConsultPickedUp(callId, parsed.data.questionId);
         }
       }
       // D-28/INV-11: same redaction as the SSE path.

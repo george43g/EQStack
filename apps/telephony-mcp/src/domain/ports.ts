@@ -70,7 +70,7 @@ export interface TelephonyAdapter {
  * Carries no phone number (INV-11) — the callee reaches only the call request.
  */
 export interface AgentBrief {
-  /** Deterministic workspace name: `eqstack-<profile>[-recorded]`. */
+  /** Deterministic workspace name: `eqstack-<profile>[-consult][-recorded]`. */
   name: string;
   /** Harness preamble + profile.systemPrompt + the per-call objective template. */
   prompt: string;
@@ -91,6 +91,36 @@ export interface AgentBrief {
    * setting fixed at call start, which is why a recorded call uses its own agent.
    */
   recordVoice: boolean;
+  /**
+   * Consult briefs only (Phase R, D-90/D-92): the webhook tool that asks the
+   * originating agent. Left `undefined` on delegate briefs so their hash —
+   * and so every existing delegate agent — does not move.
+   */
+  consultTool?: ConsultToolSpec | undefined;
+}
+
+/**
+ * The consult webhook tool as pure data (PHASE-R § 1). The adapter maps it to
+ * the platform's wire shape; because it is part of the brief, `briefHash`
+ * covers the URL and timing, so a change re-updates the agent through the
+ * ordinary provisioning path. Carries no secret: the bearer is a per-call
+ * dynamic variable, named here and valued only at dial time.
+ */
+export interface ConsultToolSpec {
+  name: string;
+  description: string;
+  /** `<toolsBaseUrl>/v1/consult` — the one public tool route (D-91). */
+  url: string;
+  /** Platform-side timeout; always past serve's own hold (D-93). */
+  responseTimeoutSecs: number;
+  /** Dynamic variable whose value is the whole `Authorization` header (`secret__…`). */
+  bearerVariable: string;
+  preToolSpeech: "auto" | "force" | "off";
+  toolCallSound: "typing" | "elevator1" | "elevator2" | "elevator3" | "elevator4";
+  toolCallSoundBehavior: "auto" | "always";
+  executionMode: "immediate" | "post_tool_speech";
+  interruptionMode: "allow" | "disable_during_tool" | "disable_during_tool_and_turn";
+  toolErrorHandlingMode: "auto" | "summarized" | "passthrough" | "hide";
 }
 
 export interface AgentOutboundCallRequest {
@@ -99,7 +129,11 @@ export interface AgentOutboundCallRequest {
   phoneNumberId: string;
   /** Full E.164 — flows config → adapter only; never stored or logged (INV-11). */
   to: string;
-  /** Per-call values the agent prompt references (objective, context). No numbers. */
+  /**
+   * Per-call values the agent references (objective, context; on consult
+   * calls also the `secret__` bearer, which the platform keeps from the LLM).
+   * No numbers. Never logged.
+   */
   dynamicVariables: Record<string, string>;
 }
 
@@ -141,7 +175,10 @@ export interface AgentConversation {
  * Hanging up goes around the platform instead, to the carrier that holds the
  * phone leg — `PhoneLegHangupPort` (O-30) — which is why `placeOutboundCall`
  * returns the leg's carrier id alongside the conversation id.
- * Phase R adds `registerMcpServer` here — never a second client.
+ * Phase R (consult) changes nothing here: its tool is a webhook block inside
+ * the agent body (`AgentBrief.consultTool`), not an MCP server registered on
+ * the platform — D-90 rejected that (R-9) — so there is no
+ * `registerMcpServer` and never a second client (D-78).
  */
 export interface AgentPlatformPort {
   readonly id: string;
@@ -205,7 +242,7 @@ export interface PhoneLegHangupPort {
 
 /** One row of the `agent_profiles` table: which platform agent serves a brief key. */
 export interface AgentProfileRecord {
-  /** `<profile>` or `<profile>+recorded` (see agentKey in agent-brief.ts). */
+  /** `<profile>[+consult][+recorded]` (see agentKey in agent-brief.ts). */
   agentKey: string;
   agentId: string;
   briefHash: string;
