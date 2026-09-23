@@ -48,6 +48,7 @@ import {
   ScriptedLlm,
   TEST_EL_EGRESS_IP,
   tempStateDir,
+  until,
   withHoldMs,
 } from "./helpers.js";
 
@@ -361,9 +362,11 @@ describe("addressed consult (Step 6, D-105): ask_agent → get_call_events {as} 
     // and must see nothing addressed to executive.
     const before = svc().store.getEvents(d.callId, 0, 500).at(-1)?.seq ?? 0;
     const other = poll(d.callId, { as: "eqstack", afterSeq: before, waitMs: 400 });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(svc().isHostListening(d.callId, "executive")).toBe(true);
-    expect(svc().isHostListening(d.callId, "eqstack")).toBe(true);
+    await until(
+      () =>
+        svc().isHostListening(d.callId, "executive") && svc().isHostListening(d.callId, "eqstack"),
+      "both members' long-polls to open",
+    );
     // An ordinary (un-addressed) host poll is NOT a member listening.
     expect(svc().isHostListening(d.callId)).toBe(false);
 

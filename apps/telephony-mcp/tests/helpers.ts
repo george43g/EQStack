@@ -185,6 +185,21 @@ export function withHoldMs(cfg: Config, holdMs: number): Config {
   return cfg;
 }
 
+/**
+ * Wait until `cond` holds, polling every 10 ms; throw after `timeoutMs`.
+ * Use instead of a fixed sleep before asserting on something an in-flight
+ * HTTP request sets: a loaded CI runner can take longer than any guess
+ * (a 50 ms sleep failed the 936f6e3 Release run on macOS).
+ */
+export async function until(cond: () => boolean, what: string, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!cond()) {
+    if (Date.now() > deadline)
+      throw new Error(`timed out after ${timeoutMs}ms waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
 export function tempStateDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "voice-mcp-test-"));
   process.env.TEL_STATE_DIR = dir;
