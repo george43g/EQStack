@@ -128,6 +128,44 @@ Recorded because these are cheap to preserve now and expensive to retrofit:
 5. **The humans-file nickname path is load-bearing here**, which raises the value
    of nicknames being reliably present. That is an imsg-mcp concern today.
 
+## Addendum 2026-09-23 — group-call social skills, open invitations, and voices
+
+George, after the voice audition (verbatim):
+
+> *"the other voice profiles can still be used in situations where there's a group call with multiple agents (we'll need a harness for group calls to explain to agents how to behave in a group call so they dont each always respond to every single message and constantly interrupt eachother, they will need "group call social skills to make them possible, especially if there are one or more human members in the group - but i did like the link - it should be possilbe to invite external humans and external ai agents to our group calls via a simple link or mcp or api so that outsiders can join in our process without having been designed for it in future"*
+
+Three requirements this adds, each cheap to honour now and expensive to retrofit:
+
+1. **A group-call harness ("social skills").** Every agent on a group call gets a
+   preamble on top of O-24's harness: do not answer every utterance; speak when
+   addressed, when you hold information nobody else has, or when the chair asks;
+   never talk over a speaker, and yield to humans before agents; keep turns short;
+   defer to a named chair (the secretary). It is a *prompt contract plus a turn
+   arbiter*, not only a prompt: something must decide who may speak next, or N
+   polite agents still collide. It is the group analogue of O-24/O-25 and belongs
+   beside them.
+2. **Open invitations.** An outsider — a human or someone else's AI agent — must be
+   able to join by **a link, an MCP tool, or an API call**, with no prior
+   integration. The voice audition proved the link half already exists on
+   ElevenLabs (a hosted talk-to page per agent); the MCP and API halves are ours
+   to expose. Invitation is also a consent and access surface: who may mint a
+   link, how long it lives, and what the joiner is told before anyone speaks
+   (O-29(d)).
+3. **Voices map to agents.** The profiles auditioned 2026-09-23 but not chosen as
+   George's own are the pool for *other* agents' voices in a group call — the
+   per-agent stable voice identity of O-29(b). Saved so far: `lily`, `archer`
+   (George's picks); the remaining candidates live in `PREVIEW_CANDIDATES`
+   (`apps/telephony-mcp/src/domain/voice-preview.ts`).
+
+And a standing principle George stated the same day, which governs how all of this
+gets built:
+
+> *"agents should be able to easily set stuff like that up using the mcp tools and apis with none or minimal custom code or scripts in an ideal world"*
+
+So prefer configuring the platform (EL agents, tools, MCP-server registration,
+hosted links) through its MCP tools and APIs over bespoke code; write code only for
+what the platform cannot do, and say why in the commit.
+
 ## When to circle back
 
 No date. Natural triggers: when the fleet decides the **secretary** is being built
