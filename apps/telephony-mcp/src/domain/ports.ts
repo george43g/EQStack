@@ -17,6 +17,7 @@ import type {
   TurnTiming,
   Utterance,
 } from "./types.js";
+import type { PreviewAgentSpec, PreviewToolCall, PreviewVoiceState } from "./voice-preview.js";
 
 export interface Clock {
   nowMs(): number;
@@ -149,6 +150,35 @@ export interface AgentPlatformPort {
   updateAgent(agentId: string, brief: AgentBrief): Promise<void>;
   placeOutboundCall(req: AgentOutboundCallRequest): Promise<AgentOutboundCallResult>;
   getConversation(conversationId: string): Promise<AgentConversation>;
+}
+
+/**
+ * The voice-preview seam (src/domain/voice-preview.ts). Separate from
+ * AgentPlatformPort because it never dials and never touches the call DB:
+ * the preview agent is found by its workspace NAME, and the agent itself is
+ * where George's adjustments live between sessions — so there is no sqlite
+ * mapping and nothing for `serve` to own.
+ */
+export interface VoicePreviewPort {
+  /** Newest agent whose name matches exactly, with its per-label voice settings; null if none. */
+  findPreviewAgent(name: string): Promise<{ agentId: string; voices: PreviewVoiceState[] } | null>;
+  createPreviewAgent(spec: PreviewAgentSpec): Promise<{ agentId: string }>;
+  updatePreviewAgent(agentId: string, spec: PreviewAgentSpec): Promise<void>;
+  /** The platform's hosted mic/speaker page for this agent. */
+  talkUrl(agentId: string): string;
+  /** Newest first. */
+  listPreviewConversations(
+    agentId: string,
+    limit: number,
+  ): Promise<
+    Array<{ conversationId: string; status: AgentConversationStatus; startedAtSecs: number }>
+  >;
+  /** Status + the tool calls, in transcript order (empty until the platform finishes it). */
+  getPreviewConversation(conversationId: string): Promise<{
+    conversationId: string;
+    status: AgentConversationStatus;
+    toolCalls: PreviewToolCall[];
+  }>;
 }
 
 export interface AgentOutboundCallResult {

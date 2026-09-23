@@ -150,5 +150,8 @@ the one that costs the most to build.
 - Whether `realtime-monitoring` can be enabled on a non-Enterprise workspace.
 - The monitor's received-event JSON shape (docs list types, not frames).
 - Webhook tools and multi-voice **on a phone call** (no page says either way).
-- Whether an agent update applies to a session already in progress.
+- ~~Whether an agent update applies to a session already in progress.~~
+  **Measured 2026-09-23: it does not** (prompt and per-voice speed both
+  ignored until reconnect) — see `VOICE-PREVIEW.md`, which is the built
+  form of Recommendation 3 (hosted talk-to page, pull not webhook).
 - Twilio real-time transcription's current price and region for this account.

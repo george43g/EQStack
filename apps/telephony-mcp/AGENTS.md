@@ -56,6 +56,12 @@ and the migration manifest (this tool is slated to move out of life-stack).
   `agentPlatform` block (D-75 made it the delegate-mode agent platform —
   `src/adapters/agent-platform/elevenlabs.ts`). Delegate-mode code branches on
   `CALL_MODE_SPECS` predicates, never on the mode string.
+- **Voice preview** (`tel voices …`, tools `preview_voices` /
+  `review_voice_preview` / `save_voice_profile`): George auditions voices on
+  ElevenLabs' hosted talk-to page, no phone call. `save_voice_profile` is the
+  ONLY code that writes `config.json` (validated, atomic, backup kept); tests
+  use temp files, never the live config. See
+  `docs/plans/two-way-calling/VOICE-PREVIEW.md`.
 - Narrow gate: `pnpm --filter telephony-mcp lint typecheck test`.
 - Live/paid verification (tunnel install, smoke call, latency measurement) is
   gated on explicit authorization — see the ExecPlan.

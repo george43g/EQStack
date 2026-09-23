@@ -277,6 +277,175 @@ export const deleteRecording = {
   },
 } satisfies CommandSpec;
 
+// ── Voice-profile preview (src/domain/voice-preview.ts) ───────────────────
+//
+// These run in the calling process, not through the admin API: they never
+// touch the call DB (INV-9) or a phone line. See LOCAL_COMMANDS.
+
+const ConversationRefSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9_-]+$/, "an ElevenLabs conversation id (conv_…) or 'latest'")
+  .describe("Preview session: an ElevenLabs conversation id (conv_…), or 'latest' (default)");
+
+const PreviewVoiceOutSchema = z.object({
+  label: z.string(),
+  name: z.string(),
+  voiceId: z.string(),
+  accent: z.string(),
+  gender: z.string(),
+  speed: z.number(),
+  stability: z.number().nullable(),
+  similarityBoost: z.number().nullable(),
+  why: z.string(),
+});
+
+const VoiceAdjustmentSchema = z.object({
+  label: z.string(),
+  speed: z.number().optional(),
+  stability: z.number().optional(),
+  similarityBoost: z.number().optional(),
+  note: z.string().optional(),
+});
+
+const VoiceSettingsSchema = z.object({
+  voiceId: z.string(),
+  speed: z.number().nullable(),
+  stability: z.number().nullable(),
+  similarityBoost: z.number().nullable(),
+});
+
+export const previewVoices = {
+  name: "preview_voices",
+  description:
+    "Set up (or refresh) the voice-audition agent and return the link George opens to talk to it — ElevenLabs' hosted talk-to page, on his laptop's mic and speakers, NOT a phone call and no Twilio charge. The agent plays up to 9 candidate voices (Australian, British, American; male and female; calmer to livelier), takes spoken requests like 'slower' or 'more relaxed', and records the voice he names. Idempotent: re-running keeps adjustments already applied unless reset. A session cannot change a voice while it runs (measured), so after a session that asked for changes, call again with applyFrom: 'latest' and have him reconnect to hear them. Costs ElevenLabs agent minutes while he talks.",
+  input: z.object({
+    candidates: z
+      .number()
+      .int()
+      .min(1)
+      .max(9)
+      .optional()
+      .describe("How many candidate voices to audition (default 9, the platform maximum)"),
+    reset: z
+      .boolean()
+      .optional()
+      .describe("Discard earlier adjustments and go back to the catalogue settings"),
+    applyFrom: ConversationRefSchema.optional().describe(
+      "Fold the changes requested in this finished session ('latest' or conv_…) into the voices",
+    ),
+  }),
+  output: z.object({
+    agentId: z.string(),
+    agentName: z.string(),
+    action: z.enum(["create", "update"]),
+    talkUrl: z.string(),
+    hostVoice: z.string(),
+    voices: z.array(PreviewVoiceOutSchema),
+    applied: z.array(VoiceAdjustmentSchema),
+    appliedFrom: z.string().nullable(),
+  }),
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  timeoutMs: 60_000,
+} satisfies CommandSpec;
+
+export const reviewVoicePreview = {
+  name: "review_voice_preview",
+  description:
+    "Read what George asked for in a finished voice-audition session: the adjustments (per candidate, new absolute settings plus his words) and the voices he named, with the profile name each becomes. ElevenLabs only releases a session's record once it is 'done' (a few seconds after he hangs up); before that `finished` is false and the lists are empty.",
+  input: z.object({ conversation: ConversationRefSchema.optional() }),
+  output: z.object({
+    conversationId: z.string(),
+    status: z.string(),
+    finished: z.boolean(),
+    adjustments: z.array(VoiceAdjustmentSchema),
+    saves: z.array(
+      z.object({
+        label: z.string(),
+        spokenName: z.string(),
+        profileName: z.string(),
+        voice: VoiceSettingsSchema.extend({ label: z.string() }),
+        includesUnheardChange: z.boolean(),
+      }),
+    ),
+    rejected: z.array(z.string()),
+  }),
+  annotations: { ...READ_ONLY, openWorldHint: true },
+  timeoutMs: 30_000,
+} satisfies CommandSpec;
+
+export const saveVoiceProfile = {
+  name: "save_voice_profile",
+  description:
+    "Write a voice George chose into config.json as a named call profile (a copy of the base profile — prompt, greeting, limits — with the chosen voice id, speed, stability and similarity). Either from a finished audition session's naming (default: the latest session), or explicitly with label + name. Refuses to replace an existing profile unless overwrite is true; validates the whole config first; writes atomically and leaves a timestamped backup. Use dryRun: true to see the profile without writing. A running `tel serve` needs a restart to see the new profile.",
+  input: z.object({
+    conversation: ConversationRefSchema.optional(),
+    label: z
+      .string()
+      .min(1)
+      .max(32)
+      .optional()
+      .describe("Save this candidate explicitly (e.g. 'Hannah') instead of reading a session"),
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .optional()
+      .describe(
+        "Profile name (spoken form is fine: 'Harbour' → harbour). Required with label; overrides a session's name",
+      ),
+    base: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]*$/)
+      .optional()
+      .describe("Profile to copy prompt/greeting/limits from (default 'default')"),
+    overwrite: z.boolean().optional().describe("Replace a profile of the same name"),
+    dryRun: z.boolean().optional().describe("Show what would be written; write nothing"),
+  }),
+  output: z.object({
+    configPath: z.string(),
+    dryRun: z.boolean(),
+    saved: z.array(
+      z.object({
+        name: z.string(),
+        label: z.string(),
+        base: z.string(),
+        voice: z.object({
+          voiceId: z.string(),
+          speed: z.number(),
+          stability: z.number().nullable(),
+          similarity: z.number().nullable(),
+        }),
+        replaced: z.boolean(),
+        includesUnheardChange: z.boolean(),
+        backupPath: z.string().nullable(),
+      }),
+    ),
+    rejected: z.array(z.string()),
+    notices: z.array(z.string()),
+  }),
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  timeoutMs: 30_000,
+} satisfies CommandSpec;
+
+/**
+ * Mutating commands that run in the calling process instead of through the
+ * admin API. The only admissible reason: the command never touches the call
+ * DB (INV-9) — the parity test lets these, and only these, skip a REST row.
+ */
+export const LOCAL_COMMANDS: readonly string[] = [previewVoices.name, saveVoiceProfile.name];
+
 /** Every command, in listing order. The golden pin test asserts these names. */
 export const ALL_COMMANDS = [
   placeCall,
@@ -292,6 +461,9 @@ export const ALL_COMMANDS = [
   getLatencyReport,
   getRecordingMetadata,
   deleteRecording,
+  previewVoices,
+  reviewVoicePreview,
+  saveVoiceProfile,
 ] as const;
 
 export const COMMAND_NAMES = ALL_COMMANDS.map((c) => c.name);

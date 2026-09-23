@@ -37,12 +37,15 @@ import { log } from "../log.js";
 import { dbPath } from "../paths.js";
 import { SqliteStore } from "../stores/sqlite-store.js";
 import { VERSION } from "../version.js";
+import type { VoicePreviewService } from "../voice-preview/service.js";
 
 export interface McpDeps {
   cfg: Config;
   admin: AdminClient;
   /** Factory so tests can inject a store; defaults to read-only sqlite. */
   openReadStore?: () => SqliteStore | null;
+  /** Voice-preview workflow (src/voice-preview/factory.ts); absent → those tools refuse. */
+  voicePreview?: () => VoicePreviewService;
 }
 
 function defaultOpenReadStore(): SqliteStore | null {
@@ -70,7 +73,11 @@ export function buildMcpServer(deps: McpDeps): Server {
     }
   };
 
-  const registry = buildClientRegistry({ admin, openReadStore });
+  const registry = buildClientRegistry({
+    admin,
+    openReadStore,
+    ...(deps.voicePreview ? { voicePreview: deps.voicePreview } : {}),
+  });
   const dispatch = buildDispatcher({
     registry,
     engineLabel: () => "ts",

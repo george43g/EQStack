@@ -25,7 +25,7 @@ import { buildDispatcher } from "@george43g/mcp-kit";
 import { ZodError, type z } from "zod";
 import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
 import { buildClientRegistry } from "./commands/bind-client.js";
-import { deleteRecording, placeCall } from "./commands/specs.js";
+import { deleteRecording, placeCall, saveVoiceProfile } from "./commands/specs.js";
 import { type Config, loadConfigFile } from "./config/schema.js";
 import { renderCallHeader, renderNote, renderTurn } from "./console/render.js";
 import {
@@ -48,6 +48,8 @@ import { EncryptedRecordingStore } from "./stores/recording-store.js";
 import { EnvKeychainSecretProvider } from "./stores/secrets.js";
 import { SqliteStore } from "./stores/sqlite-store.js";
 import { VERSION } from "./version.js";
+import { voicePreviewFactory } from "./voice-preview/factory.js";
+import { describeVoices, type PreviewResult } from "./voice-preview/service.js";
 
 function loadConfig(): Config {
   return loadConfigFile(configPath());
@@ -109,7 +111,8 @@ program
       // mcp-kit lifecycle: shutdown traps, stdin-EOF, orphan watch, watchdog,
       // heap monitor (Phase A ledger L-5; long-poll feeds the watchdog via the
       // dispatcher's noteActivity — pinned in tests/mcp.integration.test.ts).
-      await runStdioMcp({ cfg, admin: admin(cfg) });
+      const voicePreview = voicePreviewFactory(cfg);
+      await runStdioMcp({ cfg, admin: admin(cfg), ...(voicePreview ? { voicePreview } : {}) });
     } catch (err) {
       fail(err);
     }
@@ -121,11 +124,13 @@ program
   .action(async () => {
     try {
       const cfg = loadConfig();
+      const voicePreview = voicePreviewFactory(cfg);
       const registry = buildClientRegistry({
         admin: admin(cfg),
         // Same default the MCP server uses: read-only sqlite, or null until first serve.
         openReadStore: () =>
           existsSync(dbPath()) ? new SqliteStore(dbPath(), { readonly: true }) : null,
+        ...(voicePreview ? { voicePreview } : {}),
       });
       const dispatch = buildDispatcher({ registry, engineLabel: () => "ts" });
       await runRepl({
@@ -166,6 +171,188 @@ program
       fail(err);
     }
   });
+
+// ── Voice audition (src/domain/voice-preview.ts) ─────────────────────────
+// Dispatches through the shared registry like `timings`, so the CLI, MCP and
+// console run the same handlers; only --watch drives the service directly.
+
+function voiceRegistryDispatch(cfg: Config) {
+  const voicePreview = voicePreviewFactory(cfg);
+  const registry = buildClientRegistry({
+    admin: admin(cfg),
+    openReadStore: () => null,
+    ...(voicePreview ? { voicePreview } : {}),
+  });
+  const dispatch = buildDispatcher({ registry, engineLabel: () => "ts" });
+  return async (name: string, args: Record<string, unknown>): Promise<unknown> => {
+    const result = await dispatch(name, args);
+    if (result.isError) {
+      fail(new Error(result.content[0]?.type === "text" ? result.content[0].text : "failed"));
+    }
+    return result.structuredContent;
+  };
+}
+
+function printPreview(p: PreviewResult): void {
+  console.log(`Voice audition ready — ${p.agentName} (${p.action}d).`);
+  console.log("Open this on the laptop, allow the microphone, and start the call:");
+  console.log(`  ${p.talkUrl}`);
+  console.log(`\nHost voice: ${p.hostVoice}. Candidates:`);
+  for (const line of describeVoices(p.voices)) console.log(`  ${line}`);
+  for (const a of p.applied) {
+    const parts = [
+      a.speed !== undefined ? `speed ${a.speed}` : null,
+      a.stability !== undefined ? `stability ${a.stability}` : null,
+      a.similarityBoost !== undefined ? `similarity ${a.similarityBoost}` : null,
+    ].filter(Boolean);
+    console.log(
+      `  applied to ${a.label}: ${parts.length ? parts.join(", ") : "(no setting — noted only)"}${a.note ? ` — "${a.note}"` : ""}`,
+    );
+  }
+  console.log(
+    '\nSay things like "slower", "more relaxed", "play Ollie again", and name the one you like ("call that one Harbour").\nChanges apply after you hang up — reconnect on the same link to hear them.',
+  );
+}
+
+const voices = program
+  .command("voices")
+  .description("Voice audition: talk to candidate voices on the laptop, adjust them, save one");
+
+voices
+  .command("preview")
+  .description("Set up the audition agent and print its talk-to link (idempotent; no phone call)")
+  .option("--candidates <n>", "how many candidate voices (1-9)", "9")
+  .option("--reset", "discard earlier adjustments", false)
+  .option(
+    "--apply [conversation]",
+    "fold a finished session's requested changes in (default: latest)",
+  )
+  .option(
+    "--watch",
+    "stay running: after each session, apply its changes and save named voices",
+    false,
+  )
+  .option("--no-save", "with --watch: apply changes but do not write named voices to config")
+  .option("--open", "open the talk-to page in the browser", false)
+  .option("--json", "print JSON instead of the summary", false)
+  .action(
+    async (opts: {
+      candidates: string;
+      reset: boolean;
+      apply?: string | boolean;
+      watch: boolean;
+      save: boolean;
+      open: boolean;
+      json: boolean;
+    }) => {
+      try {
+        const cfg = loadConfig();
+        const run = voiceRegistryDispatch(cfg);
+        const result = (await run("preview_voices", {
+          candidates: Number(opts.candidates),
+          ...(opts.reset ? { reset: true } : {}),
+          ...(opts.apply !== undefined
+            ? { applyFrom: typeof opts.apply === "string" ? opts.apply : "latest" }
+            : {}),
+        })) as PreviewResult;
+        if (opts.json) printJson(result);
+        else printPreview(result);
+        if (opts.open) spawn("/usr/bin/open", [result.talkUrl], { stdio: "ignore" }).unref();
+        if (!opts.watch) return;
+
+        const factory = voicePreviewFactory(cfg);
+        if (!factory) return;
+        const service = factory();
+        const state = {
+          sinceSecs: Math.floor(Date.now() / 1000) - 5,
+          seen: new Set<string>(),
+          save: opts.save,
+          candidates: Number(opts.candidates),
+        };
+        console.error("\nWatching for finished sessions (Ctrl-C to stop)…");
+        process.on("SIGINT", () => process.exit(0));
+        for (;;) {
+          try {
+            for (const row of await service.watchStep(state)) {
+              if (row.error) console.error(`session ${row.conversationId}: ${row.error}`);
+              if (row.applied) {
+                console.log(`\nsession ${row.conversationId} asked for changes — applied:`);
+                printPreview(row.applied);
+              }
+              for (const s of row.saved?.saved ?? []) {
+                console.log(
+                  `\nSAVED profile "${s.name}" (${s.label}: speed ${s.voice.speed}, stability ${s.voice.stability ?? "-"}, similarity ${s.voice.similarity ?? "-"}) → ${row.saved?.configPath}`,
+                );
+                console.log(`  backup of the previous config: ${s.backupPath}`);
+                console.log(
+                  `  use it: tel call <to> --profile ${s.name} --mode delegate --objective "…"`,
+                );
+              }
+              for (const r of row.saved?.rejected ?? []) console.error(`  not saved: ${r}`);
+              for (const n of row.saved?.notices ?? []) console.error(`  note: ${n}`);
+              if (!row.error && !row.applied && !row.saved) {
+                console.error(`session ${row.conversationId} finished — nothing to apply or save`);
+              }
+            }
+          } catch (err) {
+            console.error(`watch: ${(err as Error).message}`);
+          }
+          await new Promise((r) => setTimeout(r, 4_000));
+        }
+      } catch (err) {
+        fail(err);
+      }
+    },
+  );
+
+voices
+  .command("review")
+  .description("Show the changes asked for and the voices named in an audition session")
+  .argument("[conversation]", "conversation id (conv_…) or 'latest'", "latest")
+  .action(async (conversation: string) => {
+    try {
+      const run = voiceRegistryDispatch(loadConfig());
+      printJson(await run("review_voice_preview", { conversation }));
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+voices
+  .command("save")
+  .description(
+    "Save a chosen voice as a named profile in config.json (backup kept; --dry-run shows it)",
+  )
+  .argument(
+    "[name]",
+    "profile name; with --label required, else overrides the name said in the session",
+  )
+  .option("--from <conversation>", "audition session to read the choice from (default: latest)")
+  .option("--label <label>", "save this candidate explicitly (e.g. Hannah)")
+  .option("--base <profile>", "profile to copy prompt/greeting from", "default")
+  .option("--overwrite", "replace a profile of the same name", false)
+  .option("--dry-run", "show what would be written", false)
+  .action(
+    async (
+      name: string | undefined,
+      opts: { from?: string; label?: string; base: string; overwrite: boolean; dryRun: boolean },
+    ) => {
+      try {
+        const input = parseInput(saveVoiceProfile.input, {
+          ...(opts.from ? { conversation: opts.from } : {}),
+          ...(opts.label ? { label: opts.label } : {}),
+          ...(name ? { name } : {}),
+          base: opts.base,
+          ...(opts.overwrite ? { overwrite: true } : {}),
+          ...(opts.dryRun ? { dryRun: true } : {}),
+        });
+        const run = voiceRegistryDispatch(loadConfig());
+        printJson(await run("save_voice_profile", input));
+      } catch (err) {
+        fail(err);
+      }
+    },
+  );
 
 const daemon = program
   .command("daemon")

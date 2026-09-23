@@ -74,10 +74,10 @@ afterAll(async () => {
 });
 
 describe("tool surface", () => {
-  it("serves exactly the command registry's 13 tools, with safety annotations", async () => {
+  it("serves exactly the command registry's 16 tools, with safety annotations", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(COMMAND_NAMES).toHaveLength(13);
+    expect(COMMAND_NAMES).toHaveLength(16);
     expect(names).toEqual([...COMMAND_NAMES].sort());
     const place = tools.find((t) => t.name === "place_call");
     expect(place?.annotations?.destructiveHint).toBe(true);
@@ -89,6 +89,10 @@ describe("tool surface", () => {
     expect(list?.annotations?.readOnlyHint).toBe(true);
     const del = tools.find((t) => t.name === "delete_recording");
     expect(del?.annotations?.destructiveHint).toBe(true);
+    // The audition never dials: not destructive, and says it is not a phone call.
+    const preview = tools.find((t) => t.name === "preview_voices");
+    expect(preview?.annotations?.destructiveHint).toBe(false);
+    expect(preview?.description).toMatch(/NOT a phone call/);
   });
 
   it("lists tel:// resources", async () => {
