@@ -407,6 +407,16 @@ describe("the meeting agent's wire body (Step 4)", () => {
 });
 
 describe("the harness texts (Step 8): tighten the wording, never drop a rule", () => {
+  it("ask_agent has pre_tool_speech off (Step 9: forced filler landed in a member's tag); consult keeps force", () => {
+    const cfg = meetingConfig();
+    expect(buildMeetingBrief(cfg, { recordVoice: false }, null).consultTool?.preToolSpeech).toBe(
+      "off",
+    );
+    expect(
+      buildBrief(cfg, "default", { recordVoice: false, consult: true }).consultTool?.preToolSpeech,
+    ).toBe("force");
+  });
+
   it("MEETING_HARNESS keeps every rule of PHASE-GC § 2", () => {
     const rules: RegExp[] = [
       /live group meeting on a phone line/,
@@ -433,12 +443,14 @@ describe("the harness texts (Step 8): tighten the wording, never drop a rule", (
       /Nobody says 'great point'/,
       /hand the floor back to the humans/,
       /Never end by cueing another agent unless you are running a poll/,
+      /When the brief already states the answer, the agent gives it straight away in its own voice, without ask_agent/,
       /call ask_agent with that agent's name/,
       /Do not invent what an agent would say/,
-      /'Executive is checking that\.'/,
+      /In the same turn: say briefly in your own untagged voice that the agent is checking \(for example 'Executive is checking that\.'\), then call ask_agent/,
       /adding nothing it does not say/,
       /pending.*collect_question_id.*at the latest before you close/s,
-      /not at its desk and offer to pass the question on/,
+      /unavailable or fails, say in your own untagged voice that the agent is not at its desk and offer to pass the question on/,
+      /Only an agent's own words go inside its tag/,
       /'Was that for Executive or for EQ Stack\?'/,
     ];
     for (const r of rules) expect(MEETING_HARNESS).toMatch(r);
@@ -450,6 +462,7 @@ describe("the harness texts (Step 8): tighten the wording, never drop a rule", (
     expect(CHAIR_BLOCK).toMatch(/state the agenda in one sentence/);
     expect(CHAIR_BLOCK).toMatch(/what was decided and who owns it/);
     expect(CHAIR_BLOCK).toMatch(/collect any pending ask_agent answers first/);
+    expect(CHAIR_BLOCK).toMatch(/came back unavailable is not pending: never ask it again/);
     expect(CHAIR_BLOCK).toMatch(/call end_call in the same turn/);
   });
 
