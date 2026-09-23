@@ -199,6 +199,72 @@ export const AgentPlatformSchema = z
   .strict();
 export type AgentPlatformConfig = z.infer<typeof AgentPlatformSchema>;
 
+// ── Group calls (PHASE-GC, D-102..D-107) ────────────────────────────────────
+
+/** Session names as ListAgents and the bus print them (`executive`, `eqstack`). */
+export const MeetingMemberKeySchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9-]{0,63}$/, "a session name: lowercase letters, digits, hyphens");
+
+/**
+ * EL multi-voice markup is case-sensitive (`<Executive>…</Executive>`, E1),
+ * so a label is one capitalised word — nothing the LLM could mis-case or split.
+ */
+export const MEETING_LABEL_PATTERN = /^[A-Z][A-Za-z]{1,19}$/;
+
+/** EL's cap is 10 voices per agent, including the default (the chair's) — E1. */
+export const MAX_MEETING_MEMBERS = 9;
+
+const ProfileNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "a profile name");
+
+export const MeetingMemberSchema = z
+  .object({
+    /** The voice tag: `<Executive>…</Executive>`. */
+    label: z
+      .string()
+      .regex(MEETING_LABEL_PATTERN, "one capitalised word of letters, 2–20 long (e.g. Executive)"),
+    /** How the chair names it aloud ("EQ Stack"). */
+    displayName: z.string().min(1).max(64),
+    /** A saved profile (`profiles.<name>`) — never a raw voice id (D-106). */
+    voiceProfile: ProfileNameSchema,
+    /** One line; becomes the voice's `description` (when EL should use it, E3). */
+    role: z.string().min(1).max(300),
+  })
+  .strict();
+export type MeetingMemberConfig = z.infer<typeof MeetingMemberSchema>;
+
+/**
+ * The chair is a SLOT (D-107): EQStack ships the role mechanics only. Name,
+ * tone and gate policy come from `personaFile`, a machine-local path that is
+ * never committed; without it the chair is a neutral meeting chair.
+ */
+export const MeetingChairSchema = z
+  .object({
+    /** The session that occupies the slot (default: the secretary, D-107). */
+    agent: MeetingMemberKeySchema.default("secretary"),
+    displayName: z.string().min(1).max(64).default("the chair"),
+    /** The ensemble agent's default voice — untagged speech is the chair. */
+    voiceProfile: ProfileNameSchema,
+    /** `~`-relative or absolute path to the chair's phone persona text. Read at brief time. */
+    personaFile: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const MeetingSchema = z
+  .object({
+    chair: MeetingChairSchema,
+    members: z.record(MeetingMemberKeySchema, MeetingMemberSchema),
+    /**
+     * How long `serve` holds an ask_agent question (D-93's hold, shorter: the
+     * whole room waits on it). 60 max keeps holdSec + 15 ≤ 300 (EL's cap).
+     */
+    holdSec: z.number().int().min(5).max(60).default(20),
+    /** Clamped by limits.hardMaxDurationMinutes at dial time. */
+    maxDurationMinutes: z.number().int().min(1).default(30),
+  })
+  .strict();
+export type MeetingConfig = z.infer<typeof MeetingSchema>;
+
 /**
  * Third-party consent surface (D-76). Default: disclose and ask. The flag is
  * the caller opting out of being asked — never silent by default, never
@@ -297,6 +363,8 @@ export const ConfigSchema = z
     server: ServerSchema,
     telephony: TelephonySchema,
     agentPlatform: AgentPlatformSchema.optional(),
+    /** Group calls (PHASE-GC). Optional: without it start_meeting refuses at plan time. */
+    meeting: MeetingSchema.optional(),
     consent: ConsentSchema,
     llm: LlmSchema,
     voice: VoiceSchema,
@@ -394,7 +462,64 @@ export const ConfigSchema = z
         });
       }
     }
+    if (cfg.meeting) refineMeeting(cfg, cfg.meeting, ctx);
   });
+
+/**
+ * PHASE-GC Step 1: every meeting rule is refused at config load, never at
+ * dial time. The voice-id comparison uses the EFFECTIVE voice (profile over
+ * base), because that is what the platform would speak.
+ */
+function refineMeeting(
+  cfg: { profiles: Record<string, Profile>; voice: VoiceConfig; agentPlatform?: unknown },
+  meeting: MeetingConfig,
+  ctx: z.RefinementCtx,
+): void {
+  const issue = (path: (string | number)[], message: string) =>
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["meeting", ...path], message });
+  const platform = cfg.agentPlatform as { consult?: unknown } | undefined;
+  if (!platform?.consult) {
+    issue(
+      [],
+      'meeting needs the "agentPlatform.consult" block: a meeting is a consult call (D-104)',
+    );
+  }
+  const members = Object.entries(meeting.members);
+  if (members.length === 0) issue(["members"], "at least one member is required");
+  if (members.length > MAX_MEETING_MEMBERS) {
+    issue(
+      ["members"],
+      `at most ${MAX_MEETING_MEMBERS} members (ElevenLabs allows 10 voices per agent, the chair's included)`,
+    );
+  }
+  const voiceOf = (profile: string): string | null => {
+    const p = cfg.profiles[profile];
+    return p ? mergeVoice(cfg.voice, p.voice).voiceId : null;
+  };
+  const seenVoices = new Map<string, string>();
+  const claimVoice = (path: (string | number)[], who: string, profile: string) => {
+    const id = voiceOf(profile);
+    if (id === null) {
+      issue([...path, "voiceProfile"], `no such profile "${profile}" (save it first)`);
+      return;
+    }
+    const holder = seenVoices.get(id);
+    if (holder) {
+      issue(
+        [...path, "voiceProfile"],
+        `${who} would share a voice with ${holder}: every voice on a meeting must be distinguishable`,
+      );
+    } else seenVoices.set(id, who);
+  };
+  claimVoice(["chair"], "the chair", meeting.chair.voiceProfile);
+  const seenLabels = new Map<string, string>();
+  for (const [key, m] of members) {
+    const other = seenLabels.get(m.label);
+    if (other) issue(["members", key, "label"], `label "${m.label}" is already used by ${other}`);
+    else seenLabels.set(m.label, key);
+    claimVoice(["members", key], `member "${key}"`, m.voiceProfile);
+  }
+}
 export type Config = z.infer<typeof ConfigSchema>;
 
 export class ConfigError extends Error {}
@@ -453,4 +578,9 @@ export function effectiveCallSettings(cfg: Config, profileName: string) {
     voice: mergeVoice(cfg.voice, profile.voice),
     maxDurationSec: maxDurationMinutes * 60,
   };
+}
+
+/** A meeting's cap: meeting.maxDurationMinutes, clamped by the administrator's hard cap. */
+export function meetingMaxDurationSec(cfg: Config, meeting: MeetingConfig): number {
+  return Math.min(meeting.maxDurationMinutes, cfg.limits.hardMaxDurationMinutes) * 60;
 }

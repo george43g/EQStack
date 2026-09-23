@@ -31,6 +31,10 @@
  * The body is Zod-parsed between 2 and 3 (check 3 reads it); a body that
  * fails to parse is a 400 and holds nothing open (INV-6).
  *
+ * Group calls (PHASE-GC, D-105) add no route and no layer: `ask_agent` is this
+ * route with one more body field, `agent`. After all three checks pass, a
+ * meeting call without it, or any other call with it, is a 400.
+ *
  * Nothing here logs the token, the question text or a tunnel URL (INV-11).
  */
 import { timingSafeEqual } from "node:crypto";
@@ -67,6 +71,12 @@ export const ConsultRequestSchema = z
       .transform((v) => (v?.trim() ? v.trim() : undefined)),
     conversation_id: z.string().min(1).max(256),
     call_sid: z.string().max(64).optional(),
+    /**
+     * Meeting calls only (PHASE-GC § 3, D-105): the member asked (`ask_agent`).
+     * Required on a meeting call and refused on any other — checked AFTER the
+     * three auth layers, so it reveals nothing to an unauthenticated caller.
+     */
+    agent: z.string().min(1).max(64).optional(),
   })
   .superRefine((b, ctx) => {
     if (!b.collect_question_id && !b.question?.trim()) {
@@ -223,6 +233,20 @@ export class ToolServer {
       return this.reject(res, "call_sid");
     }
 
+    // PHASE-GC: `agent` is required on a meeting call and refused elsewhere.
+    const meeting = this.deps.service.meetingMembersOf(call.id) !== null;
+    if (meeting !== (body.agent !== undefined)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: meeting
+            ? "agent is required on a meeting call"
+            : "agent is only accepted on a meeting call",
+        }),
+      );
+      return;
+    }
+
     // Held until answered, timed out, the call ends, EL hangs up, or close().
     const ac = new AbortController();
     this.held.add(ac);
@@ -234,7 +258,11 @@ export class ToolServer {
     try {
       result = await this.deps.service.askConsult(
         call.id,
-        { question: body.question, collectQuestionId: body.collect_question_id },
+        {
+          question: body.question,
+          collectQuestionId: body.collect_question_id,
+          ...(body.agent !== undefined ? { agent: body.agent } : {}),
+        },
         ac.signal,
       );
     } finally {

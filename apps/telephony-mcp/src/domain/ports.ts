@@ -97,6 +97,34 @@ export interface AgentBrief {
    * and so every existing delegate agent — does not move.
    */
   consultTool?: ConsultToolSpec | undefined;
+  /**
+   * Meeting briefs only (PHASE-GC § 1): every configured member's voice, as
+   * EL multi-voice entries (`<Label>…</Label>`). This and the three fields
+   * below are left `undefined` on every other brief so no existing agent's
+   * hash — or body — moves.
+   */
+  supportedVoices?: SupportedVoiceSpec[] | undefined;
+  /** Extra EL system tools, placed in `tools` beside end_call (D-100: `tools` drops `built_in_tools`). */
+  extraSystemTools?: "skip_turn"[] | undefined;
+  /** `conversation_config.turn.turn_eagerness` (E9). */
+  turnEagerness?: "patient" | "normal" | "eager" | undefined;
+  /**
+   * `platform_settings.auth.enable_auth` (D-108): the meeting agent is never
+   * public — only our API-placed calls reach it, unlike D-95's preview agent.
+   */
+  enableAuth?: boolean | undefined;
+}
+
+/** One EL multi-voice entry (SDK v2.68.0 `SupportedVoice`). */
+export interface SupportedVoiceSpec {
+  /** The case-sensitive tag the LLM writes (`Executive`). */
+  label: string;
+  voiceId: string;
+  speed: number;
+  stability: number | null;
+  similarityBoost: number | null;
+  /** When the agent should use this voice (E3). */
+  description: string;
 }
 
 /**
@@ -121,6 +149,13 @@ export interface ConsultToolSpec {
   executionMode: "immediate" | "post_tool_speech";
   interruptionMode: "allow" | "disable_during_tool" | "disable_during_tool_and_turn";
   toolErrorHandlingMode: "auto" | "summarized" | "passthrough" | "hide";
+  /**
+   * Meeting briefs only (PHASE-GC § 3): the member keys the tool may address.
+   * When set, the body carries a required `agent` property enumerating them;
+   * serve still checks the member is on THIS call. Undefined on consult
+   * briefs, so their body and hash do not move.
+   */
+  addressees?: string[] | undefined;
 }
 
 export interface AgentOutboundCallRequest {
@@ -242,7 +277,7 @@ export interface PhoneLegHangupPort {
 
 /** One row of the `agent_profiles` table: which platform agent serves a brief key. */
 export interface AgentProfileRecord {
-  /** `<profile>[+consult][+recorded]` (see agentKey in agent-brief.ts). */
+  /** `<profile>[+consult][+recorded]`, or `meeting[+recorded]` (see agentKey in agent-brief.ts). */
   agentKey: string;
   agentId: string;
   briefHash: string;

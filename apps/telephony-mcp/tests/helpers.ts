@@ -117,6 +117,62 @@ export function consultConfig(
   });
 }
 
+/** Obviously fake voice ids for the meeting line-up (never a real EL voice). */
+export const MEETING_TEST_VOICES = {
+  lily: "voiceLilyTest",
+  david: "voiceDavidTest",
+  roger: "voiceRogerTest",
+} as const;
+
+/**
+ * consultConfig plus a meeting block (PHASE-GC): chair `lily`, members
+ * `executive` (David) and `eqstack` (Roger) — the proposed line-up (O-41),
+ * with fake voice ids. Pair with FakeAgentPlatform only (INV-14).
+ */
+export function meetingConfig(
+  meeting: Record<string, unknown> = {},
+  overrides: Record<string, unknown> = {},
+  consult: Record<string, unknown> = {},
+): Config {
+  const base = testConfig();
+  return consultConfig(consult, {
+    profiles: {
+      default: base.profiles.default,
+      lily: {
+        systemPrompt: "You are calling on behalf of George.",
+        voice: { voiceId: MEETING_TEST_VOICES.lily, speed: 1 },
+      },
+      david: {
+        systemPrompt: "You are calling on behalf of George.",
+        voice: { voiceId: MEETING_TEST_VOICES.david, speed: 0.95, stability: 0.6 },
+      },
+      roger: {
+        systemPrompt: "You are calling on behalf of George.",
+        voice: { voiceId: MEETING_TEST_VOICES.roger, speed: 1.05, similarity: 0.75 },
+      },
+    },
+    meeting: {
+      chair: { voiceProfile: "lily" },
+      members: {
+        executive: {
+          label: "Executive",
+          displayName: "Executive",
+          voiceProfile: "david",
+          role: "George's chief of staff: priorities, commitments, coordination",
+        },
+        eqstack: {
+          label: "Eqstack",
+          displayName: "EQ Stack",
+          voiceProfile: "roger",
+          role: "builds the EQ Stack comms apps: imsg, gmail, telephony",
+        },
+      },
+      ...meeting,
+    },
+    ...overrides,
+  });
+}
+
 /**
  * Shorten the hold AFTER validation (the schema's 5 s floor is EL's, not a
  * logic rule), so hold-deadline tests run in milliseconds with real timers.
@@ -125,6 +181,7 @@ export function withHoldMs(cfg: Config, holdMs: number): Config {
   const consult = cfg.agentPlatform?.consult;
   if (!consult) throw new Error("not a consult config");
   consult.holdSec = holdMs / 1000;
+  if (cfg.meeting) cfg.meeting.holdSec = holdMs / 1000;
   return cfg;
 }
 

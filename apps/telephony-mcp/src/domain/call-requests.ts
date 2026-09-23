@@ -34,6 +34,13 @@ export class CallRequestError extends Error {}
 export const CONSULT_HOST_NOTICE =
   "This call can ask you questions. Stay in a get_call_events loop (waitMs ~25000) until call.ended. Answer each consult.asked with answer_consult promptly: short, speakable, self-contained. If you don't know, say so in the answer rather than waiting. The caller is on hold while you think.";
 
+/**
+ * start_meeting's notice for the CONVENING session, which is not the answerer
+ * on a meeting (PHASE-GC § 2): the members are, each through its own loop.
+ */
+export const MEETING_CONVENOR_NOTICE =
+  "This is a meeting: questions go to the named members, not to you. Deliver each member's joinInstructions to that member's session before or right after dialling. A member whose session is not in a get_call_events {as, waitMs} loop is 'not at its desk': questions to it are answered unavailable at once. Follow the meeting with get_call_events until call.ended, then read get_transcript.";
+
 export interface PlaceCallInput {
   /** Config alias OR raw E.164 (resolved before this layer). */
   to: string;
