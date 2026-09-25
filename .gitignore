@@ -38,7 +38,9 @@ coverage/
 .warp/
 .codex/
 opencode.json
-.agents/
+# .agents/ is per-machine, except the repo's own skills (tracked; see repo-scoped-skills).
+.agents/*
+!.agents/skills/
 
 # Generated synthetic test fixtures (regenerated via `pnpm fixtures`)
 fixtures/
