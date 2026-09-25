@@ -1,0 +1,23 @@
+[mcp_servers.imessage-mcp-dev]
+command = "node"
+args = ["--import", "./apps/imsg-mcp/node_modules/tsx/dist/loader.mjs", "./apps/imsg-mcp/scripts/mcp-dev-proxy.ts"]
+
+[mcp_servers.gmail-mcp-dev]
+command = "node"
+args = ["--import", "./apps/gmail-mcp/node_modules/tsx/dist/loader.mjs", "./apps/gmail-mcp/scripts/mcp-dev-proxy.ts"]
+
+[mcp_servers.gmail-mcp-dev.env]
+MCP_DEV_CMD = "node --import ./apps/gmail-mcp/node_modules/tsx/dist/loader.mjs ./apps/gmail-mcp/src/cli/index.ts mcp"
+
+[mcp_servers.telephony-mcp]
+command = "node"
+args = ["--import", "./apps/telephony-mcp/node_modules/tsx/dist/loader.mjs", "./apps/telephony-mcp/src/cli.ts", "mcp"]
+
+[mcp_servers.twilio]
+command = "/bin/sh"
+args = ["-c", "exec 'npx' '-y' '@twilio-alpha/mcp@0.7.0' \"${TWILIO_ACCOUNT_SID}\"'/'\"${TWILIO_API_KEY}\"':'\"${TWILIO_API_SECRET}\""]
+env_vars = ["TWILIO_ACCOUNT_SID", "TWILIO_API_KEY", "TWILIO_API_SECRET"]
+# NOTE: args reference TWILIO_ACCOUNT_SID, TWILIO_API_KEY, TWILIO_API_SECRET — launched via /bin/sh -c, since codex expands nothing
+
+[mcp_servers.elevenlabs]
+url = "https://api.us.elevenlabs.io/v1/mcp"
