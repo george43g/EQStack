@@ -749,6 +749,37 @@ the real sessions, prove their long-poll and answer loop without a phone call, a
 the chair's opening agenda explicit. Do not treat the first run as a pass of E5 or the
 Step 10 acceptance measures.
 
+### Member rehearsal, 2026-09-27 (fake gateway; D-117)
+
+From the repo root, `pnpm -C apps/telephony-mcp exec tsx
+tests/member-dryrun.manual.ts 19490` starts the existing fake telephony/platform
+adapters with a temporary database and prints a synthetic call ID and loopback
+admin URL. It neither reads live config nor dials. A real session polls
+`/calls/<callId>/events?as=<member>&afterSeq=<cursor>&waitMs=55000`, continuing
+from each `nextCursor`, and posts its own answer to
+`/calls/<callId>/consult/<questionId>/answer`. After a poll is open, the harness
+operator types `ask <member>`; `quit` closes the listeners and removes the temp
+state. An initial poll can return `call.initiated` before a question, so the
+session must continue from that cursor rather than treating one poll as a loop.
+
+This EQStack Codex session completed its own rehearsal: it read
+`consult.asked {addressee: "eqstack"}` at sequence 4, submitted a one-sentence
+answer, and got `{delivered: true, collectable: false}`. The fake holder recorded
+`status: delivered, deliveredVia: held`. This proves this session's addressed
+poll and answer over the isolated loopback API. The real executive Codex session
+then polled as `executive`, received its own synthetic question, and answered;
+the fake holder again recorded `status: delivered, deliveredVia: held`. Its
+first 55 s poll expired just after it reported readiness, so it reopened from
+the cursor before the question arrived. A live join loop must re-arm every
+long-poll, and a readiness note alone does not prove a poll is still open.
+Its `consult.delivered` event reported `waitedMs: 35666`, within this fake
+rehearsal's 60 s hold but beyond the live meeting's current 20 s hold. That
+includes this session's manual coordination and the executive's answer time;
+it does not isolate model latency or establish a new hold default (O-45).
+Neither session used the new member MCP host registration in this rehearsal;
+the checks used loopback HTTP. MCP availability, continuous member wake, and
+audible phone voices remain unmeasured.
+
 ## Build notes (GC-1, Steps 1–8)
 
 Built on `feat/telephony-group-calls-gc1` from `main` at `1a6ce80`. Steps 9 and 10
