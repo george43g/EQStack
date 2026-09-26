@@ -1221,3 +1221,72 @@ Nothing staged, nothing mid-edit. Nothing in flight.
 Next build action: **Phase Q Step 1** — but first get George's call on `agent-platform-port-redesign`
 and record it as a DECISIONS row, then add the port and flip `CALL_MODE_SPECS.delegate.implemented`.
 Do not write the port before that row exists.
+
+## Checkpoint · eqstack · 2026-09-26
+
+Where this block and a conversation summary disagree, this block is correct.
+
+### State
+GC-1 Step 9 is done and merged; Step 10 ran once and could not measure member voices. The next meeting waits on two decisions from George: wiring in the real member sessions, and how the secretary joins. `main` is green at `f1898a1`, with nothing in flight.
+
+### Constraints
+- George 2026-09-24: *"i approve the two live tests"* (Step 9 and Step 10). Step 10 has run once, so a rerun is a new paid call and needs his fresh go.
+- George 2026-09-25: *"why are you filling in for other members? can you get the real secretary and executive and yourself to be the participants in the call? have you thought about how you would route them in or wire it up?"* The members must be real sessions, never this session standing in for them.
+- Standing rules: paid calls only on George's current word; never print or rotate a credential; merge PRs, never squash; one merge per Release run; never `git add -A`.
+
+### Done
+- #176 `c612e79`: the flaky meeting test now waits on the listening condition instead of a fixed 50 ms sleep. That sleep had failed the Release run for `936f6e3`, publishing nothing.
+- #175 `cb41f31`: D-112 (voice lineup confirmed, live tests approved).
+- #177 `8954d23`: meeting harness tuned by six Step 9 text sessions (D-113). The stored transcript keeps the voice tags (O-48 closed). `ask_agent` `pre_tool_speech` is off. Chair lines stay untagged, briefed facts are answered without the tool, and an unavailable question is not pending. All the throwaway `eqstack-meeting-step9*` agents are deleted (each returned 204).
+- Step 10, first live run, 2026-09-25, conv `conv_8401m38pcpv7ef4bm94vyj9c07p1`, 270 s:
+  - Routing: each question reached only its addressee.
+  - The chair closed with goodbye and `end_call` in the same turn (the D-101 defect is fixed).
+  - LLM time to first token was about 0.2–0.3 s per turn.
+  - No member spoke. My listener alert was piped through `cut`, which buffers its output, so it never fired, no question was answered, and both timed out after the 20 s hold.
+  - Not yet recorded in PHASE-GC `## Measured`.
+- #178 `81a2118`: tui-kit `^0.5.2` for imsg and gmail. Its Release run published nothing ("Released 0 of 1").
+- #179 `d8630ff`: `.agents/skills` tracked and `.claude/skills/imsg-mcp-dev` linked. `link-repo-skills --check` passes. The skill's false `git lfs pull` line is gone.
+- #180 `e6c38d1`: `check:skills` guarded in `pnpm verify`. It exits 0 here, skips with exit 0 when the checker is absent, and exits 1 when the link is removed.
+- #181 `f1898a1`: `.codex/config.toml` tracked for Codex parity (mcpsync reported no drift). ACKs were sent to executive and mcp-cli-starter-template on the bus, and to g-agent-skills by SendMessage.
+
+### Open
+- `real-members-wiring` · eqstack: blocked on George's go. The plan:
+  - dotfiles registers the telephony MCP at user scope, with a two-tool allow list (`get_call_events`, `answer_consult`) for the member sessions;
+  - SendMessage `executive` and `secretary` on O-42 and the join loop;
+  - each member passes a dry run before the paid rerun.
+  
+  Evidence it's open: `~/repos/executive` has no telephony MCP, and `tel` is not on PATH (checked 2026-09-25).
+- `secretary-chair-model` · eqstack: George to pick. (a) Let `ask_agent` target the chair's own session (recommended), or (b) she joins as a member with her own voice. Never answered.
+- `gc1-step10-rerun` · eqstack: the rerun waits on both items above.
+  - Also before it: the chair's opening must state the agenda. Its first message is a fixed "What's first?", which confused George.
+  - The listener alert must not pipe through `cut`, and must be proved against an injected event.
+- `gc1-step10-measured` · eqstack: record the first Step 10 run in PHASE-GC `## Measured`, with a DECISIONS row. Never written.
+- O-39 caller-number selector, O-37 public-listener bind, O-38/O-33 live channel: carried from 2026-09-24, not re-measured.
+- `pr129-await-reply` · eqstack: waiting on AfftarN (their fork's PR AfftarN/EQStack#1). Carried from 2026-09-24, not re-measured.
+
+### Corrections
+- The 2026-09-24 block said "merge #175 when green". Done, but only after #176, because the `936f6e3` Release run had failed on a flaky test.
+- Step 10 was not "blocked by a bug". The daemon routed both questions correctly, and the fault was this session's listener alert.
+
+### Traps
+- `cmd | cut` inside a Monitor buffers until exit, so no event is ever delivered. Use `grep --line-buffered` alone, or `stdbuf`.
+- A text driver on the EL conversation WebSocket must wait out each reply's audio (bytes / 32 ms) before its next turn. Otherwise it interrupts the reply, and the result looks like tool-call stalls.
+- `pnpm --filter X lint typecheck test` runs only `lint`, with the rest as its arguments. Run each script separately.
+- Restarting the daemon drops the telephony MCP for this session. Use `node apps/telephony-mcp/dist/cli.js` until it reconnects. The daemon runs `dist/`, so `pnpm build` first.
+
+### Tree
+EQStack `main` @ `f1898a1`, level with origin. `HANDOFF.md` is dirty (this block), and that is mine. The untracked `docs/agent-handoff/*`, `docs/research/*` and `opencode.json.bak.*` files are not this session's; leave them.
+
+### Blocked on you
+- `real-members-wiring`: say go.
+- `secretary-chair-model`: (a) or (b).
+- `elevenlabs-mcp-oauth`: `/mcp`, then elevenlabs, then Authenticate. Carried, not re-measured.
+
+### Resume
+Nothing is mid-flight: no call, monitor or branch is open. On George's go, start `real-members-wiring` with the dotfiles request and the SendMessage to executive and secretary, and write `gc1-step10-measured` meanwhile. If he chooses (a), build `ask_agent` targeting the chair's session first.
+
+## History
+
+<!-- BEGIN checkpoint-history (generated; do not edit) -->
+- 2026-09-24 · eqstack · Telephony delegate → consult → group-call GC-1 all merged and live on the daemon; GC-1's two authorised live tests are the next action, to run after George compacts. · open: `gc1-live-tests`, `merge-175`, `pr129-await-reply`, `caller-number-selector`, `public-listener-bind`, `group-call-live-channel` · [full text](handoff-archive/eqstack/2026-09-24.md)
+<!-- END checkpoint-history -->
