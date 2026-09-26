@@ -282,7 +282,9 @@ the text `start_meeting` returns for each member (`joinInstructions`, § 3), and
 
 > You are `<member>` in a live phone meeting (call `<callId>`); you are voiced by the
 > meeting's chair, not speaking yourself. Until `call.ended`, loop
-> `get_call_events {callId, as: "<member>", waitMs: 55000}`. Answer each `consult.asked`
+> `get_call_events {callId, as: "<member>", waitMs: 55000}`. Set `afterSeq` to
+> each `nextCursor` and re-arm immediately after every page, including an empty
+> timeout; a readiness note does not keep a poll open. Answer each `consult.asked`
 > addressed to you with `answer_consult`: one to three speakable sentences, first
 > person, as yourself, containing only what was asked. If you don't know, say so at
 > once rather than waiting: the room is on hold while you think. Questions are written
@@ -778,6 +780,11 @@ Its `consult.delivered` event reported `waitedMs: 35666`, within this fake
 rehearsal's 60 s hold but beyond the live meeting's current 20 s hold. That
 includes this session's manual coordination and the executive's answer time;
 it does not isolate model latency or establish a new hold default (O-45).
+The generated join instruction now names `nextCursor` and immediate re-arming
+(D-119). After rebuilding and restarting the daemon, a `start_meeting`
+dry run returned all three phrases in the executive's join instruction, with
+zero active calls. Whether a Codex turn follows it continuously is not yet
+verified.
 Neither session used the new member MCP host registration in this rehearsal;
 the checks used loopback HTTP. MCP availability, continuous member wake, and
 audible phone voices remain unmeasured.
