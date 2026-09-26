@@ -65,7 +65,7 @@ export function renderPlist(spec: PlistSpec): string {
   </array>
   <key>RunAtLoad</key>${bool(spec.runAtLoad)}
   <key>KeepAlive</key>${bool(spec.keepAlive)}
-  <key>ProcessType</key><string>Background</string>
+  <key>ProcessType</key><string>Standard</string>
   <key>ThrottleInterval</key><integer>${spec.throttleSeconds}</integer>
   <key>StandardOutPath</key><string>${xmlEscape(join(spec.logDir, "launchd.out.log"))}</string>
   <key>StandardErrorPath</key><string>${xmlEscape(join(spec.logDir, "launchd.err.log"))}</string>

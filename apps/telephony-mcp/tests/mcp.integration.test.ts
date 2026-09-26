@@ -74,6 +74,38 @@ afterAll(async () => {
 });
 
 describe("tool surface", () => {
+  it("member surface exposes only poll and answer, and refuses other tools and resources", async () => {
+    const memberServer = buildMcpServer({
+      cfg,
+      admin: new AdminClient(ADMIN_PORT),
+      openReadStore: () =>
+        new SqliteStore(join(stateDir, "telephony-mcp.sqlite3"), { readonly: true }),
+      surface: "member",
+    });
+    const [memberTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const memberClient = new Client({ name: "member-test-client", version: "0.0.0" });
+    await Promise.all([
+      memberServer.connect(serverTransport),
+      memberClient.connect(memberTransport),
+    ]);
+    try {
+      const { tools } = await memberClient.listTools();
+      expect(tools.map((tool) => tool.name).sort()).toEqual(["answer_consult", "get_call_events"]);
+
+      const forbidden = await memberClient
+        .callTool({
+          name: "place_call",
+          arguments: { to: "george", objective: "must be refused", dryRun: true },
+        })
+        .catch((error: unknown) => error);
+      expect(forbidden instanceof Error || (forbidden as { isError?: boolean }).isError).toBe(true);
+      expect(memberClient.getServerCapabilities()?.resources).toBeUndefined();
+      await expect(memberClient.listResources()).rejects.toThrow();
+    } finally {
+      await Promise.all([memberClient.close(), memberServer.close()]);
+    }
+  });
+
   it("serves exactly the command registry's 18 tools, with safety annotations", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();

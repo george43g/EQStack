@@ -42,6 +42,18 @@ async function runCli(args: string[]): Promise<{ code: number; stdout: string; s
 }
 
 describe("cli schema validation (L-9/L-10 replaced by command specs)", () => {
+  it("mcp --surface member parses before loading config", async () => {
+    const { code, stderr } = await runCli(["mcp", "--surface", "member"]);
+    expect(code).toBe(1);
+    expect(stderr).toMatch(/^tel: cannot read config at /);
+  }, 30_000);
+
+  it("mcp refuses an unknown surface instead of falling back to full access", async () => {
+    const { code, stderr } = await runCli(["mcp", "--surface", "unknown"]);
+    expect(code).toBe(1);
+    expect(stderr).toMatch(/^tel: surface: /);
+  }, 30_000);
+
   it("call --mode bogus exits 1 with a one-line schema error, no stack", async () => {
     const { code, stderr } = await runCli(["call", "x", "--objective", "y", "--mode", "bogus"]);
     expect(code).toBe(1);
