@@ -476,9 +476,14 @@ describe("the harness texts (Step 8): tighten the wording, never drop a rule", (
     expect(JOINER_BRIEFING).toMatch(/Press 1 to join, or hang up now\.$/);
   });
 
-  it("the first message names the roster through its variable", () => {
-    expect(MEETING_FIRST_MESSAGE).toBe(
-      "Meeting's open. On the line: {{meeting_roster_names}}. What's first?",
+  it("the first message names the roster and agenda before inviting the first topic", () => {
+    expect(MEETING_FIRST_MESSAGE).toContain("{{meeting_roster_names}}");
+    expect(MEETING_FIRST_MESSAGE).toContain("{{call_objective}}");
+    expect(MEETING_FIRST_MESSAGE.indexOf("{{meeting_roster_names}}")).toBeLessThan(
+      MEETING_FIRST_MESSAGE.indexOf("{{call_objective}}"),
+    );
+    expect(MEETING_FIRST_MESSAGE.indexOf("{{call_objective}}")).toBeLessThan(
+      MEETING_FIRST_MESSAGE.indexOf("What's first?"),
     );
   });
 });

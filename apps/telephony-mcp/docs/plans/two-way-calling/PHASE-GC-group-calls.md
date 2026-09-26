@@ -396,9 +396,11 @@ export const CHAIR_BLOCK = [
 ].join("\n");
 ```
 
-The first message (templated; dynamic variables in `first_message` are **believed**
-to substitute as they do in the prompt, and Step 9 confirms it): *"Meeting's open. On the line:
-{{meeting_roster_names}}. What's first?"*
+The first message is templated: *"Meeting's open. On the line:
+{{meeting_roster_names}}. Today's agenda: {{call_objective}}. What's first?"*
+Step 9 confirmed roster-name substitution; the agenda's substitution in this
+position is pinned offline and needs the next phone run to confirm it is heard
+correctly (D-118). The convenor supplies one concise agenda sentence.
 
 ### 6. Open invitations (GC-3/GC-4 design, settled now so no slice re-derives it)
 
@@ -779,6 +781,10 @@ it does not isolate model latency or establish a new hold default (O-45).
 Neither session used the new member MCP host registration in this rehearsal;
 the checks used loopback HTTP. MCP availability, continuous member wake, and
 audible phone voices remain unmeasured.
+
+The chair's fixed first message now includes the agenda variable before it
+asks what is first (D-118). This closes the missing-agenda wording defect in
+the generated brief; the next phone run still has to verify its spoken result.
 
 ## Build notes (GC-1, Steps 1–8)
 

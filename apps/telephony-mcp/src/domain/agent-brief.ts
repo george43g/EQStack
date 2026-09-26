@@ -338,7 +338,7 @@ export const JOINER_BRIEFING = [
 ].join(" ");
 
 /** Templated; EL substitutes dynamic variables in the first message (believed — Step 9 confirms). */
-export const MEETING_FIRST_MESSAGE = `Meeting's open. On the line: {{${MEETING_ROSTER_NAMES_VARIABLE}}}. What's first?`;
+export const MEETING_FIRST_MESSAGE = `Meeting's open. On the line: {{${MEETING_ROSTER_NAMES_VARIABLE}}}. Today's agenda: {{${OBJECTIVE_VARIABLE}}}. What's first?`;
 
 /** A member's roster brief is capped (PHASE-GC § 1). */
 export const MEETING_BRIEF_MAX_CHARS = 1500;

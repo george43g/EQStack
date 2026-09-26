@@ -131,7 +131,11 @@ export const startMeeting = {
       .describe(
         "Member keys (session names) present, in poll order, e.g. ['executive', 'eqstack']",
       ),
-    agenda: z.string().min(1).max(2000).describe("The meeting's agenda — the chair states it"),
+    agenda: z
+      .string()
+      .min(1)
+      .max(2000)
+      .describe("The meeting's agenda, spoken in the opening — give one concise sentence"),
     briefs: z
       .record(MeetingMemberRefSchema, z.string().min(1).max(1500))
       .optional()
