@@ -82,6 +82,11 @@ and the migration manifest (this tool is slated to move out of life-stack).
   This narrows operations, not identity: omitting `as` reads unfiltered call
   events, a caller can supply another member's `as`, and `answer_consult` has
   no member authentication. See D-115.
+- **Meeting rehearsal**: `start_meeting {rehearsal: true}` (`tel meeting --rehearsal`)
+  writes a live meeting on the real daemon but dials nobody and touches nothing at
+  ElevenLabs. The convenor asks members with `ask_member` (`tel ask`), which is
+  refused on real calls and kept off the member surface, and `end_call` closes the
+  rehearsal locally. See D-120 and `tests/meeting-rehearsal.test.ts`.
 - **LaunchAgent plist changes**: `tel daemon install` bootstraps a new job; it
   cannot upgrade a loaded label. Boot out the old job before installing from
   built `dist/`, then verify `/healthz`, the three listeners, and the tunnel.
