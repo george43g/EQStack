@@ -76,6 +76,15 @@ export class AdminClient {
     return this.request("POST", "/meetings", input);
   }
 
+  /** D-120: rehearsals only — the convenor asks a member (holds like ask_agent). */
+  askMember(
+    callId: string,
+    agent: string,
+    question: string,
+  ): Promise<import("../gateway/call-service.js").ConsultResult> {
+    return this.request("POST", `/calls/${encodeURIComponent(callId)}/ask`, { agent, question });
+  }
+
   endCall(callId: string, reason?: string): Promise<{ ok: boolean }> {
     return this.request("POST", `/calls/${callId}/end`, { reason });
   }

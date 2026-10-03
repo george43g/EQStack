@@ -155,11 +155,18 @@ export const startMeeting = {
       .max(64)
       .optional()
       .describe("Override the derived dedupe key so retries across host restarts stay safe"),
+    rehearsal: z
+      .boolean()
+      .optional()
+      .describe(
+        "Rehearse with no phone call: writes the meeting (call row, roster, events) so members can join and answer, but dials nobody and touches nothing at ElevenLabs. You ask members yourself with ask_member; end it with end_call. Never deduped",
+      ),
   }),
   output: z.object({
     callId: z.string().optional(),
     dryRun: z.boolean(),
     deduped: z.boolean().optional(),
+    rehearsal: z.literal(true).optional(),
     agent: AgentPreviewSchema,
     roster: z.array(
       z.object({
@@ -181,10 +188,49 @@ export const startMeeting = {
   },
 } satisfies CommandSpec;
 
+/**
+ * D-120: the convenor's side of a rehearsal. On a real meeting the chair asks
+ * through the tool listener's ask_agent; on a rehearsal nobody is chairing, so
+ * the operator asks here. Not on the member surface (src/mcp/server.ts).
+ */
+export const askMember = {
+  name: "ask_member",
+  description:
+    "Rehearsals only (start_meeting {rehearsal: true}): ask one meeting member a question, exactly as the chair's ask_agent would on a phone meeting. The member sees consult.asked on get_call_events {as: <member>} and answers with answer_consult; this call holds for the meeting's hold time and returns that answer (status answered), or pending / unavailable (the member is not polling) / not_on_call. Refused (409) on a real meeting, where the chair asks.",
+  input: z.object({
+    callId: CallIdSchema,
+    agent: MeetingMemberRefSchema.describe("The member to ask: its key, e.g. 'executive'"),
+    question: z.string().min(1).max(2000).describe("The question, as the chair would put it"),
+  }),
+  output: z.object({
+    status: z.enum([
+      "answered",
+      "pending",
+      "unavailable",
+      "busy",
+      "call_ended",
+      "not_found",
+      "not_on_call",
+    ]),
+    question_id: z.string().optional(),
+    answer: z.string().optional(),
+    guidance: z.string().optional(),
+    agent: z.string().optional(),
+  }),
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    // A rehearsal is local: no phone line, no third party.
+    openWorldHint: false,
+  },
+  timeoutMs: 60_000,
+} satisfies CommandSpec;
+
 export const endCall = {
   name: "end_call",
   description:
-    "Hang up a live call immediately. On a 'delegate' call this hangs up through Twilio when agentPlatform.twilioHangup is configured (the feed shows call.hangup_requested; call.ended follows once ElevenLabs finalises the transcript), and is refused otherwise — ElevenLabs exposes no API to hang up a live conversation, so the agent then ends the call itself (its end_call tool) or at the profile's max duration.",
+    "Hang up a live call immediately (a meeting rehearsal just closes: nothing was dialled). On a 'delegate' call this hangs up through Twilio when agentPlatform.twilioHangup is configured (the feed shows call.hangup_requested; call.ended follows once ElevenLabs finalises the transcript), and is refused otherwise — ElevenLabs exposes no API to hang up a live conversation, so the agent then ends the call itself (its end_call tool) or at the profile's max duration.",
   input: z.object({ callId: CallIdSchema, reason: EndReasonSchema.optional() }),
   output: z.object({ ok: z.literal(true) }),
   annotations: {
@@ -547,6 +593,7 @@ export const LOCAL_COMMANDS: readonly string[] = [previewVoices.name, saveVoiceP
 export const ALL_COMMANDS = [
   placeCall,
   startMeeting,
+  askMember,
   endCall,
   playDisclosure,
   sayOnCall,

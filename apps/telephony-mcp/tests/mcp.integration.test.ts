@@ -99,6 +99,14 @@ describe("tool surface", () => {
         })
         .catch((error: unknown) => error);
       expect(forbidden instanceof Error || (forbidden as { isError?: boolean }).isError).toBe(true);
+      // D-120: the convenor's rehearsal ask is an operator tool, not a member one.
+      const ask = await memberClient
+        .callTool({
+          name: "ask_member",
+          arguments: { callId: "c1", agent: "executive", question: "must be refused" },
+        })
+        .catch((error: unknown) => error);
+      expect(ask instanceof Error || (ask as { isError?: boolean }).isError).toBe(true);
       expect(memberClient.getServerCapabilities()?.resources).toBeUndefined();
       await expect(memberClient.listResources()).rejects.toThrow();
     } finally {
@@ -106,10 +114,10 @@ describe("tool surface", () => {
     }
   });
 
-  it("serves exactly the command registry's 18 tools, with safety annotations", async () => {
+  it("serves exactly the command registry's 19 tools, with safety annotations", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(COMMAND_NAMES).toHaveLength(18);
+    expect(COMMAND_NAMES).toHaveLength(19);
     expect(names).toEqual([...COMMAND_NAMES].sort());
     const place = tools.find((t) => t.name === "place_call");
     expect(place?.annotations?.destructiveHint).toBe(true);
