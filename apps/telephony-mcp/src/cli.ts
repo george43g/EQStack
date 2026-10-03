@@ -27,7 +27,9 @@ import { AdminClient, GatewayUnavailableError } from "./client/admin-client.js";
 import { buildClientRegistry } from "./commands/bind-client.js";
 import {
   answerConsult,
+  askMember,
   deleteRecording,
+  endCall,
   placeCall,
   saveVoiceProfile,
   startMeeting,
@@ -701,6 +703,11 @@ program
     "accept that the recording is made and held by ElevenLabs",
   )
   .option("--dry-run", "preview the ensemble agent, roster and join instructions", false)
+  .option(
+    "--rehearsal",
+    "rehearse with NO phone call and nothing at ElevenLabs: members join and answer, you ask with `tel ask`, end with `tel end`",
+    false,
+  )
   .option("--idempotency-key <key>", "override the derived dedupe key")
   .action(async (to: string, opts) => {
     try {
@@ -719,10 +726,47 @@ program
         ...(opts.record ? { record: true } : {}),
         ...(opts.acknowledgeThirdPartyRecording ? { acknowledgeThirdPartyRecording: true } : {}),
         ...(opts.dryRun ? { dryRun: true } : {}),
+        ...(opts.rehearsal ? { rehearsal: true } : {}),
         ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
       });
       const cfg = loadConfig();
       printJson(await admin(cfg).startMeeting(input));
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+program
+  .command("ask")
+  .description(
+    "Rehearsals only: ask a meeting member a question as the chair would, and wait for its answer",
+  )
+  .argument("<callId>", "rehearsal call id (from tel meeting --rehearsal)")
+  .argument("<member>", "member key, e.g. executive")
+  .argument("<question>", "the question")
+  .action(async (callId: string, member: string, question: string) => {
+    try {
+      const input = parseInput(askMember.input, { callId, agent: member, question });
+      const cfg = loadConfig();
+      printJson(await admin(cfg).askMember(input.callId, input.agent, input.question));
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+program
+  .command("end")
+  .description("End a live call (a meeting rehearsal just closes; nothing was dialled)")
+  .argument("<callId>", "live call id")
+  .option("--reason <text>", "why it ended")
+  .action(async (callId: string, opts: { reason?: string }) => {
+    try {
+      const input = parseInput(endCall.input, {
+        callId,
+        ...(opts.reason ? { reason: opts.reason } : {}),
+      });
+      const cfg = loadConfig();
+      printJson(await admin(cfg).endCall(input.callId, input.reason));
     } catch (err) {
       fail(err);
     }

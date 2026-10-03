@@ -793,6 +793,28 @@ The chair's fixed first message now includes the agenda variable before it
 asks what is first (D-118). This closes the missing-agenda wording defect in
 the generated brief; the next phone run still has to verify its spoken result.
 
+### Live rehearsal (no phone call; D-120)
+
+D-117's harness runs its own fake gateway on other ports, so a member session
+using `tel mcp --surface member` cannot reach it. A live rehearsal runs on the
+real daemon instead:
+
+1. `tel meeting george --member executive eqstack --agenda "…" --rehearsal`
+   (MCP `start_meeting {rehearsal: true}`). Nothing is dialled and nothing is
+   created or sent at ElevenLabs. The call row is marked `rehearsal` and goes
+   straight to `answered`. Deliver each `joinInstructions` string as usual.
+2. Each member session runs its loop through the member MCP surface:
+   `get_call_events {callId, as, waitMs}` from `nextCursor`, then
+   `answer_consult`.
+3. Once a member is polling, the convenor asks it with `tel ask <callId>
+   <member> "<question>"` (MCP `ask_member`). This takes the chair's place and
+   returns the member's answer, or `unavailable` if it is not polling. It is
+   refused on a real meeting.
+4. `tel end <callId>` (MCP `end_call`) closes the rehearsal locally.
+
+This proves the member MCP loop against the live admin port. It does not prove
+the chair's wording, phone audio, or EL tool-call latency.
+
 ## Build notes (GC-1, Steps 1–8)
 
 Built on `feat/telephony-group-calls-gc1` from `main` at `1a6ce80`. Steps 9 and 10

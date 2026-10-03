@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS calls (
   updated_at_ms INTEGER NOT NULL,
   ended_at_ms INTEGER,
   end_reason TEXT,
-  phone_leg_sid TEXT
+  phone_leg_sid TEXT,
+  rehearsal INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +179,7 @@ interface CallRow {
   updated_at_ms: number;
   ended_at_ms: number | null;
   end_reason: string | null;
+  rehearsal?: number | null;
 }
 
 function rowToCall(r: CallRow): CallRecord {
@@ -197,6 +199,8 @@ function rowToCall(r: CallRow): CallRecord {
     updatedAtMs: r.updated_at_ms,
     endedAtMs: r.ended_at_ms,
     endReason: r.end_reason,
+    // Only a rehearsal carries the key: every real call's record is unchanged.
+    ...(r.rehearsal === 1 ? { rehearsal: true as const } : {}),
   };
 }
 
@@ -258,6 +262,13 @@ export class SqliteStore implements EventStore {
     // default, no index — additive and instant on a live WAL database.
     try {
       this.db.exec("ALTER TABLE calls ADD COLUMN phone_leg_sid TEXT");
+    } catch {
+      // column already exists
+    }
+    // D-120: a meeting rehearsal — never dialled. Constant default, so the
+    // ALTER is metadata-only on a live WAL database; every existing row is 0.
+    try {
+      this.db.exec("ALTER TABLE calls ADD COLUMN rehearsal INTEGER NOT NULL DEFAULT 0");
     } catch {
       // column already exists
     }
@@ -333,8 +344,8 @@ export class SqliteStore implements EventStore {
       .prepare(
         `INSERT INTO calls (id, provider_call_id, request_id, recipient_alias, number_suffix,
            profile, objective, status, recording_enabled, recording_policy, max_duration_sec,
-           created_at_ms, updated_at_ms, ended_at_ms, end_reason)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           created_at_ms, updated_at_ms, ended_at_ms, end_reason, rehearsal)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         call.id,
@@ -352,6 +363,7 @@ export class SqliteStore implements EventStore {
         call.updatedAtMs,
         call.endedAtMs,
         call.endReason,
+        call.rehearsal ? 1 : 0,
       );
     this.db
       .prepare("INSERT INTO calls_fts (objective, recipient_alias, call_id) VALUES (?, ?, ?)")

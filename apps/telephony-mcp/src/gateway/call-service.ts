@@ -125,6 +125,12 @@ export interface StartMeetingInput {
   acknowledgeThirdPartyRecording?: boolean | undefined;
   dryRun?: boolean | undefined;
   idempotencyKey?: string | undefined;
+  /**
+   * D-120: a live rehearsal. Same validation and roster, but nothing is dialled
+   * and nothing is created or sent at the agent platform; the convenor asks
+   * members with ask_member instead of the chair. Never deduped.
+   */
+  rehearsal?: boolean | undefined;
 }
 
 export interface MeetingRosterEntry {
@@ -140,6 +146,8 @@ export interface StartMeetingResult {
   callId?: string;
   dryRun: boolean;
   deduped?: boolean;
+  /** D-120: this meeting is a rehearsal — nobody was dialled. */
+  rehearsal?: true;
   agent: AgentPreview;
   roster: MeetingRosterEntry[];
   /** Deliver each to that member's session, before or right after dialling. */
@@ -152,7 +160,17 @@ interface MeetingDial {
   members: string[];
   variables: MeetingVariables;
   personaText: string | null;
+  /** D-120: stop before the dial — no agent, no carrier, no bearer. */
+  rehearsal: boolean;
 }
+
+/** D-120: what a rehearsal's convenor does instead of listening to the chair. */
+export const MEETING_REHEARSAL_NOTICE =
+  "Rehearsal: nothing was dialled and nothing was created at the agent platform. Ask each member yourself with ask_member {callId, agent, question} (tel ask) once it is polling; end the rehearsal with end_call.";
+
+/** Why ask_member refuses a call that is not a rehearsal (D-120). */
+export const ASK_MEMBER_REAL_CALL_REFUSAL =
+  "ask_member is only for meeting rehearsals (start_meeting {rehearsal: true}); on a real meeting the chair asks members through its ask_agent tool";
 
 /** The dryRun join text has no call id yet. */
 const CALL_ID_PLACEHOLDER = "<callId: returned when the meeting is dialled>";
@@ -342,6 +360,10 @@ export class CallService {
       };
     }
     const notices = plan.notices.length > 0 ? { notices: plan.notices } : {};
+    // D-120: a rehearsal returns before the idempotency claim (it must never
+    // dedupe a later real dial of the same meeting) and before the bearer,
+    // provisioning and the dial.
+    if (meeting?.rehearsal) return this.createRehearsal(plan, meeting, notices);
 
     this.installKey ??= loadOrCreateInstallKey(ensureStateDir());
     // D-3b; a meeting's key also covers its roster (members, order, briefs).
@@ -431,21 +453,8 @@ export class CallService {
     });
     if (meeting) {
       // The roster is written before the dial, so a question that arrives the
-      // moment the call connects already finds its addressee (INV-9: serve writes).
-      const configured = this.cfg.meeting?.members ?? {};
-      this.store.insertMeetingMembers(
-        call.id,
-        meeting.members.map((member) => {
-          const m = configured[member];
-          if (!m) throw new CallServiceError(`not a configured meeting member: ${member}`);
-          return {
-            member,
-            label: m.label,
-            displayName: m.displayName,
-            voiceProfile: m.voiceProfile,
-          };
-        }),
-      );
+      // moment the call connects already finds its addressee.
+      this.insertRoster(call.id, meeting.members);
       this.emit(call.id, "meeting.started", { members: meeting.members });
     }
 
@@ -516,6 +525,95 @@ export class CallService {
     }
   }
 
+  /**
+   * D-120: the meeting's call row, roster and events, with no dial. The call
+   * goes straight to `answered` (non-terminal) so askConsult and the member
+   * long-poll treat it as live. The resolved number was used only for the
+   * plan (alias + last four); it is not passed anywhere from here.
+   */
+  private createRehearsal(
+    plan: CallPlan,
+    meeting: MeetingDial,
+    notices: { notices?: string[] },
+  ): PlaceCallResult {
+    if (!this.cfg.agentPlatform?.consult) {
+      throw new CallServiceError(
+        "a meeting rehearsal needs the agentPlatform.consult block: members are asked through the consult hold",
+        500,
+      );
+    }
+    if (this.store.activeCallCount() >= this.cfg.limits.maxConcurrentCalls) {
+      throw new CallServiceError(
+        `concurrency limit reached (${this.cfg.limits.maxConcurrentCalls} active call max; a rehearsal counts — end it with end_call)`,
+        409,
+      );
+    }
+    const now = this.clock.nowMs();
+    const request = createCallRequest(plan, this.store, this.clock, this.ids);
+    const call: CallRecord = {
+      id: this.ids.newId(),
+      providerCallId: null,
+      requestId: request.id,
+      recipientAlias: plan.recipientAlias,
+      numberSuffix: plan.numberSuffix,
+      profile: plan.profile,
+      objective: plan.objective,
+      status: "created",
+      recordingEnabled: false,
+      recordingPolicy: plan.recordingPolicy,
+      maxDurationSec: plan.maxDurationSec,
+      createdAtMs: now,
+      updatedAtMs: now,
+      endedAtMs: null,
+      endReason: null,
+      rehearsal: true,
+    };
+    this.store.createCall(call);
+    this.store.markRequestStarted(request.id, call.id);
+    this.emit(call.id, "call.created", {
+      recipient: call.recipientAlias,
+      suffix: call.numberSuffix,
+      profile: call.profile,
+      recording: false,
+      rehearsal: true,
+    });
+    this.insertRoster(call.id, meeting.members);
+    this.emit(call.id, "meeting.started", { members: meeting.members, rehearsal: true });
+    this.emit(call.id, "meeting.rehearsal", {
+      members: meeting.members,
+      dialled: false,
+      note: "rehearsal: no phone call and no agent platform; the convenor asks members with ask_member",
+    });
+    this.store.updateCallStatus(call.id, "answered");
+    this.emit(call.id, "call.answered", { rehearsal: true });
+    this.armDurationTimer(call.id, call.maxDurationSec);
+    logger.info("meeting rehearsal started", { callId: call.id, members: meeting.members });
+    return {
+      dryRun: false,
+      call: this.store.getCall(call.id) as CallRecord,
+      deduped: false,
+      ...notices,
+    };
+  }
+
+  /** The roster rows, written before any question can arrive (INV-9: serve writes). */
+  private insertRoster(callId: string, members: string[]): void {
+    const configured = this.cfg.meeting?.members ?? {};
+    this.store.insertMeetingMembers(
+      callId,
+      members.map((member) => {
+        const m = configured[member];
+        if (!m) throw new CallServiceError(`not a configured meeting member: ${member}`);
+        return {
+          member,
+          label: m.label,
+          displayName: m.displayName,
+          voiceProfile: m.voiceProfile,
+        };
+      }),
+    );
+  }
+
   // -- meetings (PHASE-GC Step 6) ---------------------------------------------
 
   /**
@@ -579,7 +677,7 @@ export class CallService {
         dryRun: input.dryRun,
         idempotencyKey: input.idempotencyKey,
       },
-      { members, variables, personaText },
+      { members, variables, personaText, rehearsal: input.rehearsal === true },
       (plan) => ({
         ...plan,
         maxDurationSec,
@@ -587,6 +685,7 @@ export class CallService {
         notices: [
           ...plan.notices.filter((n) => n !== CONSULT_HOST_NOTICE),
           MEETING_CONVENOR_NOTICE,
+          ...(input.rehearsal ? [MEETING_REHEARSAL_NOTICE] : []),
         ],
       }),
     );
@@ -617,6 +716,7 @@ export class CallService {
       callId: result.call.id,
       dryRun: false,
       deduped: result.deduped,
+      ...(result.call.rehearsal ? { rehearsal: true as const } : {}),
       agent: result.agent ?? this.meetingAgentPreview(result.call),
       roster,
       joinInstructions,
@@ -738,6 +838,14 @@ export class CallService {
     let resumed = 0;
     for (const status of ["created", "initiated", "ringing", "answered"] as const) {
       for (const call of this.store.listCalls({ status, limit: 100 })) {
+        if (call.rehearsal) {
+          // D-120: no poller (nothing was dialled); only the duration cap.
+          if (!this.durationTimers.has(call.id)) {
+            const leftMs = call.createdAtMs + call.maxDurationSec * 1000 - this.clock.nowMs();
+            this.armDurationTimer(call.id, Math.max(0, Math.ceil(leftMs / 1000)) - 30);
+          }
+          continue;
+        }
         if (!CALL_MODE_SPECS[this.modeOf(call)].mediaPathOffDevice || !call.providerCallId)
           continue;
         if (this.pollers.has(call.id)) continue;
@@ -1096,6 +1204,21 @@ export class CallService {
   }
 
   /**
+   * D-120: the convenor asks one member on a rehearsal — the chair's ask_agent,
+   * from the admin API instead of the tool listener. Refused on a real call,
+   * where the chair asks through the bearer-guarded tool route.
+   */
+  async askMember(
+    callId: string,
+    input: { agent: string; question: string },
+    signal?: AbortSignal,
+  ): Promise<ConsultResult> {
+    const call = this.requireCall(callId);
+    if (!call.rehearsal) throw new CallServiceError(ASK_MEMBER_REAL_CALL_REFUSAL, 409);
+    return this.askConsult(callId, { agent: input.agent, question: input.question }, signal);
+  }
+
+  /**
    * The call is over: release every held request with `call_ended`, close
    * pending rows, and delete the bearer so a leaked token dies with its call.
    * Idempotent; runs from `emit` on every terminal event and at startup.
@@ -1143,6 +1266,16 @@ export class CallService {
   async endCall(callId: string, reason: string): Promise<void> {
     const call = this.requireCall(callId);
     if (TERMINAL_STATUSES.has(call.status)) return;
+    // D-120: nothing was dialled, so nothing is hung up — the record closes here.
+    if (call.rehearsal) {
+      this.store.updateCallStatus(callId, "completed", {
+        endedAtMs: this.clock.nowMs(),
+        endReason: reason,
+      });
+      this.emit(callId, "call.ended", { reason, rehearsal: true });
+      this.clearTimer(callId);
+      return;
+    }
     if (CALL_MODE_SPECS[this.modeOf(call)].mediaPathOffDevice) {
       await this.endOffDeviceCall(call, reason);
       return;

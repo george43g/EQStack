@@ -21,6 +21,7 @@ import type { VoicePreviewService } from "../voice-preview/service.js";
 import type { CommandSpec } from "./specs.js";
 import {
   answerConsult,
+  askMember,
   deleteRecording,
   endCall,
   getCall,
@@ -116,6 +117,9 @@ export function buildClientDefinitions(deps: CommandDeps): AnyToolDefinition[] {
   return [
     bind(placeCall, async (input) => admin.placeCall(input)),
     bind(startMeeting, async (input) => admin.startMeeting(input)),
+    bind(askMember, async ({ callId, agent, question }) =>
+      admin.askMember(callId, agent, question),
+    ),
     bind(endCall, async ({ callId, reason }) => {
       await admin.endCall(callId, reason);
       return { ok: true as const };

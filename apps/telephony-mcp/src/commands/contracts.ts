@@ -106,6 +106,7 @@ export const CallRecordSchema: z.ZodType<CallRecord> = z.object({
   updatedAtMs: z.number(),
   endedAtMs: z.number().nullable(),
   endReason: z.string().nullable(),
+  rehearsal: z.literal(true).optional(),
 });
 
 export const CallRequestSchema: z.ZodType<CallRequest> = z.object({

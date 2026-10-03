@@ -227,6 +227,8 @@ describe("SqliteStore", () => {
     const again = new SqliteStore(file);
     try {
       expect(again.getPhoneLegSid("old")).toBe(`CA${"0".repeat(32)}`);
+      // D-120: the rehearsal column arrives as 0, so an old call is not a rehearsal.
+      expect(again.getCall("old")).not.toHaveProperty("rehearsal");
     } finally {
       again.close();
     }

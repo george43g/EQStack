@@ -31,6 +31,11 @@ export interface CallRecord {
   updatedAtMs: number;
   endedAtMs: number | null;
   endReason: string | null;
+  /**
+   * A meeting rehearsal (D-120): created by start_meeting {rehearsal: true},
+   * never dialled, never on the agent platform. Present only when true.
+   */
+  rehearsal?: true | undefined;
 }
 
 export interface CallEvent {

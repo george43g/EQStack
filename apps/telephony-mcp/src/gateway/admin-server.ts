@@ -24,6 +24,7 @@ import {
 import type { CommandSpec } from "../commands/specs.js";
 import {
   answerConsult,
+  askMember,
   deleteRecording,
   endCall,
   placeCall,
@@ -143,6 +144,15 @@ const MUTATING_ROUTES: readonly AdminRoute[] = [
     status: 201,
     toArgs: (_match, body) => body,
     run: async (service, args) => service.startMeeting(args),
+  }),
+  route({
+    method: "POST",
+    pattern: /^\/calls\/([\w-]+)\/ask$/,
+    spec: askMember,
+    status: 200,
+    toArgs: (match, body) => ({ ...body, callId: match[1] }),
+    run: async (service, { callId, agent, question }) =>
+      service.askMember(callId, { agent, question }),
   }),
   route({
     method: "POST",
