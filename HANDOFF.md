@@ -1222,75 +1222,76 @@ Next build action: **Phase Q Step 1** — but first get George's call on `agent-
 and record it as a DECISIONS row, then add the port and flip `CALL_MODE_SPECS.delegate.implemented`.
 Do not write the port before that row exists.
 
-## Checkpoint · eqstack · 2026-09-27
+## Checkpoint · eqstack · 2026-09-29
 
 Where this block and a conversation summary disagree, this block is correct.
 
 ### State
-Codex is EQStack's primary session; no Claude was live in this repo at the last repo check. GC-1's first phone meeting remains a partial measurement. Both real Codex member sessions answered one addressed question in a fake-only rehearsal. The gateway is healthy, with zero active calls; no fixture or test is running. Member MCP registration and continuous session participation await the access-scope choice.
+Parked 2026-09-29: GC-1 waits on two multiple-choice decisions. Cursor replaced Codex 01a0df28 and did not continue. Gateway up, no active call.
+
+### Now
+
+- 2026-09-29T06:56Z Full checkpoint is on disk. GC-1 stays parked. Next: wait until George asks before member MCP, PR #129, or a paid call.
 
 ### Constraints
-- George, this turn: "Read your HANDOFF checkpoint and resume from its Resume line. Keep it current every turn (ctx self; checkpoint note)."
-- George 2026-09-25, carried verbatim: "why are you filling in for other members? can you get the real secretary and executive and yourself to be the participants in the call? have you thought about how you would route them in or wire it up?" Actual sessions must answer for themselves.
-- George 2026-09-24, carried verbatim: "i approve the two live tests". Both original tests have run. PHASE-GC INV-14 requires fresh authorisation for another paid call.
-- Never print or rotate a credential, never stage unrelated docs/research or opencode backups, merge PRs rather than squash, and wait for each Release run before another merge.
+- George, this pane, 2026-09-29: "Become ready, not busy: do not continue the task that session was in the middle of. Write a full checkpoint with the precompact tool (checkpoint rotate into that handoff). Compact after the checkpoint is on disk if this CLI has a compact command. The checkpoint is required."
+- George, ag-all, delivered into the replaced Codex pane (rollout line 2980, 2026-09-27T16:26:45Z): "I'm falling a bit behind so I wanted to give a blanket approval and go ahead - for those agents currently waiting on me to review a PR or authorise the next step - you may merge any outstanding PRs, and go ahead with any work awaiting my go ahead. Obviously, show some common sense - if the thing is out of the ordinary, or you think id want to take a close look at it before approving, then you may defer approval until i give it specifically to the question seeking approval. And finally, things that are gated on a multiple choice DECISION must still wait for me to directly check and approve and select the option first. @all (except for billing-mwc and esadmin or blank-canvas) - George"
+- George 2026-09-25, carried verbatim: "why are you filling in for other members? can you get the real secretary and executive and yourself to be the participants in the call? have you thought about how you would route them in or wire it up?"
+- George 2026-09-24, carried verbatim: "i approve the two live tests". Both original tests have already run. Another paid call still needs fresh authorisation.
+- George, to the replaced session: "Read your HANDOFF checkpoint and resume from its Resume line. Keep it current every turn (ctx self; checkpoint note)." The 2026-09-29 "do not continue" sentence overrides resume until George asks to pick the work up.
 
 ### Done
-- D-114 at 74f26ce records first Step 10 honestly: SQLite dates it 2026-09-24 AEST, not the prior checkpoint's 09-25; 270 s provider duration; one addressed question each; no member answers; both 20 s holds expired; end_call closed. Audible member voices and behavior remain unmeasured.
-- 74f26ce (D-115/D-116) adds a server-enforced two-tool member MCP surface and changes the generated LaunchAgent from Background to Standard. Full operator mode stays at 18 tools; member mode refuses place_call and exposes no resources. Reinstalled the service by bootout then install. The cause of the old process starvation is plausible, not isolated.
-- aa01915 (D-117) adds the fake-only manual rehearsal. The real EQStack and executive Codex sessions each polled as itself and submitted its own answer through loopback; both were delivered via held. The executive's fake hold reported waitedMs 35666 under a 60 s rehearsal hold, including manual coordination; O-45 remains open. Fixture ports closed and recent temp state was removed.
-- 568f824 (D-118) includes call_objective in the chair's fixed first message. The red-before-green test and built dry run show the agenda variable after the roster and before the first-topic question. The spoken result still needs an authorised phone test.
-- ae20680 (D-119) tells member sessions to advance afterSeq from every nextCursor and re-arm even empty 55 s polls. The first dry run against the rebuilt but not restarted daemon still returned the old instruction; after restart, its new dry run reported cursor/re-arm/empty-timeout phrases. That measures the loaded service, not an autonomous Codex join loop.
-- Exact pnpm verify completed successfully at 06:45 AEST: check:docs, check:skills, lint, typecheck, all workspace tests (4/4 turbo tasks; telephony 431/431), and build. An earlier run timed out on telephony and imsg five-second tests while host load was high; a sequential 4/4 workspace test run and this final exact gate resolved that verification gap.
-- Live read-back after the last restart: health 200 with activeCalls 0, public gw route 404, launchd running PID 28011 (measured 06:46 AEST). PR #129 remained OPEN when checked earlier this turn.
+- Read rollout `01a0df28-791c-7f03-8d12-3e28a023d5f9` (3062 lines, cwd EQStack, model gpt-6-sol). It ends at the blanket-go turn: no merge, no config apply, no paid call. This Cursor pane has no import of that session.
+- `git log` 2026-09-29 16:47 AEST: HEAD `eaee354`, 7 commits ahead of `origin/main` `f1898a1`. Landed on main: `74f26ce` member MCP surface, `aa01915` no-call rehearsal, `568f824` agenda opening, `ae20680` cursor re-arm, `eaee354` prior checkpoint. Measurement detail is D-114–D-119 and the archived 2026-09-27 block.
+- Gateway, this turn: `curl http://127.0.0.1:8791/healthz` → `{"ok":true,"version":"0.1.0","activeCalls":0}` HTTP 200. `launchctl print` state=running pid=28011 (same pid the prior block recorded). No listener on TCP 19491.
+- PR #129 still OPEN and MERGEABLE (`gh pr view 129`, updated 2026-09-23). AfftarN/EQStack#1 still `state:open`, `merged:false` (`gh api`, updated 2026-09-23).
+- Member route not installed: `~/.codex/member.config.toml` absent. `rg telephony-member` on `.mcp.json` and `.codex/config.toml` matched nothing. Full `telephony-mcp` remains at `.mcp.json:22` and `.codex/config.toml:12`.
+- `claude agents --json`: the only live Claude is `secretary` at `~/repos/executive/team/secretary`, not this repo.
 
 ### Open
-- `member-mcp-scope` · eqstack — George was asked to choose all-user scope or selected-session scope; no answer as of 06:46 AEST. Dotfiles previews d9de40a and 12ba0a0 were read, but rg found no telephony-member in the live canonical/user configs. User scope would expose two tools to all sessions; selected-session scope needs durable launch-profile provisioning and fresh resumes.
-- `real-members-wiring` · eqstack — executive has no live telephony MCP; fake loopback REST proved one answer but not host tool access. The primary EQStack session must retain its full project server to call start_meeting and can answer as eqstack through it; dotfiles was told not to disable this convenor tool. Its response is pending.
-- `continuous-member-join` · eqstack — D-119 now instructs cursor re-arming, but no member-enabled Codex session has followed it through a full continuous fake meeting. The executive's first manual poll expired after its readiness note (D-117).
-- `secretary-chair-model` · eqstack — George's direct answer to chair consultation versus a separate secretary member is pending. Executive currently says secretary stays outside GC-1 and the EL chair remains, which is peer input, not George's answer.
-- `gc1-step10-rerun` · eqstack — no second paid call authorised. Member MCP access and continuous join must be proved first; audible voices, phone latency, social behavior, and spoken agenda still need measurement (D-114, D-118).
-- `meeting-hold` · eqstack — O-45 remains open: fake answer took 35.7 s including manual coordination, longer than the live 20 s hold; that single composite timing does not justify a default change.
-- `caller-number-selector` · eqstack — O-39 carried, not re-measured since 2026-09-26; its register row remains open.
-- `public-listener-bind` · eqstack — O-37 carried, not re-measured since 2026-09-26; its register row remains open.
-- `group-call-live-channel` · eqstack — O-38/O-33 carried, not re-measured since 2026-09-26; their register rows remain open.
-- `pr129-await-reply` · eqstack — PR #129 was OPEN by gh on 2026-09-27; AfftarN's reply was not checked.
-- `elevenlabs-mcp-oauth` · eqstack — carried, not re-measured since 2026-09-26; George's /mcp authentication remains in that checkpoint.
+- `member-mcp-scope` · eqstack — no selection in the rollout after the question, and none in this turn. Blanket go says multiple-choice still waits. `member.config.toml` is absent (measured above).
+- `secretary-chair-model` · eqstack — no direct selection from George in the rollout or this turn. Executive's "secretary stays outside" is peer input in the archived block, not George's answer.
+- `real-members-wiring` · eqstack — full project server is still the only telephony entry (measured above), so peer sessions still have no two-tool member surface. Whether dotfiles replied on the bus after the convenor correction: carried, not re-measured since 2026-09-27.
+- `continuous-member-join` · eqstack — no fixture listener on 19491; no commit after `eaee354`. The re-arm text is in `ae20680`; an autonomous continuous fake join has no result in git or on a live port.
+- `gc1-step10-rerun` · eqstack — `activeCalls` 0 this turn. This pane was told not to continue. No paid-call authorisation appears in the rollout after the two original tests.
+- `meeting-hold` · eqstack — O-45 still at `DECISIONS.md:237`; default `holdSec` is still 20 (`meeting-brief.test.ts:66`). Not retuned.
+- `caller-number-selector` · eqstack — O-39 still at `DECISIONS.md:231`. Schema is still one `fromNumber` (`schema.ts:95`) and one `phoneNumberId` (`schema.ts:190`).
+- `public-listener-bind` · eqstack — O-37 still at `DECISIONS.md:229`. `public-server.ts:164` still calls `listen(port)` with no host; admin and tool servers bind `127.0.0.1` (`admin-server.ts:418`, `tool-server.ts:280`).
+- `group-call-live-channel` · eqstack — O-38 at `DECISIONS.md:230` and O-33 at `DECISIONS.md:225` still open in the register. Code path not re-checked this turn.
+- `pr129-await-reply` · eqstack — both PRs still open, measured this turn (see Done). The 2026-09-24 condition is still unmet: wait until AfftarN answers or merges AfftarN/EQStack#1, then merge #129.
+- `elevenlabs-mcp-oauth` · eqstack — carried, not re-measured since 2026-09-26.
 
 ### Corrections
-- The previous live block's report that exact pnpm verify failed is superseded: the final run passed all stages at 06:45 AEST. The earlier timeout is resolved as a verification outcome, not an open code bug.
-- The previous block listed missing opening agenda and cursor re-arming as pre-rerun work. Both are implemented, built, and loaded at 568f824/ae20680; only their phone and continuous-session effects remain unmeasured.
-- The 2026-09-26 block's Step 10 date is corrected by D-114 to 2026-09-24 AEST.
+- The archived block's Tree line "six commits ahead @ ae20680" is void. Measured 2026-09-29: HEAD `eaee354`, 7 ahead of `f1898a1`. The seventh commit is `eaee354`.
+- That block's Open line "AfftarN's reply was not checked" is void. The replaced session checked it on 2026-09-27, and this turn checked again: AfftarN/EQStack#1 is still open and unmerged.
+- "Codex is EQStack's primary session" described the replaced pane. This pane is Cursor, session name still `eqstack` on the main checkout. The only live Claude is secretary, in a different repo.
 
 ### Traps
-- Building dist does not update a running launchd process. A dry run through the old daemon still returned the old join text; restart and dry-run read-back showed the new text.
-- A readiness note can outlive a 55 s poll; continue from nextCursor and re-arm immediately. D-117's fake first poll also returned call.initiated before the question.
-- A member-only session cannot also start_meeting. The current EQStack primary is the convenor/operator, so keep its full project server and do not claim a two-tool boundary for it.
-- The member surface limits operations, not identity: omitting as reads unfiltered call events and answer_consult has no member authentication (D-115).
-- The earlier parallel verify timeouts happened during severe host load; exact verify is now green. Do not carry the old red result forward.
-- The checkpoint History index extracts Open slugs only when they are backticked. The archived earlier 2026-09-27 block used plain slugs, so its index says open:none despite its body; this live block uses the recognised form.
+- The blanket go does not select `member-mcp-scope` or `secretary-chair-model`; the same post says a multiple-choice decision still waits for a direct selection.
+- Do not merge #129 while AfftarN/EQStack#1 is open. The blanket's "merge outstanding PRs" is the general grant; the 2026-09-24 condition on this PR is the specific one, and it is unmet.
+- EQStack's primary session is the convenor: it needs the full project telephony server to call `start_meeting`. A two-tool member profile is for peer sessions.
+- The member surface limits which tools exist, not who is calling. Omitting `as` still reads unfiltered events (D-115).
+- A built `dist` does not change the running LaunchAgent. The live pid is still 28011.
+- History indexes an Open slug only when it is backticked and followed by ` · `.
+- `git add -A` sweeps `docs/research/*`, `docs/agent-handoff/*`, and `opencode.json.bak.*`. Leave them.
 
 ### Tree
-EQStack main @ ae20680, six commits ahead of origin/main @ f1898a1; nothing staged. HANDOFF.md alone is tracked-dirty from this session's checkpoint note. Existing untracked docs/agent-handoff, docs/research and opencode.json.bak files are not this task's; leave them. The daemon runs rebuilt ignored dist. No push or PR was made.
+`/Users/george/repos/EQStack`, branch `main`, HEAD `eaee354`, ahead 7 of `origin/main` `f1898a1`, behind 0. Before this rotate, the only tracked dirt was `HANDOFF.md` (the replaced session's uncommitted `### Now` note, 4 lines). Untracked and not this task: `docs/agent-handoff/*`, `docs/research/*`, five `opencode.json.bak.*`. This Cursor session is in the main checkout, not a worktree. The checkpoint stays uncommitted (not asked to commit) in a tree other sessions share.
 
 ### Blocked on you
-- `member-mcp-scope` · eqstack — choose the selected-session route (recommended, needs bounded dotfiles launcher support and fresh resumes) or global two-tool user scope (available to all user sessions).
-- `secretary-chair-model` · eqstack — say whether the secretary's real session should be consulted as chair, join as a separate member, or stay outside this GC-1 rerun.
-- `gc1-step10-rerun` · eqstack — fresh paid-call approval after access and continuous join are proved.
+- `member-mcp-scope` · eqstack — choose selected-session member profiles, or two-tool access for all user sessions. Neither is applied.
+- `secretary-chair-model` · eqstack — say whether the secretary's real session is consulted as chair, joins as a separate member, or stays outside this GC-1 rerun.
+- `gc1-step10-rerun` · eqstack — fresh paid-call approval, only after member access and a continuous fake join are proved, and only once you ask this pane to resume.
 - `elevenlabs-mcp-oauth` · eqstack — carried from 2026-09-26, not re-measured.
 
-### Elsewhere
-- dotfiles — committed read-only global and selected-session MCP previews (d9de40a, 12ba0a0), applied nothing, and was sent the EQStack convenor/full-tool correction.
-- executive — its real Codex session completed the fake addressed poll/answer. Its live repo still lacks telephony member MCP.
-- secretary — reported no telephony MCP and delegated her participation/access decision to executive.
-
 ### Resume
-No call, fake fixture, test, or monitor is running. Next: take George's scope and chair answers; ask dotfiles to apply the chosen member route without disabling EQStack's convenor tool, resume the actual peer sessions with it, handshake the effective two-tool list and forbidden call, then prove a continuously re-armed fake join loop. Only after that, request fresh approval for a paid Step 10 phone rerun. Run ctx self and checkpoint note on each turn.
+Nothing is mid-edit, staged, or running (no fixture, no test, no call). Do not continue GC-1. When George asks to resume: take his direct selection of `member-mcp-scope` and `secretary-chair-model`, ask dotfiles to apply that route without disabling EQStack's full project telephony server, resume the peer sessions, prove a continuously re-armed fake join, and only then ask for fresh paid-call approval. Leave PR #129 unmerged while AfftarN/EQStack#1 is open. `cursor agent` has no compact command; this turn could not compact.
 
 ## History
 
 <!-- BEGIN checkpoint-history (generated; do not edit) -->
+- 2026-09-27 · eqstack · Codex is EQStack's primary session; no Claude was live in this repo at the last repo check. GC-1's first phone meeting remains a partial measurement. Both real Codex member sessions answered one addr… · open: `member-mcp-scope`, `real-members-wiring`, `continuous-member-join`, `secretary-chair-model`, `gc1-step10-rerun`, `meeting-hold`, `caller-number-selector`, `public-listener-bind`, `group-call-live-channel`, `pr129-await-reply`, `elevenlabs-mcp-oauth` · [full text](handoff-archive/eqstack/2026-09-27-2.md)
 - 2026-09-27 · eqstack · Codex is EQStack's primary session (no live Claude in this repo at 06:23 AEST). GC-1's first phone meeting remains a partial measurement. Both real member sessions answered one addressed question in… · open: none · [full text](handoff-archive/eqstack/2026-09-27.md)
 - 2026-09-26 · eqstack · GC-1 Step 9 is done and merged; Step 10 ran once and could not measure member voices. The next meeting waits on two decisions from George: wiring in the real member sessions, and how the secretary jo… · open: `real-members-wiring`, `secretary-chair-model`, `gc1-step10-rerun`, `gc1-step10-measured`, `pr129-await-reply` · [full text](handoff-archive/eqstack/2026-09-26.md)
-- 2026-09-24 · eqstack · Telephony delegate → consult → group-call GC-1 all merged and live on the daemon; GC-1's two authorised live tests are the next action, to run after George compacts. · open: `gc1-live-tests`, `merge-175`, `pr129-await-reply`, `caller-number-selector`, `public-listener-bind`, `group-call-live-channel` · [full text](handoff-archive/eqstack/2026-09-24.md)
+- 2026-09-24 · eqstack · Telephony delegate → consult → group-call GC-1 all merged and live on the daemon; GC-1's two authorised live tests are the next action, to run after George compacts. · [full text](handoff-archive/eqstack/2026-09-24.md)
 <!-- END checkpoint-history -->
