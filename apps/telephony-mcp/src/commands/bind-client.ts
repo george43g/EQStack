@@ -227,6 +227,14 @@ export function buildClientDefinitions(deps: CommandDeps): AnyToolDefinition[] {
   ];
 }
 
-export function buildClientRegistry(deps: CommandDeps): ToolRegistry {
-  return makeRegistry(buildClientDefinitions(deps));
+export function buildClientRegistry(
+  deps: CommandDeps,
+  allowedNames?: ReadonlySet<string>,
+): ToolRegistry {
+  const definitions = buildClientDefinitions(deps);
+  return makeRegistry(
+    allowedNames
+      ? definitions.filter((definition) => allowedNames.has(definition.name))
+      : definitions,
+  );
 }

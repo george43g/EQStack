@@ -88,7 +88,7 @@ against SDK v2.68.0, as D-78 requires.
 | E2 | The LLM chooses the voice, per utterance, from a platform-injected list | same page: *"When a message should be spoken by a particular person, use markup: '<CHARACTER>message</CHARACTER>'"* … *"Available voices are as follows"* | verified |
 | E3 | Per voice there is a `description` (*"When the agent should use this voice"*), but no separate prompt, LLM or memory | same page (fields: `label`, `voice_id`, `description`, optional `language`) | verified for the fields; "no per-voice prompt" is believed, from absence |
 | E4 | Voice switching is cheap; each voice's first use is slower | same page: *"Voice switching adds minimal overhead. The first use of each voice in a conversation may have slightly higher latency as the voice is initialized."* | verified |
-| E5 | Multi-voice works **on a phone call** | no page says either way (ELEVENLABS-REALTIME § Unverified) | **unknown**, and Step 10 settles it |
+| E5 | Multi-voice works **on a phone call** | no page says either way (ELEVENLABS-REALTIME § Unverified) | **unknown**; the first Step 10 call had no member speech, so a rerun must settle it |
 | E6 | Agent transfer hands the call to one other agent, which brings its own voice and prompt | elevenlabs.io/docs/agents-platform/customization/tools/system-tools/agent-transfer: *"allows an ElevenLabs agent to hand off the ongoing conversation to another designated agent"*; *"All other configurations are set by the child agent, included but not limited to: Prompt, first message, LLM, workflow, voice, tools"* | verified |
 | E7 | Workflow subagent nodes can change prompt, LLM and voice, and loop back | …/customization/agent-workflows: *"Backward edges allow conversations to loop back to previous nodes"* | verified. "One node active at a time" is believed |
 | E8 | A `skip_turn` system tool lets the agent stay silent | …/system-tools/skip-turn: *"After this tool is called, the assistant will not speak. It waits for the user to re-engage or for another turn-taking condition to be met."* | verified |
@@ -282,7 +282,9 @@ the text `start_meeting` returns for each member (`joinInstructions`, § 3), and
 
 > You are `<member>` in a live phone meeting (call `<callId>`); you are voiced by the
 > meeting's chair, not speaking yourself. Until `call.ended`, loop
-> `get_call_events {callId, as: "<member>", waitMs: 55000}`. Answer each `consult.asked`
+> `get_call_events {callId, as: "<member>", waitMs: 55000}`. Set `afterSeq` to
+> each `nextCursor` and re-arm immediately after every page, including an empty
+> timeout; a readiness note does not keep a poll open. Answer each `consult.asked`
 > addressed to you with `answer_consult`: one to three speakable sentences, first
 > person, as yourself, containing only what was asked. If you don't know, say so at
 > once rather than waiting: the room is on hold while you think. Questions are written
@@ -396,9 +398,11 @@ export const CHAIR_BLOCK = [
 ].join("\n");
 ```
 
-The first message (templated; dynamic variables in `first_message` are **believed**
-to substitute as they do in the prompt, and Step 9 confirms it): *"Meeting's open. On the line:
-{{meeting_roster_names}}. What's first?"*
+The first message is templated: *"Meeting's open. On the line:
+{{meeting_roster_names}}. Today's agenda: {{call_objective}}. What's first?"*
+Step 9 confirmed roster-name substitution; the agenda's substitution in this
+position is pinned offline and needs the next phone run to confirm it is heard
+correctly (D-118). The convenor supplies one concise agenda sentence.
 
 ### 6. Open invitations (GC-3/GC-4 design, settled now so no slice re-derives it)
 
@@ -722,9 +726,72 @@ turn (bytes / 32 ms for PCM 16 kHz). EL counts the agent as speaking until playb
 end, and the earlier runs' `interruption` events, and some apparent stalls, were the driver
 cutting replies short. 9e, with the wait, had no interruptions and no stalls.
 
-Still open for Step 10: the close wording. 9f hung up after "I need to collect the pending
+At the end of Step 9, still open for Step 10: the close wording. 9f hung up after "I need to collect the pending
 answer", with no wrap-up and no goodbye (compare D-101). Also the whole `ask_agent` round
 trip, multi-voice audio on a phone line (E5), and latency.
+
+### Step 10, first phone meeting, 2026-09-24 AEST (partial; D-114)
+
+The call to George ran once with `eqstack` and `executive` on the roster (EL conversation
+`conv_8401m38…`). The persisted call began at 13:12 AEST, ended at 13:17 AEST, and the
+provider reported 270 s of call time. The prior HANDOFF dates the run 2026-09-25; the
+SQLite timestamps put it on **2026-09-24 AEST**. This run did not follow Step 10's
+intended real-member setup: the listener alert was piped through buffering `cut`, so
+neither member session answered. That alert diagnosis is from the checkpoint; the DB
+independently records the polls and the unanswered questions.
+
+| Measure (§ 10) | Result |
+|---|---|
+| Routing and pickup | One `consult.asked` reached each addressee, first `eqstack`, then `executive`. Both addressee polls had started; the first HTTP handoffs were 15 ms and 5 ms after the questions. A handoff stamp proves transport delivery to the poll, not that a session consumed it. |
+| Answer and hold | Neither question was answered or delivered. Both 20,000 ms holds expired; this cannot determine whether 20 s is adequate for a real member. |
+| Voices and social behavior | No member spoke. The stored transcript has 10 chair turns and no member voice tags; `meetingTurnStats` reports zero member segments, which is vacuous here. Distinct audible voices, tag rendering, unsolicited speech, collisions, and George's participant verdict remain unmeasured. |
+| Latency and interruptions | No per-turn timing rows were stored for this call. Voice first-use cost, latency against D-83, interruption during a hold, and `skip_turn` during offline chatter remain unmeasured. |
+| Close | The final chair turn says goodbye, and `call.ended` records `end_call tool was called.` Collection of a pending member answer remains unmeasured because neither member answered. |
+
+A rerun is a **new paid call** and requires fresh authorization under INV-14. First wire
+the real sessions, prove their long-poll and answer loop without a phone call, and keep
+the chair's opening agenda explicit. Do not treat the first run as a pass of E5 or the
+Step 10 acceptance measures.
+
+### Member rehearsal, 2026-09-27 (fake gateway; D-117)
+
+From the repo root, `pnpm -C apps/telephony-mcp exec tsx
+tests/member-dryrun.manual.ts 19490` starts the existing fake telephony/platform
+adapters with a temporary database and prints a synthetic call ID and loopback
+admin URL. It neither reads live config nor dials. A real session polls
+`/calls/<callId>/events?as=<member>&afterSeq=<cursor>&waitMs=55000`, continuing
+from each `nextCursor`, and posts its own answer to
+`/calls/<callId>/consult/<questionId>/answer`. After a poll is open, the harness
+operator types `ask <member>`; `quit` closes the listeners and removes the temp
+state. An initial poll can return `call.initiated` before a question, so the
+session must continue from that cursor rather than treating one poll as a loop.
+
+This EQStack Codex session completed its own rehearsal: it read
+`consult.asked {addressee: "eqstack"}` at sequence 4, submitted a one-sentence
+answer, and got `{delivered: true, collectable: false}`. The fake holder recorded
+`status: delivered, deliveredVia: held`. This proves this session's addressed
+poll and answer over the isolated loopback API. The real executive Codex session
+then polled as `executive`, received its own synthetic question, and answered;
+the fake holder again recorded `status: delivered, deliveredVia: held`. Its
+first 55 s poll expired just after it reported readiness, so it reopened from
+the cursor before the question arrived. A live join loop must re-arm every
+long-poll, and a readiness note alone does not prove a poll is still open.
+Its `consult.delivered` event reported `waitedMs: 35666`, within this fake
+rehearsal's 60 s hold but beyond the live meeting's current 20 s hold. That
+includes this session's manual coordination and the executive's answer time;
+it does not isolate model latency or establish a new hold default (O-45).
+The generated join instruction now names `nextCursor` and immediate re-arming
+(D-119). After rebuilding and restarting the daemon, a `start_meeting`
+dry run returned all three phrases in the executive's join instruction, with
+zero active calls. Whether a Codex turn follows it continuously is not yet
+verified.
+Neither session used the new member MCP host registration in this rehearsal;
+the checks used loopback HTTP. MCP availability, continuous member wake, and
+audible phone voices remain unmeasured.
+
+The chair's fixed first message now includes the agenda variable before it
+asks what is first (D-118). This closes the missing-agenda wording defect in
+the generated brief; the next phone run still has to verify its spoken result.
 
 ## Build notes (GC-1, Steps 1–8)
 
@@ -834,7 +901,7 @@ Charlie. The first `start_meeting` creates `eqstack-meeting` on ElevenLabs.
 | 1 | `meeting-chair-vs-coordinator` · George | Is floor control the **secretary's** or a **coordinator's**? (*"similar but not identical roles"*) | The secretary occupies the `meeting.chair` slot; the slot is the same either way | nothing in GC-1 |
 | 2 | `meeting-voice-lineup` · George | Which unpicked audition voice is which agent? Proposed: chair Lily, Executive David, EQ Stack Roger; never Charlie | the proposal | Step 2 |
 | 3 | `secretary-telephony-tools` · executive (secretary's register) | May her session hold telephony-mcp's `get_call_events` + `answer_consult`, and nothing else? Does she author a phone-persona file for `personaFile`? | she is not a listening member; the chair is neutral | her taking part, not GC-1 |
-| 4 | `meeting-live-tests` · George | Authorise Step 9 (EL minutes only) and Step 10 (EL + Twilio, ≈ US$1.55 + LLM) | both authorised (D-112); Step 9 run 2026-09-24 (D-113), Step 10 not run | the `## Measured` section |
+| 4 | `meeting-live-tests` · George | Authorise Step 9 (EL minutes only) and Step 10 (EL + Twilio, ≈ US$1.55 + LLM) | first tests authorised (D-112); Step 9 ran 2026-09-24 (D-113), first Step 10 ran partially 2026-09-24 (D-114); a rerun needs fresh authorization | the `## Measured` section |
 | 5 | `meeting-llm` · implementer | Does EL's default LLM hold the harness with several personas, or does the meeting agent need a stronger model (`conversation_config.agent.prompt.llm`)? | the default | settled by Steps 9–10 |
 | 6 | `meeting-hold` · implementer | Is 20 s right for `meeting.holdSec`? | 20 s | retune once from Step 10 (with O-35) |
 | 7 | `meeting-dial-in-number` · George | Which number takes dial-ins in GC-3: number #1 `+61…1463` (its inbound handler is O-19), or a third number? | — | GC-3 |

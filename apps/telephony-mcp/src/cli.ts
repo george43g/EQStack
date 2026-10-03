@@ -111,14 +111,23 @@ program.hook("preAction", () => {
 program
   .command("mcp")
   .description("Run the stdio MCP server")
-  .action(async () => {
+  .option("--surface <surface>", "MCP tools: full or member", "full")
+  .action(async (opts: { surface: string }) => {
     try {
+      if (opts.surface !== "full" && opts.surface !== "member") {
+        fail(new Error("surface: must be full or member"));
+      }
       const cfg = loadConfig();
       // mcp-kit lifecycle: shutdown traps, stdin-EOF, orphan watch, watchdog,
       // heap monitor (Phase A ledger L-5; long-poll feeds the watchdog via the
       // dispatcher's noteActivity — pinned in tests/mcp.integration.test.ts).
       const voicePreview = voicePreviewFactory(cfg);
-      await runStdioMcp({ cfg, admin: admin(cfg), ...(voicePreview ? { voicePreview } : {}) });
+      await runStdioMcp({
+        cfg,
+        admin: admin(cfg),
+        surface: opts.surface,
+        ...(voicePreview ? { voicePreview } : {}),
+      });
     } catch (err) {
       fail(err);
     }

@@ -76,6 +76,15 @@ and the migration manifest (this tool is slated to move out of life-stack).
   `get_call_events {as, waitMs}`. The meeting body keeps `end_call` and
   `skip_turn` INSIDE `tools`. Tests: `tests/meeting-mode.test.ts`,
   `src/domain/meeting-brief.test.ts`.
+- **Member MCP surface**: `tel mcp --surface member` exposes only
+  `get_call_events` and `answer_consult`, refuses every other tool, and exposes
+  no `tel://` resources. The default `tel mcp` remains the full operator surface.
+  This narrows operations, not identity: omitting `as` reads unfiltered call
+  events, a caller can supply another member's `as`, and `answer_consult` has
+  no member authentication. See D-115.
+- **LaunchAgent plist changes**: `tel daemon install` bootstraps a new job; it
+  cannot upgrade a loaded label. Boot out the old job before installing from
+  built `dist/`, then verify `/healthz`, the three listeners, and the tunnel.
 - **Voice preview** (`tel voices …`, tools `preview_voices` /
   `review_voice_preview` / `save_voice_profile`): George auditions voices on
   ElevenLabs' hosted talk-to page, no phone call. `save_voice_profile` is the

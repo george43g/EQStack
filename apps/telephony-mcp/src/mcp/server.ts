@@ -42,6 +42,8 @@ import type { VoicePreviewService } from "../voice-preview/service.js";
 export interface McpDeps {
   cfg: Config;
   admin: AdminClient;
+  /** The member process can only poll and answer; the default operator surface is unchanged. */
+  surface?: "full" | "member";
   /** Factory so tests can inject a store; defaults to read-only sqlite. */
   openReadStore?: () => SqliteStore | null;
   /** Voice-preview workflow (src/voice-preview/factory.ts); absent → those tools refuse. */
@@ -56,9 +58,11 @@ function defaultOpenReadStore(): SqliteStore | null {
 
 /** The three per-call views a tel:// URI can address. */
 const READ_URI = /^tel:\/\/calls\/([^/]+?)(?:\/(transcript|events))?$/;
+const MEMBER_TOOLS: ReadonlySet<string> = new Set(["get_call_events", "answer_consult"]);
 
 export function buildMcpServer(deps: McpDeps): Server {
   const { cfg, admin } = deps;
+  const memberSurface = deps.surface === "member";
   const openReadStore = deps.openReadStore ?? defaultOpenReadStore;
 
   const withReadStore = <T>(fn: (store: SqliteStore) => T): T => {
@@ -73,11 +77,14 @@ export function buildMcpServer(deps: McpDeps): Server {
     }
   };
 
-  const registry = buildClientRegistry({
-    admin,
-    openReadStore,
-    ...(deps.voicePreview ? { voicePreview: deps.voicePreview } : {}),
-  });
+  const registry = buildClientRegistry(
+    {
+      admin,
+      openReadStore,
+      ...(deps.voicePreview ? { voicePreview: deps.voicePreview } : {}),
+    },
+    memberSurface ? MEMBER_TOOLS : undefined,
+  );
   const dispatch = buildDispatcher({
     registry,
     engineLabel: () => "ts",
@@ -140,16 +147,18 @@ export function buildMcpServer(deps: McpDeps): Server {
 
   const server = new Server(
     { name: "telephony-mcp", version: VERSION },
-    { capabilities: { tools: {}, resources: {} } },
+    { capabilities: memberSurface ? { tools: {} } : { tools: {}, resources: {} } },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: registry.toMcpTools() }));
   server.setRequestHandler(CallToolRequestSchema, (request, extra) =>
     dispatch(request.params.name, request.params.arguments, extra.signal),
   );
-  server.setRequestHandler(ListResourcesRequestSchema, resources.onList);
-  server.setRequestHandler(ListResourceTemplatesRequestSchema, resources.onListTemplates);
-  server.setRequestHandler(ReadResourceRequestSchema, (request) => resources.onRead(request));
+  if (!memberSurface) {
+    server.setRequestHandler(ListResourcesRequestSchema, resources.onList);
+    server.setRequestHandler(ListResourceTemplatesRequestSchema, resources.onListTemplates);
+    server.setRequestHandler(ReadResourceRequestSchema, (request) => resources.onRead(request));
+  }
 
   void cfg; // reserved for future per-tool config gating
   return server;
