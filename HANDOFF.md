@@ -298,6 +298,7 @@ noted"* and *"put the bug ledger in HANDOFF.md so every agent sees it"*.
 | `gmail-nodemailer-advisory` | gmail | 2026-10-07, eqstack | Package Smoke CI fails `npm audit` on a high nodemailer advisory; the fix needs `^9` → 10.x | eqstack (fork bump-nodemailer-to) | in progress |
 | `imsg-timing-flakes` | imsg | 2026-10-04, eqstack (subagent) | Under root `pnpm verify` load: `cli-e2e` 5 s timeout, `help-bar-overflow`, two `tui-memory` lag budgets (`cli-e2e` passes 14/14 alone) | — | open |
 | `imsg-input-schema-drift` | imsg | 2026-10-07, eqstack | imsg's inputSchemas are hand-written JSON (`apps/imsg-mcp/src/mcp-tools.ts`), separate from the zod schemas that parse input, so they can drift | — | open |
+| `imsg-multi-attachment-captions` | imsg | 2026-10-07, eqstack (forks what-i-checked, you-know-how) | A message with several attachments shows only one cached interpretation: the attach loop stops at the first hit (`apps/imsg-mcp/src/media-intel-runtime.ts:197`) and the type holds one (`src/types.ts:129`). The 4 Oct message with 5 screenshots shows 1 caption although all 5 are cached. Fix: a per-message list, which changes the outputSchema (`src/mcp-schemas.ts:88`) | — | open |
 
 ---
 
