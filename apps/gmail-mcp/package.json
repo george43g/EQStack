@@ -82,7 +82,7 @@
     "googleapis": "^173.0.0",
     "ink": "^7.1.1",
     "mime-types": "^3.0.1",
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^10.0.15",
     "open": "^10.0.0",
     "picocolors": "^1.1.1",
     "react": "^19.2.6",
