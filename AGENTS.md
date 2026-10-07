@@ -49,6 +49,8 @@ fresh clone or cloud agent runs `pnpm install`, whose `prepare` step generates
 - [`docs/STATUS.md`](docs/STATUS.md) — current state, open threads, deferred calls.
 - [`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md) — how the monorepo was assembled.
 - [`HANDOFF.md`](HANDOFF.md) — the cross-session coordination log; append, never rewrite others' rows.
+  **Every bug any agent hits in these tools goes in its §10a Bug ledger**, fixed or not. Claim the
+  row's Owner before fixing, so two agents never fix the same bug.
 
 ## Thread isolation and security
 
