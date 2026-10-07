@@ -288,7 +288,7 @@ noted"* and *"put the bug ledger in HANDOFF.md so every agent sees it"*.
 
 | Slug | App | Found (date, by) | Symptom + evidence | Owner | Status |
 |---|---|---|---|---|---|
-| `imsg-output-schema-fields` | imsg | 2026-10-07, George's session | `get_messages` result rejected by the client: `messages/N/replyTo` and `attachments/M` "must NOT have additional properties" (the handler returns fields the outputSchema doesn't list). Likely also search_messages, get_unread_messages, export_messages, get_conversation_events | eqstack (fork what-i-checked) | in progress |
+| `imsg-output-schema-fields` | imsg | 2026-10-07, George's session | `get_messages` result rejected by the client: `messages/N/replyTo` and `attachments/M` "must NOT have additional properties" (the handler returns fields the outputSchema doesn't list). Likely also search_messages, get_unread_messages, export_messages, get_conversation_events | eqstack (fork what-i-checked) | fixed 963be41 |
 | `attach-search-date-units` | imsg | 2026-10-07, eqstack (fork you-know-how) | `search_attachments` converts `since`/`until` to Mac nanoseconds, but `attachment.created_date` is stored in seconds; "2 weeks ago" → 0 rows where 48 match. `apps/imsg-mcp/src/imessage-db.ts:2470-2478` | — | open |
 | `attach-search-iso-since` | imsg | 2026-10-07, eqstack (fork you-know-how) | `since: "2026-09-23T00:00:00Z"` returned 2000 rows, 1952 older than the cutoff. Suspected `parseUserDate` (`apps/imsg-mcp/src/index.ts:1855`); unverified | — | open |
 | `attach-search-limit-cap` | imsg | 2026-10-07, eqstack (fork you-know-how) | The description says `limit: 0` is capped at 1000, but 2000 rows came back with `truncated: false` (598 KB, over the host token limit); `UNLIMITED` skips the fallback. `imessage-db.ts:2480` | — | open |
@@ -298,6 +298,7 @@ noted"* and *"put the bug ledger in HANDOFF.md so every agent sees it"*.
 | `gmail-nodemailer-advisory` | gmail | 2026-10-07, eqstack | Package Smoke CI fails `npm audit` on a high nodemailer advisory; the fix needs `^9` → 10.x | eqstack (fork bump-nodemailer-to) | in progress |
 | `imsg-timing-flakes` | imsg | 2026-10-04, eqstack (subagent) | Under root `pnpm verify` load: `cli-e2e` 5 s timeout, `help-bar-overflow`, two `tui-memory` lag budgets (`cli-e2e` passes 14/14 alone) | — | open |
 | `imsg-input-schema-drift` | imsg | 2026-10-07, eqstack | imsg's inputSchemas are hand-written JSON (`apps/imsg-mcp/src/mcp-tools.ts`), separate from the zod schemas that parse input, so they can drift | — | open |
+| `imsg-multi-attachment-captions` | imsg | 2026-10-07, eqstack (forks what-i-checked, you-know-how) | A message with several attachments shows only one cached interpretation: the attach loop stops at the first hit (`apps/imsg-mcp/src/media-intel-runtime.ts:197`) and the type holds one (`src/types.ts:129`). The 4 Oct message with 5 screenshots shows 1 caption although all 5 are cached. Fix: a per-message list, which changes the outputSchema (`src/mcp-schemas.ts:88`) | — | open |
 
 ---
 
