@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.25.7](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.6...imsg-mcp-v1.25.7) (2026-10-07)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** advertise replyToKind, emojiDescription and editHistory in message outputSchema ([274b0f5](https://github.com/george43g/EQStack/commit/274b0f500d013e508c7c55cd48df9bc896783e4e))
+
 ## imsg-mcp [1.25.6](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.5...imsg-mcp-v1.25.6) (2026-10-07)
 
 
