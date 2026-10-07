@@ -47,7 +47,17 @@ const noArgsSchema: JsonSchema = { type: "object", properties: {} };
  * single documented cast (previously 22 blanket per-line suppressions).
  */
 type OutputSchema = Tool["outputSchema"];
-const toOutputSchema = (schema: z.ZodType): OutputSchema => zodToJsonSchema(schema) as OutputSchema;
+/**
+ * Stopgap (2026-10-07): zod-to-json-schema stamps `"$schema": draft-07`, and
+ * Claude Code 2.1.292's MCP client rejects any declared dialect but 2020-12
+ * ("Tool '…' has an invalid outputSchema"). An unlabelled schema is read as
+ * 2020-12 (MCP spec default), and nothing emitted here differs between the two
+ * drafts. The real fix is a 2020-12 converter (zod 4 toJSONSchema).
+ */
+const toOutputSchema = (schema: z.ZodType): OutputSchema => {
+  const { $schema: _dialect, ...rest } = zodToJsonSchema(schema) as Record<string, unknown>;
+  return rest as OutputSchema;
+};
 
 const annotations = {
   read: {

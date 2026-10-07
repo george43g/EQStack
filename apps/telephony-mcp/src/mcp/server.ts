@@ -29,6 +29,7 @@ import {
   ListResourceTemplatesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
+  type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { AdminClient } from "../client/admin-client.js";
 import { buildClientRegistry, cleanEvent, cleanUtterance } from "../commands/bind-client.js";
@@ -59,6 +60,24 @@ function defaultOpenReadStore(): SqliteStore | null {
 /** The three per-call views a tel:// URI can address. */
 const READ_URI = /^tel:\/\/calls\/([^/]+?)(?:\/(transcript|events))?$/;
 const MEMBER_TOOLS: ReadonlySet<string> = new Set(["get_call_events", "answer_consult"]);
+
+/**
+ * Stopgap (2026-10-07): mcp-kit's zod-to-json-schema stamps `"$schema":
+ * draft-07` on both schemas, and Claude Code 2.1.292's MCP client rejects any
+ * declared dialect but 2020-12. An unlabelled schema is read as 2020-12 (MCP
+ * spec default); nothing emitted here differs between the two drafts. Real
+ * fix: a 2020-12 converter upstream in mcp-kit.
+ */
+export function withoutSchemaDialect(tool: Tool): Tool {
+  const { $schema: _in, ...inputSchema } = tool.inputSchema as Tool["inputSchema"] & {
+    $schema?: string;
+  };
+  if (!tool.outputSchema) return { ...tool, inputSchema };
+  const { $schema: _out, ...outputSchema } = tool.outputSchema as NonNullable<
+    Tool["outputSchema"]
+  > & { $schema?: string };
+  return { ...tool, inputSchema, outputSchema };
+}
 
 export function buildMcpServer(deps: McpDeps): Server {
   const { cfg, admin } = deps;
@@ -150,7 +169,9 @@ export function buildMcpServer(deps: McpDeps): Server {
     { capabilities: memberSurface ? { tools: {} } : { tools: {}, resources: {} } },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: registry.toMcpTools() }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: registry.toMcpTools().map(withoutSchemaDialect),
+  }));
   server.setRequestHandler(CallToolRequestSchema, (request, extra) =>
     dispatch(request.params.name, request.params.arguments, extra.signal),
   );

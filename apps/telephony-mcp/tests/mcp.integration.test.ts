@@ -114,6 +114,20 @@ describe("tool surface", () => {
     }
   });
 
+  it("declares no JSON Schema dialect other than 2020-12 (Claude Code 2.1.292 rejects draft-07)", async () => {
+    const { tools } = await client.listTools();
+    const offenders = tools.flatMap((t) =>
+      (["inputSchema", "outputSchema"] as const)
+        .filter((k) => {
+          const d = (t[k] as { $schema?: string } | undefined)?.$schema;
+          return d !== undefined && d !== "https://json-schema.org/draft/2020-12/schema";
+        })
+        .map((k) => `${t.name}.${k}`),
+    );
+    expect(tools.length).toBeGreaterThan(0);
+    expect(offenders).toEqual([]);
+  });
+
   it("serves exactly the command registry's 19 tools, with safety annotations", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
