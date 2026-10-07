@@ -21,6 +21,10 @@ export const ReactionSchema = z.object({
 export const ReplyContextSchema = z.object({
   replyToGuid: z.string(),
   replyToText: z.string().nullable().optional(),
+  replyToKind: z
+    .enum(["voice-note", "image", "video", "file"])
+    .optional()
+    .describe("Kind of the replied-to message when it has no text of its own."),
 });
 
 export const AttachmentSchema = z.object({
@@ -29,6 +33,21 @@ export const AttachmentSchema = z.object({
   mimeType: z.string().nullable(),
   transferName: z.string().nullable(),
   totalBytes: z.number().int(),
+  emojiDescription: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Apple's short description of a Genmoji image; null for ordinary attachments."),
+});
+
+export const EditHistorySchema = z.object({
+  parts: z.array(
+    z.object({
+      part: z.number().int(),
+      versions: z.array(z.object({ text: z.string().nullable(), date: z.string().nullable() })),
+    }),
+  ),
+  retractedParts: z.array(z.number().int()),
 });
 
 export const MessageSchema = z.object({
@@ -59,6 +78,9 @@ export const MessageSchema = z.object({
   richContentSummary: z.string().optional(),
   isEdited: z.boolean(),
   isRetracted: z.boolean(),
+  editHistory: EditHistorySchema.optional().describe(
+    "Prior versions of an edited message (oldest → newest) and retracted part indices.",
+  ),
   appleAudioTranscript: z
     .string()
     .optional()
