@@ -1254,13 +1254,23 @@ export const toolDefinitions: ToolDefinition[] = [
 // Cast to any keeps TypeScript from chasing zod 3.25+'s deep generics, which
 // otherwise hit "Type instantiation is excessively deep" on this call.
 // The JSON schema output is dynamically validated by MCP clients regardless.
+// Stopgap (2026-10-07): zod-to-json-schema stamps `"$schema": draft-07`, and
+// Claude Code 2.1.292's MCP client rejects any declared dialect but 2020-12.
+// An unlabelled schema is read as 2020-12 (MCP spec default); nothing emitted
+// here differs between the two drafts. Real fix: a 2020-12 converter.
 export function toMcpTools(tools: ToolDefinition[]) {
-  return tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: zodToJsonSchema(tool.schema as any),
-    annotations: tool.annotations,
-  }));
+  return tools.map((tool) => {
+    const { $schema: _dialect, ...inputSchema } = zodToJsonSchema(tool.schema as any) as Record<
+      string,
+      unknown
+    >;
+    return {
+      name: tool.name,
+      description: tool.description,
+      inputSchema,
+      annotations: tool.annotations,
+    };
+  });
 }
 
 // Get a tool definition by name
