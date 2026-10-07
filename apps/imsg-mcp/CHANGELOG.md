@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and follows [Semantic Versioning](https://semver.org/).
 
+## imsg-mcp [1.25.6](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.5...imsg-mcp-v1.25.6) (2026-10-07)
+
+
+### Bug Fixes
+
+* **imsg-mcp:** drop the draft-07 $schema label from tool output schemas ([a106455](https://github.com/george43g/EQStack/commit/a1064552e95779d99c418a1f4e085ea33609a822))
+
 ## imsg-mcp [1.25.5](https://github.com/george43g/EQStack/compare/imsg-mcp-v1.25.4...imsg-mcp-v1.25.5) (2026-09-02)
 
 
