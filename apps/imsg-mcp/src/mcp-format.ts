@@ -151,7 +151,10 @@ export function messageToStructured(msg: Message) {
           },
         }
       : {}),
-    ...(wrap && msg.editHistory
+    // Always rebuilt: version dates go out as ISO strings, matching the
+    // advertised outputSchema (EditHistorySchema) rather than relying on
+    // JSON.stringify to coerce a Date on the wire.
+    ...(msg.editHistory
       ? {
           editHistory: {
             ...msg.editHistory,
@@ -159,7 +162,8 @@ export function messageToStructured(msg: Message) {
               ...p,
               versions: p.versions.map((v) => ({
                 ...v,
-                text: v.text == null ? v.text : wrapUntrusted(v.text),
+                text: wrap && v.text != null ? wrapUntrusted(v.text) : v.text,
+                date: v.date?.toISOString() ?? null,
               })),
             })),
           },
