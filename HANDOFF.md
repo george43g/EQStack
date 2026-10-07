@@ -269,6 +269,38 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
 
 ---
 
+## 10a. Bug ledger (every agent records here, append-only)
+
+George, 2026-10-07: *"any bugs or erros \*anyone\* encounters while working with tools here must be
+noted"* and *"put the bug ledger in HANDOFF.md so every agent sees it"*.
+
+**Rules.**
+- **Record every bug you hit in this repo's tools**, even when you don't fix it: one row, at the
+  bottom of the table. That covers a wrong result, a crash, a schema rejection, a misleading
+  description, or a flaky test.
+- **Claim before fixing.** Put your session name in **Owner** before you start, and check that no
+  one else has claimed the row. If a row is already claimed, add your evidence to it and leave the
+  fix alone, so two agents never fix the same bug.
+- **Close a row by editing only its Status**, to `fixed <sha>` or `wontfix: <why>`. Never delete a
+  row.
+- Telephony design questions belong in `apps/telephony-mcp/docs/plans/two-way-calling/DECISIONS.md`,
+  not here. This table is for defects.
+
+| Slug | App | Found (date, by) | Symptom + evidence | Owner | Status |
+|---|---|---|---|---|---|
+| `imsg-output-schema-fields` | imsg | 2026-10-07, George's session | `get_messages` result rejected by the client: `messages/N/replyTo` and `attachments/M` "must NOT have additional properties" (the handler returns fields the outputSchema doesn't list). Likely also search_messages, get_unread_messages, export_messages, get_conversation_events | eqstack (fork what-i-checked) | in progress |
+| `attach-search-date-units` | imsg | 2026-10-07, eqstack (fork you-know-how) | `search_attachments` converts `since`/`until` to Mac nanoseconds, but `attachment.created_date` is stored in seconds; "2 weeks ago" → 0 rows where 48 match. `apps/imsg-mcp/src/imessage-db.ts:2470-2478` | — | open |
+| `attach-search-iso-since` | imsg | 2026-10-07, eqstack (fork you-know-how) | `since: "2026-09-23T00:00:00Z"` returned 2000 rows, 1952 older than the cutoff. Suspected `parseUserDate` (`apps/imsg-mcp/src/index.ts:1855`); unverified | — | open |
+| `attach-search-limit-cap` | imsg | 2026-10-07, eqstack (fork you-know-how) | The description says `limit: 0` is capped at 1000, but 2000 rows came back with `truncated: false` (598 KB, over the host token limit); `UNLIMITED` skips the fallback. `imessage-db.ts:2480` | — | open |
+| `attach-search-plugin-payloads` | imsg | 2026-10-07, eqstack (fork you-know-how) | The description says plugin payloads are excluded, but `*.pluginPayloadAttachment` rows still return (null MIME, some 0 bytes); the filter only checks `uti LIKE 'com.apple.messages.plugin%'`. `imessage-db.ts:2459` | — | open |
+| `attach-search-caf-mime` | imsg | 2026-10-07, eqstack (fork you-know-how) | `.caf` voice notes report MIME null, so `mimePrefix: "audio/"` misses 4 of 5 voice notes (interpret still transcribes them) | — | open |
+| `schema-dialect-proper-fix` | all | 2026-10-07, eqstack | Hotfix #184 only strips the draft-07 `$schema`; the converter is still `zod-to-json-schema` (draft-07, deprecated). Needs a 2020-12 converter, one shared helper (prefer mcp-kit), and an Ajv2020 conformance test | eqstack | open (planning) |
+| `gmail-nodemailer-advisory` | gmail | 2026-10-07, eqstack | Package Smoke CI fails `npm audit` on a high nodemailer advisory; the fix needs `^9` → 10.x | eqstack (fork bump-nodemailer-to) | in progress |
+| `imsg-timing-flakes` | imsg | 2026-10-04, eqstack (subagent) | Under root `pnpm verify` load: `cli-e2e` 5 s timeout, `help-bar-overflow`, two `tui-memory` lag budgets (`cli-e2e` passes 14/14 alone) | — | open |
+| `imsg-input-schema-drift` | imsg | 2026-10-07, eqstack | imsg's inputSchemas are hand-written JSON (`apps/imsg-mcp/src/mcp-tools.ts`), separate from the zod schemas that parse input, so they can drift | — | open |
+
+---
+
 ## 11. Progress Log (append-only — every agent updates this)
 
 > Format: `YYYY-MM-DD · agent · what changed · branch/PR · state`. Newest at the bottom.
