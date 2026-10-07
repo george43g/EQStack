@@ -88,8 +88,8 @@ importers:
         specifier: ^3.0.1
         version: 3.0.2
       nodemailer:
-        specifier: ^9.0.3
-        version: 9.0.5
+        specifier: ^10.0.15
+        version: 10.0.15
       open:
         specifier: ^10.0.0
         version: 10.2.0
@@ -3561,9 +3561,9 @@ packages:
     resolution: {integrity: sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==}
     engines: {node: '>= 6.13.0'}
 
-  nodemailer@9.0.5:
-    resolution: {integrity: sha512-wvjiKvjczmsN7U/8006JOdXubgBk2XFAbioDMbT+sM7cPs0QrhJTa6KBRX7P5REGGkDcLUz/EarWidb8G8C1jQ==}
-    engines: {node: '>=6.0.0'}
+  nodemailer@10.0.15:
+    resolution: {integrity: sha512-EUqp5PhtcsYXs9Fq/lS7s/8zlTrnBqmzZWzFFROrNikMiz+om/YRKMwqN907t+0A1KKyT8jd39CBUbFZmaZmcA==}
+    engines: {node: '>=20.0.0'}
 
   nodemon@3.1.14:
     resolution: {integrity: sha512-jakjZi93UtB3jHMWsXL68FXSAosbLfY0In5gtKq3niLSkrWznrVBzXFNOEMJUfc9+Ke7SHWoAZsiMkNP3vq6Jw==}
@@ -7976,7 +7976,7 @@ snapshots:
 
   node-forge@1.4.0: {}
 
-  nodemailer@9.0.5: {}
+  nodemailer@10.0.15: {}
 
   nodemon@3.1.14:
     dependencies:
