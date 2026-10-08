@@ -1286,7 +1286,7 @@ Plan approved 2026-10-08; wave 0 (park, ledger claims, backlog, this checkpoint)
 - #186 `963be41`: imsg output-schema fields; imsg-mcp 1.25.7 (`imsg --version` 1.25.7).
 - #185 `99fa99b`: gmail nodemailer ^10.0.15 (Package Smoke green).
 - #187, #188 `91b08bb`: HANDOFF §10a bug ledger + rows.
-- Shara's last-2-weeks media interpretations cached (37/37) — several are refusal rows, see ledger `media-refusal-cached`.
+- One real thread's last-2-weeks media interpretations cached (37/37) — several are refusal rows, see ledger `media-refusal-cached`.
 
 ### Open
 - `wave1-research` · eqstack — R1a, R1b, R2, R3, L not yet launched at this write.
