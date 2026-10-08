@@ -1265,58 +1265,54 @@ Next build action: **Phase Q Step 1** — but first get George's call on `agent-
 and record it as a DECISIONS row, then add the port and flip `CALL_MODE_SPECS.delegate.implemented`.
 Do not write the port before that row exists.
 
-## Checkpoint · eqstack · 2026-10-08
+## Checkpoint · eqstack · 2026-10-09
 
 Where this block and a conversation summary disagree, this block is correct.
 
 ### Resume
-Paused for relaunch (secrets brake: github/huggingface/twilio MCPs down). After relaunch: (1) merge PR #190 (wave-1 research reports, docs only) once CI is green, waiting for any Release run in flight; (2) run the RESEARCH GATE as George chose 2026-10-08 ~17:10: "walk me through it live, use the /ask-george" — one `wm ask` question per finding, source = `docs/research/2026-10-openclaw/` (R1a, R1b, R2, R3, L). Use today's plaintext `wm ask` until wm-stack reports the rich-format contract (relayed 17:15). (3) Then revise wave 2 of `docs/plans/2026-10-08-mcp-platform-and-media.md` and start it. Kit lane: mcp-kit 3.0.0 draft PR #140 in mcp-cli-starter-template (George approves the major); T (telephony) and G (gmail) start when it publishes.
+ON HOLD by George (2026-10-09, gate card 13): "finish asking me questions but hold further work until im satisfied that i have provided you with the full corpus of notes and ideas and direction." Do NOT start wave 2. When he hands over notes: triage them into `docs/plans/2026-10-08-mcp-platform-and-media.md` together with `docs/research/2026-10-openclaw/GATE-DECISIONS.md` (all 15 gate decisions), then revise wave 2 and ask for his go.
 
 ### State
-Wave 0 merged (#189 `200a5cd`). Wave 1 research complete; reports in PR #190. GC-1 still parked (rows below). The 15:27 crash wiped the scratchpad (whisper shim, synthetic samples, raw clones); the reports survived in the worktree.
+Research gate complete (15 cards, PR #191 `49d31bc`). Wave 2 held for George's notes corpus. Kit lane: mcp-kit 3.0.0 draft PR #140 in mcp-cli-starter-template awaits George's publish approval; T/G (telephony/gmail adoption) also held.
 
 ### Constraints
-- George 2026-10-08: research gate = live walk-through via `wm ask` (verbatim quote in Resume).
-- George 2026-10-08 (plan decisions): imsg + gmail onto mcp-kit v3; mcp-starter-template builds the kit; research first, then build; kit/telephony/gmail may proceed during research.
-- Executive relay of George 2026-10-08 ~17:15: if MCPs are down from the secrets brake, pause, park question chains, post ready-for-relaunch on ag-in-executive.
+- George 2026-10-09: hold all further work until his notes corpus is complete (verbatim in Resume).
+- George 2026-10-08: imsg + gmail onto mcp-kit v3; research first, then build.
+- PUBLIC repo: his familiarity/voice notes and verbatim card replies stay machine-local (research worktree `docs/ideas/`, `docs/research/2026-10-openclaw/answers/`, untracked) until he OKs publishing.
 
 ### Done
-- #189 `200a5cd`: plan doc, ledger rows (7 new, all claimed), backlog (`humans-file-conventions`, `web-ui`, `bun-runtime-eval`), GC-1 parked.
-- PR #190 open: `docs/research/2026-10-openclaw/` (R1a, R1b, R3 Typst+PDF, R2 landscape, L local engines, README index).
-- NotebookLM notebooks: `34240803-244a-4743-8838-1bb4f0ed70d2` (iMessage tooling), `117af69b-0274-4d3e-964b-6876e866a550` (messenger bridges), 50 sources each.
-- Local engines installed on gmac: hear 0.8 (`~/.local/bin/hear`), whisper-cli 1.9.5 + models in `~/.local/share/whisper-models/`, mac-ocr 1.1.1.
-- wm-stack asked (bus, 2026-10-08 ~17:15) to build rich-format `wm ask` (markdown/diagrams/TeX/Typst/HTML, a queue, the originating agent shown) via a subagent.
+- #190 `3dad435`: wave-1 research reports (R1a, R1b, R2, R3, L).
+- #191 `49d31bc`: GATE-DECISIONS.md + R4 document representation (measured attachment mix).
+- `~/.local/bin/whisper-cli` shim (gate card 14): adds `-m` turbo model + WAV conversion; verified on a synthetic CAF (exact, 1.8 s). Delete in wave 2.
+- wm-stack received George's wm ask UI requirements (rich formats, field types, multi-question, clarify, required text) and fixed the lost-ask and keypress bugs (wm-stack 627be64).
 
 ### Open
-- `research-gate` · eqstack — the live wm-ask walk-through, not started.
-- `research-pr-190` · eqstack — open, CI not yet checked.
-- `kit-v3` · eqstack — kit PR #140 is a draft; asked kit for an optional deny reason for gmail; awaiting George's publish approval.
-- `whisper-interim` · eqstack — imsg runs `whisper-cli` without `-m` (fails, never falls through to hear). George to choose: uninstall whisper-cpp or a PATH shim (the shim was lost in the crash).
-- `speech-permission` · eqstack — the host app that launches imsg-mcp needs a Speech Recognition Allow.
-- `contacts-notes` · eqstack — George asked whether to paste the contact-identity notes; recommended: paste now, design at the gate, build early in wave 2.
-- `bun-runtime-eval-spike`, `whatsapp-mcp-go-no-go` · eqstack — George decisions from R3.
-- `live-rehearsal-real-sessions`, `secretary-voice`, `gc1-step10-rerun` · eqstack — GC-1, PARKED.
-- `claude-desktop-relaunch` · eqstack — carried, not re-measured since 2026-10-07.
+- `notes-corpus` · eqstack — George collecting; first instalment (familiarity system, voice beyond phone) saved machine-local.
+- `telephony-exception` · eqstack — unclear whether "Exception is the telephony mcp/cli" exempts telephony from the hold; asked, not answered.
+- `ideas-publish` · eqstack — whether his notes may go in the public repo; asked, not answered.
+- `kit-v3-publish` · eqstack — George to approve mcp-kit 3.0.0; kit also asked for fail-closed unknown args (card 7) and an optional deny reason.
+- `whisper-shim-desktop` · eqstack — unverified that Claude Desktop's imsg PATH finds `~/.local/bin` first.
+- `speech-permission` · eqstack — the Speech Recognition Allow for hear, needed only on fallback.
+- `live-rehearsal-real-sessions`, `secretary-voice`, `gc1-step10-rerun` · eqstack — GC-1, PARKED (carried).
 
 ### Traps
-- The crash can wipe the scratchpad: stage deliverables inside a worktree early.
-- `gh` and git hung when 1Password's agent wasn't running; the GitHub MCP is down under the secrets brake.
-- PUBLIC repo: no contact names, slugs or quotes in docs.
+- Don't edit a script while `wm ask` runs it in the background (zsh reads it lazily, giving a parse error).
+- A crash wipes the scratchpad: keep deliverables in a worktree.
+- `gh`/git hang when 1Password's agent is down.
 
 ### Tree
-`/Users/george/repos/EQStack` main == origin/main `200a5cd`. Worktree `../EQStack-wt/research` on `docs/research-2026-10` (PR #190; this checkpoint rides on it).
+main == origin/main `49d31bc`. Worktree `../EQStack-wt/research` holds untracked machine-local files (ideas, answers, gate-cards.sh); this checkpoint rides on branch `docs/checkpoint-hold` there.
 
 ### Blocked on you
-- `research-gate` · eqstack — the live walk-through after relaunch.
-- `kit-v3` · eqstack — approve publishing mcp-kit 3.0.0 when mcp-starter-template asks.
-- `whisper-interim`, `speech-permission`, `bun-runtime-eval-spike`, `whatsapp-mcp-go-no-go` · eqstack.
+- `notes-corpus`, `telephony-exception`, `ideas-publish`, `kit-v3-publish` · eqstack.
 
 ## History
 
 <!-- BEGIN checkpoint-history (generated; do not edit) -->
+- 2026-10-08 · eqstack · Wave 0 merged (#189 `200a5cd`). Wave 1 research complete; reports in PR #190. GC-1 still parked (rows below). The 15:27 crash wiped the scratchpad (whisper shim, synthetic samples, raw clones); the r… · open: `research-gate`, `research-pr-190`, `kit-v3`, `whisper-interim`, `speech-permission`, `contacts-notes`, `whatsapp-mcp-go-no-go`, `gc1-step10-rerun`, `claude-desktop-relaunch` · [full text](handoff-archive/eqstack/2026-10-08-2.md)
 - 2026-10-08 · eqstack · Plan approved 2026-10-08; wave 0 (park, ledger claims, backlog, this checkpoint) landing; wave 1 starting. · open: `wave1-research`, `kit-v3`, `research-gate`, `live-rehearsal-real-sessions`, `secretary-voice`, `gc1-step10-rerun`, `claude-desktop-relaunch` · [full text](handoff-archive/eqstack/2026-10-08.md)
 - 2026-10-07 · eqstack · GC-1 live rehearsal mode merged and running on the daemon. The real-session rehearsal waits only on the executive confirming the member tools are visible. Fleet reboot of gmac at 2026-10-07 ~00:05 AE… · open: `live-rehearsal-real-sessions`, `secretary-voice`, `gc1-step10-rerun`, `member-identity-check`, `agent-text-route`, `pr129-await-reply`, `meeting-hold`, `caller-number-selector`, `public-listener-bind`, `group-call-live-channel`, `elevenlabs-mcp-oauth` · [full text](handoff-archive/eqstack/2026-10-07.md)
-- 2026-09-29 · eqstack · Parked 2026-09-29: GC-1 waits on two multiple-choice decisions. Cursor replaced Codex 01a0df28 and did not continue. Gateway up, no active call. · open: `member-mcp-scope`, `secretary-chair-model`, `real-members-wiring`, `continuous-member-join`, `gc1-step10-rerun`, `meeting-hold`, `caller-number-selector`, `public-listener-bind`, `group-call-live-channel`, `pr129-await-reply`, `elevenlabs-mcp-oauth` · [full text](handoff-archive/eqstack/2026-09-29.md)
+- 2026-09-29 · eqstack · Parked 2026-09-29: GC-1 waits on two multiple-choice decisions. Cursor replaced Codex 01a0df28 and did not continue. Gateway up, no active call. · [full text](handoff-archive/eqstack/2026-09-29.md)
 - 2026-09-27 · eqstack · Codex is EQStack's primary session; no Claude was live in this repo at the last repo check. GC-1's first phone meeting remains a partial measurement. Both real Codex member sessions answered one addr… · [full text](handoff-archive/eqstack/2026-09-27-2.md)
 - 2026-09-27 · eqstack · Codex is EQStack's primary session (no live Claude in this repo at 06:23 AEST). GC-1's first phone meeting remains a partial measurement. Both real member sessions answered one addressed question in… · [full text](handoff-archive/eqstack/2026-09-27.md)
 - 2026-09-26 · eqstack · GC-1 Step 9 is done and merged; Step 10 ran once and could not measure member voices. The next meeting waits on two decisions from George: wiring in the real member sessions, and how the secretary jo… · [full text](handoff-archive/eqstack/2026-09-26.md)
