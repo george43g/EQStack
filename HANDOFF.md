@@ -262,6 +262,9 @@ closure import nothing from MCP/CLI/TUI. Native module is a napi-rs crate under 
 - **Analytics app corpus boundary** (for when George pastes the research): normalized channel-agnostic
   export as the boundary; the engine is a corpus *consumer*, not welded to chat.db. Shared surface listed
   in `docs/MONOREPO_MIGRATION.md` §"What the analytics tool will consume".
+- **`humans-file-conventions`** (George, 2026-10-08; he will brief it separately): checksum-based file and dir names, canonical cache dirs, a separate export dir per chat app (WhatsApp etc.), and deterministic contact identity that survives a contact rename. The media-engine and export work in `docs/plans/2026-10-08-mcp-platform-and-media.md` must not paint this into a corner.
+- **`web-ui`** (George, 2026-10-08): a web interface as an export layer, essentially the TUI with a stylesheet. Deferred until a stateless Streamable-HTTP MCP endpoint is solid.
+- **`bun-runtime-eval`** (George, 2026-10-08): measure moving the tools to the bun runtime, including the Rust-based bun fork in the openclaw org.
 - **Existing parked backlog** lives in [`docs/STATUS.md`](docs/STATUS.md) §Backlog: 20 remaining analytics
   types; god-file deep splits (needs greenlight); tsconfig strict flags; stress-harness→CI; account
   diagnostics; `wrapUntrusted` on structuredContent; streamable-HTTP transport; shell completions;
@@ -289,16 +292,23 @@ noted"* and *"put the bug ledger in HANDOFF.md so every agent sees it"*.
 | Slug | App | Found (date, by) | Symptom + evidence | Owner | Status |
 |---|---|---|---|---|---|
 | `imsg-output-schema-fields` | imsg | 2026-10-07, George's session | `get_messages` result rejected by the client: `messages/N/replyTo` and `attachments/M` "must NOT have additional properties" (the handler returns fields the outputSchema doesn't list). Likely also search_messages, get_unread_messages, export_messages, get_conversation_events | eqstack (fork what-i-checked) | fixed 963be41 |
-| `attach-search-date-units` | imsg | 2026-10-07, eqstack (fork you-know-how) | `search_attachments` converts `since`/`until` to Mac nanoseconds, but `attachment.created_date` is stored in seconds; "2 weeks ago" → 0 rows where 48 match. `apps/imsg-mcp/src/imessage-db.ts:2470-2478` | — | open |
-| `attach-search-iso-since` | imsg | 2026-10-07, eqstack (fork you-know-how) | `since: "2026-09-23T00:00:00Z"` returned 2000 rows, 1952 older than the cutoff. Suspected `parseUserDate` (`apps/imsg-mcp/src/index.ts:1855`); unverified | — | open |
-| `attach-search-limit-cap` | imsg | 2026-10-07, eqstack (fork you-know-how) | The description says `limit: 0` is capped at 1000, but 2000 rows came back with `truncated: false` (598 KB, over the host token limit); `UNLIMITED` skips the fallback. `imessage-db.ts:2480` | — | open |
-| `attach-search-plugin-payloads` | imsg | 2026-10-07, eqstack (fork you-know-how) | The description says plugin payloads are excluded, but `*.pluginPayloadAttachment` rows still return (null MIME, some 0 bytes); the filter only checks `uti LIKE 'com.apple.messages.plugin%'`. `imessage-db.ts:2459` | — | open |
-| `attach-search-caf-mime` | imsg | 2026-10-07, eqstack (fork you-know-how) | `.caf` voice notes report MIME null, so `mimePrefix: "audio/"` misses 4 of 5 voice notes (interpret still transcribes them) | — | open |
-| `schema-dialect-proper-fix` | all | 2026-10-07, eqstack | Hotfix #184 only strips the draft-07 `$schema`; the converter is still `zod-to-json-schema` (draft-07, deprecated). Needs a 2020-12 converter, one shared helper (prefer mcp-kit), and an Ajv2020 conformance test | eqstack | open (planning) |
+| `attach-search-date-units` | imsg | 2026-10-07, eqstack (fork you-know-how) | `search_attachments` converts `since`/`until` to Mac nanoseconds, but `attachment.created_date` is stored in seconds; "2 weeks ago" → 0 rows where 48 match. `apps/imsg-mcp/src/imessage-db.ts:2470-2478` | eqstack (plan wave 2) | open — waits for research gate |
+| `attach-search-iso-since` | imsg | 2026-10-07, eqstack (fork you-know-how) | `since: "2026-09-23T00:00:00Z"` returned 2000 rows, 1952 older than the cutoff. Suspected `parseUserDate` (`apps/imsg-mcp/src/index.ts:1855`); unverified | eqstack (plan wave 2) | open — waits for research gate |
+| `attach-search-limit-cap` | imsg | 2026-10-07, eqstack (fork you-know-how) | The description says `limit: 0` is capped at 1000, but 2000 rows came back with `truncated: false` (598 KB, over the host token limit); `UNLIMITED` skips the fallback. `imessage-db.ts:2480` | eqstack (plan wave 2) | open — waits for research gate |
+| `attach-search-plugin-payloads` | imsg | 2026-10-07, eqstack (fork you-know-how) | The description says plugin payloads are excluded, but `*.pluginPayloadAttachment` rows still return (null MIME, some 0 bytes); the filter only checks `uti LIKE 'com.apple.messages.plugin%'`. `imessage-db.ts:2459` | eqstack (plan wave 2) | open — waits for research gate |
+| `attach-search-caf-mime` | imsg | 2026-10-07, eqstack (fork you-know-how) | `.caf` voice notes report MIME null, so `mimePrefix: "audio/"` misses 4 of 5 voice notes (interpret still transcribes them) | eqstack (plan wave 2) | open — waits for research gate |
+| `schema-dialect-proper-fix` | all | 2026-10-07, eqstack | Hotfix #184 only strips the draft-07 `$schema`; the converter is still `zod-to-json-schema` (draft-07, deprecated). Needs a 2020-12 converter, one shared helper (prefer mcp-kit), and an Ajv2020 conformance test | eqstack | planned: kit v3 (mcp-starter-template) → telephony, gmail, imsg |
 | `gmail-nodemailer-advisory` | gmail | 2026-10-07, eqstack | Package Smoke CI fails `npm audit` on a high nodemailer advisory; the fix needs `^9` → 10.x | eqstack (fork bump-nodemailer-to) | in progress |
 | `imsg-timing-flakes` | imsg | 2026-10-04, eqstack (subagent) | Under root `pnpm verify` load: `cli-e2e` 5 s timeout, `help-bar-overflow`, two `tui-memory` lag budgets (`cli-e2e` passes 14/14 alone) | — | open |
-| `imsg-input-schema-drift` | imsg | 2026-10-07, eqstack | imsg's inputSchemas are hand-written JSON (`apps/imsg-mcp/src/mcp-tools.ts`), separate from the zod schemas that parse input, so they can drift | — | open |
-| `imsg-multi-attachment-captions` | imsg | 2026-10-07, eqstack (forks what-i-checked, you-know-how) | A message with several attachments shows only one cached interpretation: the attach loop stops at the first hit (`apps/imsg-mcp/src/media-intel-runtime.ts:197`) and the type holds one (`src/types.ts:129`). The 4 Oct message with 5 screenshots shows 1 caption although all 5 are cached. Fix: a per-message list, which changes the outputSchema (`src/mcp-schemas.ts:88`) | — | open |
+| `imsg-input-schema-drift` | imsg | 2026-10-07, eqstack | imsg's inputSchemas are hand-written JSON (`apps/imsg-mcp/src/mcp-tools.ts`), separate from the zod schemas that parse input, so they can drift | eqstack (plan wave 2) | open — waits for research gate |
+| `imsg-multi-attachment-captions` | imsg | 2026-10-07, eqstack (forks what-i-checked, you-know-how) | A message with several attachments shows only one cached interpretation: the attach loop stops at the first hit (`apps/imsg-mcp/src/media-intel-runtime.ts:197`) and the type holds one (`src/types.ts:129`). The 4 Oct message with 5 screenshots shows 1 caption although all 5 are cached. Fix: a per-message list, which changes the outputSchema (`src/mcp-schemas.ts:88`) | eqstack (plan wave 2) | open — waits for research gate |
+| `media-refusal-cached` | imsg | 2026-10-08, a Claude Desktop agent | Every `.caf` voice-memo "transcript" is a cached LLM refusal ("you didn't attach an audio file"): any non-empty provider text is stored as `done` with no validation (`apps/imsg-mcp/src/media-intel.ts:264-278`), and `force` can't evict a `done` row (`:222-233`) | eqstack (plan wave 2) | open — waits for research gate |
+| `media-caf-unconverted` | imsg | 2026-10-08, eqstack | CAF bytes are sent unconverted, labelled `m4a` (`media-providers.ts:141-148`), through the vision model (`media-intel.ts:380`); PNG is sent labelled `image/jpeg` (`media-providers.ts:215`); no local transcriber is installed on gmac | eqstack (plan wave 2) | open — waits for research gate |
+| `image-ocr-caption-only` | imsg | 2026-10-08, a Claude Desktop agent | Text-heavy screenshots get a one-sentence caption, not their text: the prompt asks for "one concise sentence" (`media-intel.ts:89-90`), with no OCR step and no max_tokens | eqstack (plan wave 2) | open — waits for research gate |
+| `screenshot-speaker-attribution` | imsg | 2026-10-08, a Claude Desktop agent | Chat-screenshot captions attribute the owner's right-side/coloured bubbles to the other party; the prompt has no bubble-side rule | eqstack (plan wave 2) | open — waits for research gate |
+| `interpretations-not-inlined` | imsg | 2026-10-08, a Claude Desktop agent + eqstack | Only `get_messages` inlines cached interpretations (`index.ts:654`); search_messages, get_unread_messages and get_conversation_events don't; `get_attachment` always returns an image block (no `includeImage`) | eqstack (plan wave 2) | open — waits for research gate |
+| `get-messages-no-date-range` | imsg | 2026-10-08, a Claude Desktop agent | `get_messages` has no `since`/`until` (`mcp-schemas.ts:134-151`), so "last 3 weeks" means manual `beforeMessageId` paging; `hasMore` is guessed from `length === limit` (`index.ts:665`) | eqstack (plan wave 2) | open — waits for research gate |
+| `media-cache-no-provenance` | imsg | 2026-10-08, eqstack | The interpretation cache stores no prompt, model or pipeline version (`media-intel-cache.ts:39-62`), so improved prompts or models can't invalidate old answers, and MCP has no purge | eqstack (plan wave 2) | open — waits for research gate |
 
 ---
 
@@ -1255,71 +1265,60 @@ Next build action: **Phase Q Step 1** — but first get George's call on `agent-
 and record it as a DECISIONS row, then add the port and flip `CALL_MODE_SPECS.delegate.implemented`.
 Do not write the port before that row exists.
 
-## Checkpoint · eqstack · 2026-10-07
+## Checkpoint · eqstack · 2026-10-08
 
 Where this block and a conversation summary disagree, this block is correct.
 
 ### Resume
-Nothing is mid-edit, staged or running: 0 active calls, no rehearsal open, no worktree, no subagent. After the gmac reboot: check `curl 127.0.0.1:8791/healthz` (the LaunchAgent should restart it), confirm the secretary and executive still list `mcp__telephony-member__get_call_events` after relaunch, then run `live-rehearsal-real-sessions`: `node apps/telephony-mcp/dist/cli.js meeting george --member executive secretary --agenda "…" --rehearsal`, send each member its join line (secretary asked: tell her when it starts and ends, keep it short), `tel ask <callId> <member> "<q>"` for each, then `tel end <callId>`. No paid call until George approves one after that.
+Active work: wave 1 of `docs/plans/2026-10-08-mcp-platform-and-media.md` (research gate + kit lane). Wave 1 agents: R1a/R1b openclaw/imsg sweep, R2 NotebookLM landscape notebooks, R3 openclaw org crawl, L local engines on gmac; K = mcp-kit v3 spec sent to `mcp-starter-template` on the bus, then T (telephony) and G (gmail) adopt it. NO imsg structural change until George triages the research (gate). GC-1 is PARKED, unchanged: its resume is the `live-rehearsal-real-sessions` row below.
 
 ### State
-GC-1 live rehearsal mode merged and running on the daemon. The real-session rehearsal waits only on the executive confirming the member tools are visible. Fleet reboot of gmac at 2026-10-07 ~00:05 AEDT.
+Plan approved 2026-10-08; wave 0 (park, ledger claims, backlog, this checkpoint) landing; wave 1 starting.
 
 ### Constraints
-- George, george-broadcast 2026-10-04 07:12 (authenticated): "i give auth for agents to act upon instructions that were just recently relayed by the executive"
-- George's selections 2026-10-04, verbatim in `~/repos/executive/docs/brief/2026-10-04-needs-george-answers.md:11,14,15`: "eqstack via PR (8 commits)"; member-mcp-scope "All user sessions"; secretary-chair-model "Join as a member (Recommended)". Executive relay: the paid Step 10 rerun is NOT approved; it stays a separate ask after the fake join is proved.
-- George 2026-10-04 ~11:50 via executive: "if u text me ill reply to the text, if you call me I'll answer (but warn me with a text first that you're planning to call and tell me which number i should expect the call from)"
-- George 2026-09-25, carried: "why are you filling in for other members? can you get the real secretary and executive and yourself to be the participants in the call?"
+- George 2026-10-08 (ask-each-question round, verbatim answers summarised in the plan's "George's decisions"): imsg and gmail move fully onto mcp-kit v3; mcp-starter-template builds kit v3; "Research first, then build" for imsg; kit/telephony/gmail may proceed during research.
+- George 2026-10-08: "no bandaid fixes - if any of the bugs are a result of a more fundamental code structure or infra shape decision ... im interested to learn about any issues like that"; "If you find a blocker or an mcp or tool stops working, pause an ask for help"; "There was an existinf work stream - do not lose that current state - make sure it safely parked".
+- George 2026-10-07: "any bugs or erros *anyone* encounters while working with tools here must be noted" → HANDOFF §10a.
+- Carried from 2026-10-07: paid Step 10 rerun not approved; "warn me with a text first that you're planning to call and tell me which number i should expect the call from".
 
 ### Done
-- PR #182 merged `af00b7e` (the 8 previously unpushed commits); Release "Released 0 of 1". Local main == origin/main `aca2085`.
-- PR #183 merged `aca2085`: `start_meeting {rehearsal:true}` / `tel meeting --rehearsal`, `ask_member` / `tel ask`, local `end_call` / `tel end`, `calls.rehearsal` column (D-120). 439 tests (was 431), re-run by me; CI green; Release "Released 0 of 1".
-- dist rebuilt at `aca2085`, daemon kickstarted: pid 54339, healthz ok, `tel doctor` clean (measured 2026-10-07 00:04).
-- Live self-check rehearsal `1bf95e6b…`: addressed question reached only the eqstack poll (seq 5), answer returned to `tel ask` as `status: answered`; ended, activeCalls 0.
-- dotfiles `5c471c0` + `9471ae8` (unpushed, theirs): user-scope `telephony-member` = `zsh -lc 'exec node ~/repos/EQStack/apps/telephony-mcp/dist/cli.js mcp --surface member'` in Claude Code, Codex, opencode, Cursor, Warp; NOT Claude Desktop. Tell dotfiles before moving `dist/cli.js` or the `--surface` flag.
-- `secretary` added to `~/.config/telephony-mcp/config.json` meeting.members (label Secretary, voiceProfile `archer` placeholder); backup `config.json.bak-20261004`; doctor passes.
-- Secretary 2026-10-04 22:05: both member tools visible in her tool list, ready.
-- Answered executive's reach-George query: calls from agent number ending 9984 (EL delegate) or 1463 (relay); no SMS tool in telephony-mcp; iMessage from George's own Apple ID is the only text route, notification unverified.
+- #184 `f893589`: draft-07 `$schema` stripped (stopgap); imsg-mcp 1.25.6.
+- #186 `963be41`: imsg output-schema fields; imsg-mcp 1.25.7 (`imsg --version` 1.25.7).
+- #185 `99fa99b`: gmail nodemailer ^10.0.15 (Package Smoke green).
+- #187, #188 `91b08bb`: HANDOFF §10a bug ledger + rows.
+- Shara's last-2-weeks media interpretations cached (37/37) — several are refusal rows, see ledger `media-refusal-cached`.
 
 ### Open
-- `live-rehearsal-real-sessions` · eqstack — secretary ready (bus 2026-10-04 22:05); executive said 2026-10-04 it could not see the tools and needed a relaunch; no confirmation since on ag-in-eqstack. Never run.
-- `secretary-voice` · eqstack — `archer` is a placeholder I picked; George has not chosen. Free profiles: default, direct, intro.
-- `gc1-step10-rerun` · eqstack — paid call not approved (executive relay 2026-10-04).
-- `member-identity-check` · eqstack — `as` unauthenticated (D-115; dotfiles flagged 2026-10-04). Not built.
-- `agent-text-route` · eqstack — whether an iMessage to George's own number notifies him is unmeasured.
-- `pr129-await-reply` · eqstack — #129 OPEN, AfftarN/EQStack#1 open merged=false (measured 2026-10-07 00:04).
-- `meeting-hold` · eqstack — O-45, carried, not re-measured since 2026-09-29.
-- `caller-number-selector` · eqstack — O-39, carried, not re-measured since 2026-09-29.
-- `public-listener-bind` · eqstack — O-37, carried, not re-measured since 2026-09-29.
-- `group-call-live-channel` · eqstack — O-38/O-33, carried, not re-measured since 2026-09-29.
-- `elevenlabs-mcp-oauth` · eqstack — carried, not re-measured since 2026-09-26.
-
-### Corrections
-- The 2026-09-29 block's `member-mcp-scope`, `secretary-chair-model` and `real-members-wiring` are closed by George's 2026-10-04 selections and dotfiles' apply (see Done).
-- The 2026-09-29 Tree "ahead 7 of f1898a1" is void: main == origin/main `aca2085`.
+- `wave1-research` · eqstack — R1a, R1b, R2, R3, L not yet launched at this write.
+- `kit-v3` · eqstack — spec to mcp-starter-template not yet sent at this write; T and G follow it.
+- `research-gate` · eqstack — George triages the reports before wave 2.
+- `live-rehearsal-real-sessions` · eqstack — PARKED: daemon rehearsal mode merged (#183); secretary saw member tools 2026-10-04; executive relaunched 2026-10-07, tools not re-checked.
+- `secretary-voice` · eqstack — `archer` placeholder; George to pick.
+- `gc1-step10-rerun` · eqstack — paid call not approved.
+- `claude-desktop-relaunch` · eqstack — Desktop's imsg processes predate 1.25.7 (carried, not re-measured).
+- `tui-kit-0.6.0` · eqstack — mcp-starter-template asked for a bump + ctrl-e/y; folded into wave 2.
+- `pr129-await-reply`, `member-identity-check`, `imsg-timing-flakes` — carried, not re-measured since 2026-10-07.
 
 ### Traps
-- A daemon kickstart drops this session's project `telephony-mcp` MCP; use `node apps/telephony-mcp/dist/cli.js` instead.
-- A rehearsal holds the single concurrent-call slot until `tel end`; end it before any paid call.
-- Members' listening state is in memory: after a daemon restart, members must poll again.
-- Host sessions started before a user-scope MCP server was added don't see it until relaunched.
-- Stale LSP diagnostics may point at the removed worktree `.claude/worktrees/agent-abb3bd71b4de1abea`; ignore.
+- The repo is PUBLIC: plan/ledger text carries no thread slugs, message quotes or full numbers. Acceptance specifics live in `~/.claude/plans/glowing-percolating-key.md` only.
+- Parallel forks: one owner per bug/path, siblings SendMessage by name, merges serialised (one Release run each).
+- A fresh worktree has no `apps/imsg-mcp/fixtures/` until `pnpm install`, so `check-docs-integrity` fails there on baseline.
 
 ### Tree
-`/Users/george/repos/EQStack`, branch `main`, HEAD `aca2085`, equal to origin/main. Tracked dirt: only this checkpoint (HANDOFF.md + archive). Untracked and not this task: `docs/agent-handoff/*`, `docs/research/*`, `opencode.json.bak.*`.
+`/Users/george/repos/EQStack` main == origin/main `91b08bb` (clean besides untracked docs/agent-handoff/*, docs/research/*, opencode.json.bak.*). This checkpoint is written in worktree `../EQStack-wt/plan`, branch `docs/plan-media-platform`.
 
 ### Blocked on you
-- `secretary-voice` · eqstack — choose her phone voice before any paid call.
-- `gc1-step10-rerun` · eqstack — fresh paid-call approval after the real-session rehearsal passes.
-- `agent-text-route` · eqstack — say whether a self-addressed iMessage notifies you.
-- `elevenlabs-mcp-oauth` · eqstack — carried.
+- `research-gate` · eqstack — triage the wave 1 reports when they land.
+- `secretary-voice` · eqstack — pick before any paid call.
+- `gc1-step10-rerun` · eqstack — fresh paid-call approval after the rehearsal.
 
 ## History
 
 <!-- BEGIN checkpoint-history (generated; do not edit) -->
+- 2026-10-07 · eqstack · GC-1 live rehearsal mode merged and running on the daemon. The real-session rehearsal waits only on the executive confirming the member tools are visible. Fleet reboot of gmac at 2026-10-07 ~00:05 AE… · open: `live-rehearsal-real-sessions`, `secretary-voice`, `gc1-step10-rerun`, `member-identity-check`, `agent-text-route`, `pr129-await-reply`, `meeting-hold`, `caller-number-selector`, `public-listener-bind`, `group-call-live-channel`, `elevenlabs-mcp-oauth` · [full text](handoff-archive/eqstack/2026-10-07.md)
 - 2026-09-29 · eqstack · Parked 2026-09-29: GC-1 waits on two multiple-choice decisions. Cursor replaced Codex 01a0df28 and did not continue. Gateway up, no active call. · open: `member-mcp-scope`, `secretary-chair-model`, `real-members-wiring`, `continuous-member-join`, `gc1-step10-rerun`, `meeting-hold`, `caller-number-selector`, `public-listener-bind`, `group-call-live-channel`, `pr129-await-reply`, `elevenlabs-mcp-oauth` · [full text](handoff-archive/eqstack/2026-09-29.md)
 - 2026-09-27 · eqstack · Codex is EQStack's primary session; no Claude was live in this repo at the last repo check. GC-1's first phone meeting remains a partial measurement. Both real Codex member sessions answered one addr… · open: `member-mcp-scope`, `real-members-wiring`, `continuous-member-join`, `secretary-chair-model`, `gc1-step10-rerun`, `meeting-hold`, `caller-number-selector`, `public-listener-bind`, `group-call-live-channel`, `pr129-await-reply`, `elevenlabs-mcp-oauth` · [full text](handoff-archive/eqstack/2026-09-27-2.md)
-- 2026-09-27 · eqstack · Codex is EQStack's primary session (no live Claude in this repo at 06:23 AEST). GC-1's first phone meeting remains a partial measurement. Both real member sessions answered one addressed question in… · open: none · [full text](handoff-archive/eqstack/2026-09-27.md)
+- 2026-09-27 · eqstack · Codex is EQStack's primary session (no live Claude in this repo at 06:23 AEST). GC-1's first phone meeting remains a partial measurement. Both real member sessions answered one addressed question in… · [full text](handoff-archive/eqstack/2026-09-27.md)
 - 2026-09-26 · eqstack · GC-1 Step 9 is done and merged; Step 10 ran once and could not measure member voices. The next meeting waits on two decisions from George: wiring in the real member sessions, and how the secretary jo… · [full text](handoff-archive/eqstack/2026-09-26.md)
 - 2026-09-24 · eqstack · Telephony delegate → consult → group-call GC-1 all merged and live on the daemon; GC-1's two authorised live tests are the next action, to run after George compacts. · [full text](handoff-archive/eqstack/2026-09-24.md)
 <!-- END checkpoint-history -->
