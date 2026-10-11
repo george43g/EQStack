@@ -1,6 +1,9 @@
 ---
 name: humans
 description: The humans/v1 convention — per-person relationship memory files for AI agents. Use when consulting, creating, or updating ~/.agents/humans/<person>.md files: before composing a message/email to someone, after significant exchanges with them, or when asked to summarize a relationship or communication history.
+metadata:
+  owner: eqstack
+  origin: fleet
 ---
 
 # Humans files (humans/v1)
