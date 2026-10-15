@@ -1,0 +1,292 @@
+# itemlog: this repo's items and their comments. Write only through `itemlog`# (skills/itemlog in g-agent-skills); never recins or recset by hand.# The descriptors below are copied verbatim from the canonical# skills/itemlog/itemlog.descriptor.rec; `itemlog check` fails on drift.
+
+%rec: Item
+%doc: 
++ One fleet item. Slug is unique fleet-wide (itemlog check --fleet), so
++ DependsOn, Parent and a done(<slug>) Trigger may name an item in another
++ repo. needs-you is derived, never stored: BlockedOn = george and Status not
++ done or dropped. MovedTo names the repo an item was moved to (`itemlog
++ move`); only a dropped copy carries it, and it is the one copy of a slug
++ that may share the slug with another ledger. A question keeps why it was
++ asked (Definition) and, once answered, the answer verbatim (Answer, may
++ span lines) and who gave it (AnsweredBy); `itemlog done` requires both on
++ a question, the descriptor does not (questions done before 2026-10-15). Priority is a per-owner rank, 1 =
++ that owner's most important; Due is a date or an ISO 8601 time.
++ Repeatable: DependsOn, By, Link; every other field at most once. Write only through `itemlog`, which
++ holds the doclock and appends the matching Event records: a bare recins or
++ recset loses writes silently.
+%key: Slug
+%mandatory: Type Status Owner Title Created Updated Repo
+%allowed: Slug Type Status Owner Title Definition Created Updated Repo MovedTo BlockedOn Asks AskId Answer AnsweredBy Trigger DependsOn Parent Plan Priority Due Progress ProgressAt By Model Evidence Source Link Started Paused Ended
+%unique: Type Status Owner Title Definition Created Updated Repo MovedTo BlockedOn Asks AskId Answer AnsweredBy Trigger Parent Plan Priority Due Progress ProgressAt Model Evidence Source Started Paused Ended
+%typedef: Slug_t regexp /^[a-z0-9]+(-[a-z0-9]+)*$/
+%typedef: Agent_t regexp #^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9._-]+)?$#
+%typedef: Stamp_t regexp /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/
+%type: Slug,DependsOn,Parent Slug_t
+%type: Owner,By,AnsweredBy Agent_t
+%type: BlockedOn regexp /^(george|[A-Za-z0-9][A-Za-z0-9._-]{0,63})$/
+%type: Repo,MovedTo regexp /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+%type: Type enum question task decision idea info message cron incident commitment
+%type: Status enum next started later circle-back paused done dropped
+%type: Created,Updated,Started,Paused,Ended,ProgressAt Stamp_t
+%type: Title,Asks,Trigger line
+%type: AskId regexp /^ask-[0-9]+-[0-9]+$/
+%type: Plan range 0 MAX
+%type: Priority int
+%type: Due regexp /^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2}))?$/
+%type: Progress regexp /^([0-9]|[1-9][0-9]|100|[a-z][a-z0-9-]*)$/
+%constraint: Status = 'next' => #Started = 0
+%constraint: Status = 'started' => #Started > 0
+%constraint: Status = 'done' => (#Ended > 0 && #Evidence > 0)
+%constraint: Status = 'dropped' => (#Ended > 0 && #Evidence > 0)
+%constraint: Status = 'circle-back' => #Trigger > 0
+%constraint: Status = 'paused' => #Paused > 0
+%constraint: Type = 'question' => #BlockedOn > 0
+%constraint: Type = 'question' => #Definition > 0
+%constraint: #BlockedOn > 0 => #Asks > 0
+%constraint: #Progress > 0 => #ProgressAt > 0
+%constraint: #Priority = 0 || Priority >= 1
+%constraint: !#MovedTo || Status = 'dropped'
+
+Slug: itemlog-switch
+Type: task
+Status: done
+Owner: eqstack
+Title: Switch eqstack's checkpoint rows to the itemlog (D40)
+Definition: Fleet rule D40 (2026-10-15): checkpoint Open and Blocked-on-you rows become itemlog items.
+Created: 2026-10-15T02:44:54Z
+Updated: 2026-10-15T02:45:48Z
+Repo: EQStack
+Evidence: guard PASS (7 of 7 rows are items); itemlog check ok, 20 items
+Started: 2026-10-15T02:44:54Z
+Ended: 2026-10-15T02:45:48Z
+
+Slug: notes-corpus
+Type: question
+Status: next
+Owner: eqstack
+Title: George hands over his full corpus of notes and ideas
+Definition: George 2026-10-09 (gate card 13): hold all further work until he has provided the full corpus; the wave 2 design waits on it.
+Created: 2026-10-15T02:44:54Z
+Updated: 2026-10-15T02:44:54Z
+Repo: EQStack
+BlockedOn: george
+Asks: Paste your notes and ideas, then say when the corpus is complete
+
+Slug: telephony-exception
+Type: question
+Status: next
+Owner: eqstack
+Title: Does 'Exception is the telephony mcp/cli' exempt telephony from the hold?
+Definition: His card-13 reply said 'Exception is the telephony mcp/cli', then described voice beyond phone calls; read as more notes, unconfirmed.
+Created: 2026-10-15T02:44:55Z
+Updated: 2026-10-15T02:44:55Z
+Repo: EQStack
+BlockedOn: george
+Asks: Say whether telephony work may continue during the notes hold
+
+Slug: ideas-publish
+Type: question
+Status: next
+Owner: eqstack
+Title: May George's familiarity and voice notes go in the public repo?
+Definition: The notes include sensitive features (inferring politics, risk); kept machine-local in the research worktree until he says.
+Created: 2026-10-15T02:44:55Z
+Updated: 2026-10-15T02:44:55Z
+Repo: EQStack
+BlockedOn: george
+Asks: Say whether the docs/ideas notes may be committed to the public EQStack repo
+
+Slug: speech-permission
+Type: task
+Status: next
+Owner: eqstack
+Title: Speech Recognition Allow for hear in the app that launches imsg-mcp
+Definition: hear (SFSpeechRecognizer) needs a TCC grant per host app; only needed if whisper fails over to hear.
+Created: 2026-10-15T02:44:56Z
+Updated: 2026-10-15T02:44:56Z
+Repo: EQStack
+BlockedOn: george
+Asks: Click Allow for Speech Recognition when macOS prompts for the imsg host app
+
+Slug: whisper-shim-desktop
+Type: task
+Status: next
+Owner: eqstack
+Title: Claude Desktop's imsg picks up the ~/.local/bin whisper shim
+Definition: Desktop's imsg processes predate 1.25.7 and the shim; its GUI PATH is unverified.
+Created: 2026-10-15T02:44:56Z
+Updated: 2026-10-15T02:44:56Z
+Repo: EQStack
+BlockedOn: george
+Asks: Relaunch Claude Desktop so its imsg-mcp loads 1.25.7 and the whisper shim
+
+Slug: elevenlabs-mcp-oauth
+Type: task
+Status: next
+Owner: eqstack
+Title: Authenticate the elevenlabs MCP server
+Definition: Carried since 2026-09-26; mcp__elevenlabs__authenticate is still offered, so it is not yet authenticated.
+Created: 2026-10-15T02:44:56Z
+Updated: 2026-10-15T02:44:56Z
+Repo: EQStack
+BlockedOn: george
+Asks: Run /mcp, pick elevenlabs, then Authenticate
+
+Slug: live-rehearsal-real-sessions
+Type: task
+Status: later
+Owner: eqstack
+Title: GC-1 no-dial rehearsal with the real executive and secretary sessions
+Definition: Daemon rehearsal mode merged (#183); the secretary saw the member tools 2026-10-04; parked since 2026-10-08 for the media/schema plan.
+Created: 2026-10-15T02:44:57Z
+Updated: 2026-10-15T02:44:57Z
+Repo: EQStack
+
+Slug: secretary-voice
+Type: question
+Status: next
+Owner: eqstack
+Title: Pick the secretary's phone voice for GC-1 meetings
+Definition: Needed before any paid GC-1 rerun; config has archer as a placeholder.
+Created: 2026-10-15T02:44:57Z
+Updated: 2026-10-15T02:44:57Z
+Repo: EQStack
+BlockedOn: george
+Asks: Pick the secretary's voice profile: archer is a placeholder; default, direct and intro are free
+
+Slug: gc1-step10-rerun
+Type: question
+Status: next
+Owner: eqstack
+Title: Approve the paid GC-1 Step 10 rerun
+Definition: Paid calls need his authorisation at the time; not approved as of 2026-10-04.
+Created: 2026-10-15T02:44:58Z
+Updated: 2026-10-15T02:44:58Z
+Repo: EQStack
+BlockedOn: george
+Asks: Approve one paid meeting call after the real-session rehearsal passes
+DependsOn: live-rehearsal-real-sessions
+
+Slug: wave2-imsg-build
+Type: task
+Status: circle-back
+Owner: eqstack
+Title: Wave 2: imsg packages, media engine, attachment fixes, kit adoption
+Definition: docs/plans/2026-10-08-mcp-platform-and-media.md wave 2 (F, B, C, D, I, V), revised by docs/research/2026-10-openclaw/GATE-DECISIONS.md; held by George until his notes corpus is complete.
+Created: 2026-10-15T02:45:12Z
+Updated: 2026-10-15T02:45:12Z
+Repo: EQStack
+Trigger: done(notes-corpus)
+Link: docs/plans/2026-10-08-mcp-platform-and-media.md
+
+Slug: kit3-telephony-gmail
+Type: task
+Status: circle-back
+Owner: eqstack
+Title: Telephony (T) and gmail (G) adopt mcp-kit 3.x
+Definition: mcp-kit 3.0 merged as 4efde48 in mcp-cli-starter-template on George's approval; 3.1 adds the deny reason and strictArgs. EQStack adoption is held by the notes hold.
+Created: 2026-10-15T02:45:12Z
+Updated: 2026-10-15T02:45:12Z
+Repo: EQStack
+Trigger: done(notes-corpus)
+
+Slug: bun-runtime-eval-spike
+Type: task
+Status: circle-back
+Owner: eqstack
+Title: Half-day Bun 1.4.2 spike (better-sqlite3 to node:sqlite first)
+Definition: Approved on gate card 12; adopt only if Bun is at least 30% faster on something George waits on.
+Created: 2026-10-15T02:45:13Z
+Updated: 2026-10-15T02:45:13Z
+Repo: EQStack
+Trigger: done(notes-corpus)
+
+Slug: member-identity-check
+Type: task
+Status: later
+Owner: eqstack
+Title: Authenticate telephony meeting members (the 'as' field is unauthenticated)
+Definition: D-115: the member surface narrows tools, not identity; flagged by dotfiles 2026-10-04.
+Created: 2026-10-15T02:45:14Z
+Updated: 2026-10-15T02:45:14Z
+Repo: EQStack
+
+Slug: pr129-await-reply
+Type: task
+Status: later
+Owner: eqstack
+Title: Merge PR #129 after AfftarN answers or merges AfftarN/EQStack#1
+Definition: Condition from 2026-09-24; both were still open on 2026-10-07.
+Created: 2026-10-15T02:45:14Z
+Updated: 2026-10-15T02:45:14Z
+Repo: EQStack
+
+Slug: vector-search-package
+Type: idea
+Status: later
+Owner: eqstack
+Title: Vector and graph search package across texts and email
+Definition: George, gate card 8: parked for the next workstream; imsg exposes message guids so users can index their own data.
+Created: 2026-10-15T02:45:15Z
+Updated: 2026-10-15T02:45:15Z
+Repo: EQStack
+
+Slug: web-ui
+Type: idea
+Status: later
+Owner: eqstack
+Title: Web UI as an export layer (TUI plus stylesheet)
+Definition: Deferred until a stateless Streamable-HTTP MCP endpoint is solid (George 2026-10-08).
+Created: 2026-10-15T02:45:15Z
+Updated: 2026-10-15T02:45:15Z
+Repo: EQStack
+
+Slug: local-mcp-gateway
+Type: idea
+Status: later
+Owner: eqstack
+Title: One shared HTTP front door for local MCP servers (path routing)
+Definition: George, gate card 6: share one imsg instance over HTTP; avoid port clashes, e.g. http://localhost/imsg/mcp. Check for an existing gateway first.
+Created: 2026-10-15T02:45:16Z
+Updated: 2026-10-15T02:45:16Z
+Repo: EQStack
+
+Slug: humans-file-conventions
+Type: idea
+Status: circle-back
+Owner: eqstack
+Title: Checksum-based humans file and dir conventions, deterministic identity
+Definition: George 2026-10-08; he will brief it separately (part of the notes corpus).
+Created: 2026-10-15T02:45:16Z
+Updated: 2026-10-15T02:45:16Z
+Repo: EQStack
+Trigger: done(notes-corpus)
+
+Slug: kit-v3-publish
+Type: question
+Status: done
+Owner: eqstack
+Title: Approve publishing mcp-kit 3.0.0
+Definition: mcp-cli-starter-template's PR #140 needed George's own go for the major.
+Created: 2026-10-15T02:45:26Z
+Updated: 2026-10-15T02:45:27Z
+Repo: EQStack
+BlockedOn: george
+Asks: Approve the mcp-kit 3.0.0 major release
+Answer: Merge and release
+AnsweredBy: george
+Evidence: Answered in mcp-cli-starter-template's session; #140 merged as 4efde48 (bus, 2026-10-15)
+Ended: 2026-10-15T02:45:27Z
+
+%rec: Comment
+%doc: A note on an item, by an agent or George. Append-only.
+%mandatory: Item Author At Text
+%allowed: Item Author At Text
+%unique: Item Author At Text
+%typedef: Slug_t regexp /^[a-z0-9]+(-[a-z0-9]+)*$/
+%typedef: Agent_t regexp #^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9._-]+)?$#
+%typedef: Stamp_t regexp /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/
+%type: Item Slug_t
+%type: Author Agent_t
+%type: At Stamp_t

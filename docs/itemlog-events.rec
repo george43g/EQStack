@@ -1,0 +1,1196 @@
+# itemlog-events: the append-only event log beside itemlog.rec. Folding it# reproduces every Item there (`itemlog check`). Write only through `itemlog`.
+
+%rec: Event
+%doc: 
++ One line of the append-only log. Folding a repo's events in At order
++ (file order breaks ties) reproduces its Items: the first event for an Item
++ creates it with Slug = Item; an event sets Field to its Value; an event
++ with no Value clears Field. For a repeatable field (DependsOn, By, Link)
++ the event's Value lines are the field's whole new list. The fold is
++ last-writer-wins per field.
+%mandatory: Item At Agent Field
+%allowed: Item At Agent Field Value
+%unique: Item At Agent Field
+%typedef: Slug_t regexp /^[a-z0-9]+(-[a-z0-9]+)*$/
+%typedef: Agent_t regexp #^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9._-]+)?$#
+%typedef: Stamp_t regexp /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/
+%type: Item Slug_t
+%type: Agent Agent_t
+%type: At Stamp_t
+%type: Field enum Type Status Owner Title Definition Created Updated Repo MovedTo BlockedOn Asks AskId Answer AnsweredBy Trigger DependsOn Parent Plan Priority Due Progress ProgressAt By Model Evidence Source Link Started Paused Ended
+
+Item: itemlog-switch
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: itemlog-switch
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: itemlog-switch
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: itemlog-switch
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Title
+Value: Switch eqstack's checkpoint rows to the itemlog (D40)
+
+Item: itemlog-switch
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Definition
+Value: Fleet rule D40 (2026-10-15): checkpoint Open and Blocked-on-you rows become itemlog items.
+
+Item: itemlog-switch
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:44:54Z
+
+Item: itemlog-switch
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:44:54Z
+
+Item: itemlog-switch
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: itemlog-switch
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Status
+Value: started
+
+Item: itemlog-switch
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Started
+Value: 2026-10-15T02:44:54Z
+
+Item: notes-corpus
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Type
+Value: question
+
+Item: notes-corpus
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: notes-corpus
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: notes-corpus
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Title
+Value: George hands over his full corpus of notes and ideas
+
+Item: notes-corpus
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Definition
+Value: George 2026-10-09 (gate card 13): hold all further work until he has provided the full corpus; the wave 2 design waits on it.
+
+Item: notes-corpus
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:44:54Z
+
+Item: notes-corpus
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:44:54Z
+
+Item: notes-corpus
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: notes-corpus
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: notes-corpus
+At: 2026-10-15T02:44:54Z
+Agent: eqstack
+Field: Asks
+Value: Paste your notes and ideas, then say when the corpus is complete
+
+Item: telephony-exception
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Type
+Value: question
+
+Item: telephony-exception
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: telephony-exception
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: telephony-exception
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Title
+Value: Does 'Exception is the telephony mcp/cli' exempt telephony from the hold?
+
+Item: telephony-exception
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Definition
+Value: His card-13 reply said 'Exception is the telephony mcp/cli', then described voice beyond phone calls; read as more notes, unconfirmed.
+
+Item: telephony-exception
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:44:55Z
+
+Item: telephony-exception
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:44:55Z
+
+Item: telephony-exception
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: telephony-exception
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: telephony-exception
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Asks
+Value: Say whether telephony work may continue during the notes hold
+
+Item: ideas-publish
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Type
+Value: question
+
+Item: ideas-publish
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: ideas-publish
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: ideas-publish
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Title
+Value: May George's familiarity and voice notes go in the public repo?
+
+Item: ideas-publish
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Definition
+Value: The notes include sensitive features (inferring politics, risk); kept machine-local in the research worktree until he says.
+
+Item: ideas-publish
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:44:55Z
+
+Item: ideas-publish
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:44:55Z
+
+Item: ideas-publish
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: ideas-publish
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: ideas-publish
+At: 2026-10-15T02:44:55Z
+Agent: eqstack
+Field: Asks
+Value: Say whether the docs/ideas notes may be committed to the public EQStack repo
+
+Item: speech-permission
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: speech-permission
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: speech-permission
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: speech-permission
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Title
+Value: Speech Recognition Allow for hear in the app that launches imsg-mcp
+
+Item: speech-permission
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Definition
+Value: hear (SFSpeechRecognizer) needs a TCC grant per host app; only needed if whisper fails over to hear.
+
+Item: speech-permission
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:44:56Z
+
+Item: speech-permission
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:44:56Z
+
+Item: speech-permission
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: speech-permission
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: speech-permission
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Asks
+Value: Click Allow for Speech Recognition when macOS prompts for the imsg host app
+
+Item: whisper-shim-desktop
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: whisper-shim-desktop
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: whisper-shim-desktop
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: whisper-shim-desktop
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Title
+Value: Claude Desktop's imsg picks up the ~/.local/bin whisper shim
+
+Item: whisper-shim-desktop
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Definition
+Value: Desktop's imsg processes predate 1.25.7 and the shim; its GUI PATH is unverified.
+
+Item: whisper-shim-desktop
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:44:56Z
+
+Item: whisper-shim-desktop
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:44:56Z
+
+Item: whisper-shim-desktop
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: whisper-shim-desktop
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: whisper-shim-desktop
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Asks
+Value: Relaunch Claude Desktop so its imsg-mcp loads 1.25.7 and the whisper shim
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Title
+Value: Authenticate the elevenlabs MCP server
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Definition
+Value: Carried since 2026-09-26; mcp__elevenlabs__authenticate is still offered, so it is not yet authenticated.
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:44:56Z
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:44:56Z
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T02:44:56Z
+Agent: eqstack
+Field: Asks
+Value: Run /mcp, pick elevenlabs, then Authenticate
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Status
+Value: later
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Title
+Value: GC-1 no-dial rehearsal with the real executive and secretary sessions
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Definition
+Value: Daemon rehearsal mode merged (#183); the secretary saw the member tools 2026-10-04; parked since 2026-10-08 for the media/schema plan.
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:44:57Z
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:44:57Z
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: secretary-voice
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Type
+Value: question
+
+Item: secretary-voice
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: secretary-voice
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: secretary-voice
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Title
+Value: Pick the secretary's phone voice for GC-1 meetings
+
+Item: secretary-voice
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Definition
+Value: Needed before any paid GC-1 rerun; config has archer as a placeholder.
+
+Item: secretary-voice
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:44:57Z
+
+Item: secretary-voice
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:44:57Z
+
+Item: secretary-voice
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: secretary-voice
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: secretary-voice
+At: 2026-10-15T02:44:57Z
+Agent: eqstack
+Field: Asks
+Value: Pick the secretary's voice profile: archer is a placeholder; default, direct and intro are free
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: Type
+Value: question
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: Title
+Value: Approve the paid GC-1 Step 10 rerun
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: Definition
+Value: Paid calls need his authorisation at the time; not approved as of 2026-10-04.
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:44:58Z
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:44:58Z
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: Asks
+Value: Approve one paid meeting call after the real-session rehearsal passes
+
+Item: gc1-step10-rerun
+At: 2026-10-15T02:44:58Z
+Agent: eqstack
+Field: DependsOn
+Value: live-rehearsal-real-sessions
+
+Item: wave2-imsg-build
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: wave2-imsg-build
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Status
+Value: circle-back
+
+Item: wave2-imsg-build
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: wave2-imsg-build
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Title
+Value: Wave 2: imsg packages, media engine, attachment fixes, kit adoption
+
+Item: wave2-imsg-build
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Definition
+Value: docs/plans/2026-10-08-mcp-platform-and-media.md wave 2 (F, B, C, D, I, V), revised by docs/research/2026-10-openclaw/GATE-DECISIONS.md; held by George until his notes corpus is complete.
+
+Item: wave2-imsg-build
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:45:12Z
+
+Item: wave2-imsg-build
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:12Z
+
+Item: wave2-imsg-build
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: wave2-imsg-build
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Trigger
+Value: done(notes-corpus)
+
+Item: wave2-imsg-build
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Link
+Value: docs/plans/2026-10-08-mcp-platform-and-media.md
+
+Item: kit3-telephony-gmail
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: kit3-telephony-gmail
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Status
+Value: circle-back
+
+Item: kit3-telephony-gmail
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: kit3-telephony-gmail
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Title
+Value: Telephony (T) and gmail (G) adopt mcp-kit 3.x
+
+Item: kit3-telephony-gmail
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Definition
+Value: mcp-kit 3.0 merged as 4efde48 in mcp-cli-starter-template on George's approval; 3.1 adds the deny reason and strictArgs. EQStack adoption is held by the notes hold.
+
+Item: kit3-telephony-gmail
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:45:12Z
+
+Item: kit3-telephony-gmail
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:12Z
+
+Item: kit3-telephony-gmail
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: kit3-telephony-gmail
+At: 2026-10-15T02:45:12Z
+Agent: eqstack
+Field: Trigger
+Value: done(notes-corpus)
+
+Item: bun-runtime-eval-spike
+At: 2026-10-15T02:45:13Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: bun-runtime-eval-spike
+At: 2026-10-15T02:45:13Z
+Agent: eqstack
+Field: Status
+Value: circle-back
+
+Item: bun-runtime-eval-spike
+At: 2026-10-15T02:45:13Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: bun-runtime-eval-spike
+At: 2026-10-15T02:45:13Z
+Agent: eqstack
+Field: Title
+Value: Half-day Bun 1.4.2 spike (better-sqlite3 to node:sqlite first)
+
+Item: bun-runtime-eval-spike
+At: 2026-10-15T02:45:13Z
+Agent: eqstack
+Field: Definition
+Value: Approved on gate card 12; adopt only if Bun is at least 30% faster on something George waits on.
+
+Item: bun-runtime-eval-spike
+At: 2026-10-15T02:45:13Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:45:13Z
+
+Item: bun-runtime-eval-spike
+At: 2026-10-15T02:45:13Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:13Z
+
+Item: bun-runtime-eval-spike
+At: 2026-10-15T02:45:13Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: bun-runtime-eval-spike
+At: 2026-10-15T02:45:13Z
+Agent: eqstack
+Field: Trigger
+Value: done(notes-corpus)
+
+Item: member-identity-check
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: member-identity-check
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Status
+Value: later
+
+Item: member-identity-check
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: member-identity-check
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Title
+Value: Authenticate telephony meeting members (the 'as' field is unauthenticated)
+
+Item: member-identity-check
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Definition
+Value: D-115: the member surface narrows tools, not identity; flagged by dotfiles 2026-10-04.
+
+Item: member-identity-check
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:45:14Z
+
+Item: member-identity-check
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:14Z
+
+Item: member-identity-check
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: pr129-await-reply
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: pr129-await-reply
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Status
+Value: later
+
+Item: pr129-await-reply
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: pr129-await-reply
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Title
+Value: Merge PR #129 after AfftarN answers or merges AfftarN/EQStack#1
+
+Item: pr129-await-reply
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Definition
+Value: Condition from 2026-09-24; both were still open on 2026-10-07.
+
+Item: pr129-await-reply
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:45:14Z
+
+Item: pr129-await-reply
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:14Z
+
+Item: pr129-await-reply
+At: 2026-10-15T02:45:14Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: vector-search-package
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Type
+Value: idea
+
+Item: vector-search-package
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Status
+Value: later
+
+Item: vector-search-package
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: vector-search-package
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Title
+Value: Vector and graph search package across texts and email
+
+Item: vector-search-package
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Definition
+Value: George, gate card 8: parked for the next workstream; imsg exposes message guids so users can index their own data.
+
+Item: vector-search-package
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:45:15Z
+
+Item: vector-search-package
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:15Z
+
+Item: vector-search-package
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: web-ui
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Type
+Value: idea
+
+Item: web-ui
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Status
+Value: later
+
+Item: web-ui
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: web-ui
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Title
+Value: Web UI as an export layer (TUI plus stylesheet)
+
+Item: web-ui
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Definition
+Value: Deferred until a stateless Streamable-HTTP MCP endpoint is solid (George 2026-10-08).
+
+Item: web-ui
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:45:15Z
+
+Item: web-ui
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:15Z
+
+Item: web-ui
+At: 2026-10-15T02:45:15Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: local-mcp-gateway
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Type
+Value: idea
+
+Item: local-mcp-gateway
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Status
+Value: later
+
+Item: local-mcp-gateway
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: local-mcp-gateway
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Title
+Value: One shared HTTP front door for local MCP servers (path routing)
+
+Item: local-mcp-gateway
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Definition
+Value: George, gate card 6: share one imsg instance over HTTP; avoid port clashes, e.g. http://localhost/imsg/mcp. Check for an existing gateway first.
+
+Item: local-mcp-gateway
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:45:16Z
+
+Item: local-mcp-gateway
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:16Z
+
+Item: local-mcp-gateway
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: humans-file-conventions
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Type
+Value: idea
+
+Item: humans-file-conventions
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Status
+Value: circle-back
+
+Item: humans-file-conventions
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: humans-file-conventions
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Title
+Value: Checksum-based humans file and dir conventions, deterministic identity
+
+Item: humans-file-conventions
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Definition
+Value: George 2026-10-08; he will brief it separately (part of the notes corpus).
+
+Item: humans-file-conventions
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:45:16Z
+
+Item: humans-file-conventions
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:16Z
+
+Item: humans-file-conventions
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: humans-file-conventions
+At: 2026-10-15T02:45:16Z
+Agent: eqstack
+Field: Trigger
+Value: done(notes-corpus)
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:26Z
+Agent: eqstack
+Field: Type
+Value: question
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:26Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:26Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:26Z
+Agent: eqstack
+Field: Title
+Value: Approve publishing mcp-kit 3.0.0
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:26Z
+Agent: eqstack
+Field: Definition
+Value: mcp-cli-starter-template's PR #140 needed George's own go for the major.
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:26Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T02:45:26Z
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:26Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:26Z
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:26Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:26Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:26Z
+Agent: eqstack
+Field: Asks
+Value: Approve the mcp-kit 3.0.0 major release
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:27Z
+Agent: eqstack
+Field: Status
+Value: done
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:27Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:27Z
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:27Z
+Agent: eqstack
+Field: Answer
+Value: Merge and release
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:27Z
+Agent: eqstack
+Field: AnsweredBy
+Value: george
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:27Z
+Agent: eqstack
+Field: Evidence
+Value: Answered in mcp-cli-starter-template's session; #140 merged as 4efde48 (bus, 2026-10-15)
+
+Item: kit-v3-publish
+At: 2026-10-15T02:45:27Z
+Agent: eqstack
+Field: Ended
+Value: 2026-10-15T02:45:27Z
+
+Item: itemlog-switch
+At: 2026-10-15T02:45:48Z
+Agent: eqstack
+Field: Status
+Value: done
+
+Item: itemlog-switch
+At: 2026-10-15T02:45:48Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T02:45:48Z
+
+Item: itemlog-switch
+At: 2026-10-15T02:45:48Z
+Agent: eqstack
+Field: Evidence
+Value: guard PASS (7 of 7 rows are items); itemlog check ok, 20 items
+
+Item: itemlog-switch
+At: 2026-10-15T02:45:48Z
+Agent: eqstack
+Field: Ended
+Value: 2026-10-15T02:45:48Z
