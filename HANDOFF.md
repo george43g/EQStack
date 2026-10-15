@@ -298,7 +298,7 @@ noted"* and *"put the bug ledger in HANDOFF.md so every agent sees it"*.
 | `attach-search-plugin-payloads` | imsg | 2026-10-07, eqstack (fork you-know-how) | The description says plugin payloads are excluded, but `*.pluginPayloadAttachment` rows still return (null MIME, some 0 bytes); the filter only checks `uti LIKE 'com.apple.messages.plugin%'`. `imessage-db.ts:2459` | eqstack (plan wave 2) | open — waits for research gate |
 | `attach-search-caf-mime` | imsg | 2026-10-07, eqstack (fork you-know-how) | `.caf` voice notes report MIME null, so `mimePrefix: "audio/"` misses 4 of 5 voice notes (interpret still transcribes them) | eqstack (plan wave 2) | open — waits for research gate |
 | `schema-dialect-proper-fix` | all | 2026-10-07, eqstack | Hotfix #184 only strips the draft-07 `$schema`; the converter is still `zod-to-json-schema` (draft-07, deprecated). Needs a 2020-12 converter, one shared helper (prefer mcp-kit), and an Ajv2020 conformance test | eqstack | planned: kit v3 (mcp-starter-template) → telephony, gmail, imsg |
-| `gmail-nodemailer-advisory` | gmail | 2026-10-07, eqstack | Package Smoke CI fails `npm audit` on a high nodemailer advisory; the fix needs `^9` → 10.x | eqstack (fork bump-nodemailer-to) | in progress |
+| `gmail-nodemailer-advisory` | gmail | 2026-10-07, eqstack | Package Smoke CI fails `npm audit` on a high nodemailer advisory; the fix needs `^9` → 10.x | eqstack (fork bump-nodemailer-to) | fixed f095e39 (#185, 2026-10-07) |
 | `imsg-timing-flakes` | imsg | 2026-10-04, eqstack (subagent) | Under root `pnpm verify` load: `cli-e2e` 5 s timeout, `help-bar-overflow`, two `tui-memory` lag budgets (`cli-e2e` passes 14/14 alone) | — | open |
 | `imsg-input-schema-drift` | imsg | 2026-10-07, eqstack | imsg's inputSchemas are hand-written JSON (`apps/imsg-mcp/src/mcp-tools.ts`), separate from the zod schemas that parse input, so they can drift | eqstack (plan wave 2) | open — waits for research gate |
 | `imsg-multi-attachment-captions` | imsg | 2026-10-07, eqstack (forks what-i-checked, you-know-how) | A message with several attachments shows only one cached interpretation: the attach loop stops at the first hit (`apps/imsg-mcp/src/media-intel-runtime.ts:197`) and the type holds one (`src/types.ts:129`). The 4 Oct message with 5 screenshots shows 1 caption although all 5 are cached. Fix: a per-message list, which changes the outputSchema (`src/mcp-schemas.ts:88`) | eqstack (plan wave 2) | open — waits for research gate |
@@ -1270,18 +1270,17 @@ Do not write the port before that row exists.
 Where this block and a conversation summary disagree, this block is correct.
 
 ### Resume
-ON HOLD by George (2026-10-09, gate card 13): "finish asking me questions but hold further work until im satisfied that i have provided you with the full corpus of notes and ideas and direction." Nothing is running. When his notes arrive: triage them into `docs/plans/2026-10-08-mcp-platform-and-media.md` with `docs/research/2026-10-openclaw/GATE-DECISIONS.md`, then ask for his go. Items now live in `docs/itemlog.rec` (D40); start each turn with `itemlog start <slug>`.
+ON HOLD by George (2026-10-09, gate card 13): "finish asking me questions but hold further work until im satisfied that i have provided you with the full corpus of notes and ideas and direction." Nothing is running. When his notes arrive: triage them into `docs/plans/2026-10-08-mcp-platform-and-media.md` with `docs/research/2026-10-openclaw/GATE-DECISIONS.md`, then ask for his go. Items live in `docs/itemlog.rec` (D40); start each turn with `itemlog start <slug>`.
 
 ### State
-Idle, holding for George's notes corpus (`notes-corpus`). mcp-kit 3.0 is published upstream; EQStack's adoption waits on the hold.
+Idle, holding for `notes-corpus`. Transcript sweep done; the secretary is on Lily and the chair on Archer (machine-local telephony config).
 
 ### Constraints
 - George 2026-10-09: hold all further work until his notes corpus is complete (verbatim in Resume).
-- PUBLIC repo: his notes and verbatim card replies stay machine-local (research worktree `docs/ideas/`, `docs/research/2026-10-openclaw/answers/`) until he OKs publishing (`ideas-publish`).
+- PUBLIC repo: his notes and verbatim card replies stay machine-local until he OKs publishing (`ideas-publish`).
 
 ### Done
-- #191 `49d31bc` gate decisions; #193 `942ee68` voice memos re-run locally (0 refusals); #194 `01edcc0` humans skill owner stamped.
-- itemlog switch (D40): 20 items, guard PASS.
+- itemlog switch (#195 `6a184a0`); `secretary-voice` (Lily; chair Archer, backup `~/.config/telephony-mcp/config.json.bak-20261015`); `transcript-sweep` (6 items filed).
 
 ### Open
 - `notes-corpus` · eqstack: George hands over his full corpus of notes and ideas
@@ -1291,7 +1290,6 @@ Idle, holding for George's notes corpus (`notes-corpus`). mcp-kit 3.0 is publish
 - `whisper-shim-desktop` · eqstack: Claude Desktop's imsg picks up the ~/.local/bin whisper shim
 - `elevenlabs-mcp-oauth` · eqstack: Authenticate the elevenlabs MCP server
 - `live-rehearsal-real-sessions` · eqstack: GC-1 no-dial rehearsal with the real executive and secretary sessions
-- `secretary-voice` · eqstack: Pick the secretary's phone voice for GC-1 meetings
 - `gc1-step10-rerun` · eqstack: Approve the paid GC-1 Step 10 rerun
 - `wave2-imsg-build` · eqstack: Wave 2: imsg packages, media engine, attachment fixes, kit adoption
 - `kit3-telephony-gmail` · eqstack: Telephony (T) and gmail (G) adopt mcp-kit 3.x
@@ -1302,13 +1300,19 @@ Idle, holding for George's notes corpus (`notes-corpus`). mcp-kit 3.0 is publish
 - `web-ui` · eqstack: Web UI as an export layer (TUI plus stylesheet)
 - `local-mcp-gateway` · eqstack: One shared HTTP front door for local MCP servers (path routing)
 - `humans-file-conventions` · eqstack: Checksum-based humans file and dir conventions, deterministic identity
+- `imsg-timing-flakes` · eqstack: imsg timing tests fail under root pnpm verify load
+- `whatsapp-mcp-go-no-go` · eqstack: WhatsApp and other messengers: revisit after contact identity
+- `watcher-hardening` · eqstack: Watcher and subprocess hardening (openclaw patterns)
+- `aisha-message-wider-search` · eqstack: Widen a personal message search to two more terms?
+- `chair-voice-archer` · eqstack: Meeting chair: a neutral host on Archer, or the chair is the secretary (Lily)?
+- `telephony-register-open` · eqstack: Telephony DECISIONS.md Open rows (O-3 to O-46) are not mirrored in the ledger
 
 ### Traps
-- zsh does not word-split a variable holding a command plus flags: use a shell function (`il() { itemlog "$@"; }`).
-- Do not edit a script while `wm ask` runs it in the background.
+- An MCP server that "failed to connect" only in this session can be healthy: check `claude mcp list` before calling it broken.
+- zsh does not word-split a variable holding a command plus flags: use a shell function.
 
 ### Tree
-main == origin/main `01edcc0` before this PR. The research worktree `../EQStack-wt/research` holds untracked machine-local files (ideas, answers, gate-cards.sh).
+main == origin/main before this PR. Research worktree `../EQStack-wt/research` holds untracked machine-local files (ideas, answers, gate-cards.sh).
 
 ### Blocked on you
 - `notes-corpus`: Paste your notes and ideas, then say when the corpus is complete
@@ -1317,15 +1321,17 @@ main == origin/main `01edcc0` before this PR. The research worktree `../EQStack-
 - `speech-permission`: Click Allow for Speech Recognition when macOS prompts for the imsg host app
 - `whisper-shim-desktop`: Relaunch Claude Desktop so its imsg-mcp loads 1.25.7 and the whisper shim
 - `elevenlabs-mcp-oauth`: Run /mcp, pick elevenlabs, then Authenticate
-- `secretary-voice`: Pick the secretary's voice profile: archer is a placeholder; default, direct and intro are free
 - `gc1-step10-rerun`: Approve one paid meeting call after the real-session rehearsal passes
+- `aisha-message-wider-search`: Say if you want the message search widened to 'partner' and 'ex' (or drop it)
+- `chair-voice-archer`: Keep the chair as a neutral host on Archer, or make the chair the secretary in Lily's voice (dropping her separate member slot)?
 
 ## History
 
 <!-- BEGIN checkpoint-history (generated; do not edit) -->
+- 2026-10-15 · eqstack · Idle, holding for George's notes corpus (`notes-corpus`). mcp-kit 3.0 is published upstream; EQStack's adoption waits on the hold. · open: `notes-corpus`, `telephony-exception`, `ideas-publish`, `speech-permission`, `whisper-shim-desktop`, `elevenlabs-mcp-oauth`, `live-rehearsal-real-sessions`, `secretary-voice`, `gc1-step10-rerun`, `wave2-imsg-build`, `kit3-telephony-gmail`, `bun-runtime-eval-spike`, `member-identity-check`, `pr129-await-reply`, `vector-search-package`, `web-ui`, `local-mcp-gateway`, `humans-file-conventions` · [full text](handoff-archive/eqstack/2026-10-15.md)
 - 2026-10-09 · eqstack · Research gate complete (15 cards, PR #191 `49d31bc`). Wave 2 held for George's notes corpus. Kit lane: mcp-kit 3.0.0 draft PR #140 in mcp-cli-starter-template awaits George's publish approval; T/G (t… · open: `notes-corpus`, `telephony-exception`, `ideas-publish`, `kit-v3-publish`, `whisper-shim-desktop`, `speech-permission`, `gc1-step10-rerun` · [full text](handoff-archive/eqstack/2026-10-09.md)
 - 2026-10-08 · eqstack · Wave 0 merged (#189 `200a5cd`). Wave 1 research complete; reports in PR #190. GC-1 still parked (rows below). The 15:27 crash wiped the scratchpad (whisper shim, synthetic samples, raw clones); the r… · open: `research-gate`, `research-pr-190`, `kit-v3`, `whisper-interim`, `speech-permission`, `contacts-notes`, `whatsapp-mcp-go-no-go`, `gc1-step10-rerun`, `claude-desktop-relaunch` · [full text](handoff-archive/eqstack/2026-10-08-2.md)
-- 2026-10-08 · eqstack · Plan approved 2026-10-08; wave 0 (park, ledger claims, backlog, this checkpoint) landing; wave 1 starting. · open: `wave1-research`, `kit-v3`, `research-gate`, `live-rehearsal-real-sessions`, `secretary-voice`, `gc1-step10-rerun`, `claude-desktop-relaunch` · [full text](handoff-archive/eqstack/2026-10-08.md)
+- 2026-10-08 · eqstack · Plan approved 2026-10-08; wave 0 (park, ledger claims, backlog, this checkpoint) landing; wave 1 starting. · [full text](handoff-archive/eqstack/2026-10-08.md)
 - 2026-10-07 · eqstack · GC-1 live rehearsal mode merged and running on the daemon. The real-session rehearsal waits only on the executive confirming the member tools are visible. Fleet reboot of gmac at 2026-10-07 ~00:05 AE… · [full text](handoff-archive/eqstack/2026-10-07.md)
 - 2026-09-29 · eqstack · Parked 2026-09-29: GC-1 waits on two multiple-choice decisions. Cursor replaced Codex 01a0df28 and did not continue. Gateway up, no active call. · [full text](handoff-archive/eqstack/2026-09-29.md)
 - 2026-09-27 · eqstack · Codex is EQStack's primary session; no Claude was live in this repo at the last repo check. GC-1's first phone meeting remains a partial measurement. Both real Codex member sessions answered one addr… · [full text](handoff-archive/eqstack/2026-09-27-2.md)

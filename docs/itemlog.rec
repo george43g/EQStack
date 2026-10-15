@@ -126,46 +126,53 @@ Type: task
 Status: next
 Owner: eqstack
 Title: Authenticate the elevenlabs MCP server
-Definition: Carried since 2026-09-26; mcp__elevenlabs__authenticate is still offered, so it is not yet authenticated.
+Definition: Re-measured 2026-10-15: claude mcp list shows elevenlabs '! Needs authentication'.
 Created: 2026-10-15T02:44:56Z
-Updated: 2026-10-15T02:44:56Z
+Updated: 2026-10-15T03:38:51Z
 Repo: EQStack
 BlockedOn: george
 Asks: Run /mcp, pick elevenlabs, then Authenticate
 
 Slug: live-rehearsal-real-sessions
 Type: task
-Status: later
+Status: circle-back
 Owner: eqstack
 Title: GC-1 no-dial rehearsal with the real executive and secretary sessions
 Definition: Daemon rehearsal mode merged (#183); the secretary saw the member tools 2026-10-04; parked since 2026-10-08 for the media/schema plan.
 Created: 2026-10-15T02:44:57Z
-Updated: 2026-10-15T02:44:57Z
+Updated: 2026-10-15T03:38:41Z
 Repo: EQStack
+Trigger: done(notes-corpus) OR done(telephony-exception)
 
 Slug: secretary-voice
 Type: question
-Status: next
+Status: done
 Owner: eqstack
 Title: Pick the secretary's phone voice for GC-1 meetings
 Definition: Needed before any paid GC-1 rerun; config has archer as a placeholder.
 Created: 2026-10-15T02:44:57Z
-Updated: 2026-10-15T02:44:57Z
+Updated: 2026-10-15T03:30:27Z
 Repo: EQStack
 BlockedOn: george
 Asks: Pick the secretary's voice profile: archer is a placeholder; default, direct and intro are free
+Answer: Lily is her voice
+AnsweredBy: george
+Evidence: Executive relayed George's 2026-10-15 card answer. ~/.config/telephony-mcp/config.json: meeting.members.secretary=lily, meeting.chair=archer (a neutral chair, voices must differ); backup config.json.bak-20261015; doctor ok; meeting dry-run builds
+Started: 2026-10-15T03:29:46Z
+Ended: 2026-10-15T03:30:27Z
 
 Slug: gc1-step10-rerun
 Type: question
-Status: next
+Status: circle-back
 Owner: eqstack
 Title: Approve the paid GC-1 Step 10 rerun
 Definition: Paid calls need his authorisation at the time; not approved as of 2026-10-04.
 Created: 2026-10-15T02:44:58Z
-Updated: 2026-10-15T02:44:58Z
+Updated: 2026-10-15T03:38:50Z
 Repo: EQStack
 BlockedOn: george
 Asks: Approve one paid meeting call after the real-session rehearsal passes
+Trigger: done(live-rehearsal-real-sessions)
 DependsOn: live-rehearsal-real-sessions
 
 Slug: wave2-imsg-build
@@ -279,6 +286,85 @@ AnsweredBy: george
 Evidence: Answered in mcp-cli-starter-template's session; #140 merged as 4efde48 (bus, 2026-10-15)
 Ended: 2026-10-15T02:45:27Z
 
+Slug: transcript-sweep
+Type: task
+Status: done
+Owner: eqstack
+Title: Week-back transcript sweep for lost items (D40)
+Definition: Executive, George's words 2026-10-15: every agent sweeps its own transcripts a week back and files lost items.
+Created: 2026-10-15T03:38:35Z
+Updated: 2026-10-15T03:39:06Z
+Repo: EQStack
+Evidence: readonly sweep 2026-10-08..10-15; filed 6 items, fixed 2 statuses, closed 1 stale bug row; telephony 'disconnect' was session-only (claude mcp list: Connected)
+Started: 2026-10-15T03:38:36Z
+Ended: 2026-10-15T03:39:06Z
+
+Slug: imsg-timing-flakes
+Type: incident
+Status: later
+Owner: eqstack
+Title: imsg timing tests fail under root pnpm verify load
+Definition: Sweep 2026-10-15: HANDOFF.md §10a row has no owner, status open; seen 2026-10-04 (cli-e2e 5 s timeout, help-bar-overflow, tui-memory lag budgets); not folded into the plan.
+Created: 2026-10-15T03:38:36Z
+Updated: 2026-10-15T03:38:36Z
+Repo: EQStack
+
+Slug: whatsapp-mcp-go-no-go
+Type: decision
+Status: circle-back
+Owner: eqstack
+Title: WhatsApp and other messengers: revisit after contact identity
+Definition: Gate card 11: 'Not yet', after contact identity; the wacli read-only MCP and the mautrix/Beeper routes are kept as options (GATE-DECISIONS.md row 11).
+Created: 2026-10-15T03:38:37Z
+Updated: 2026-10-15T03:38:37Z
+Repo: EQStack
+Trigger: done(notes-corpus)
+
+Slug: watcher-hardening
+Type: task
+Status: later
+Owner: eqstack
+Title: Watcher and subprocess hardening (openclaw patterns)
+Definition: Gate card 9, 'Later': inode re-arm, a bounded stream with a resume cursor, the chat-link race, process-group kill, O_NOFOLLOW (packages/os/proc). Not in wave 2.
+Created: 2026-10-15T03:38:38Z
+Updated: 2026-10-15T03:38:38Z
+Repo: EQStack
+
+Slug: aisha-message-wider-search
+Type: question
+Status: next
+Owner: eqstack
+Title: Widen a personal message search to two more terms?
+Definition: eqstack offered on 2026-10-07 after finding one message; never answered (sweep 2026-10-15).
+Created: 2026-10-15T03:38:38Z
+Updated: 2026-10-15T03:38:38Z
+Repo: EQStack
+BlockedOn: george
+Asks: Say if you want the message search widened to 'partner' and 'ex' (or drop it)
+
+Slug: chair-voice-archer
+Type: question
+Status: next
+Owner: eqstack
+Title: Meeting chair: a neutral host on Archer, or the chair is the secretary (Lily)?
+Definition: Executive relayed 'Lily is her voice' and said both slots are one identity; eqstack kept 'join as a member', so the chair needed a different voice (Archer). Bears on telephony O-40 (meeting-chair-vs-coordinator).
+Created: 2026-10-15T03:38:39Z
+Updated: 2026-10-15T03:38:39Z
+Repo: EQStack
+BlockedOn: george
+Asks: Keep the chair as a neutral host on Archer, or make the chair the secretary in Lily's voice (dropping her separate member slot)?
+
+Slug: telephony-register-open
+Type: info
+Status: later
+Owner: eqstack
+Title: Telephony DECISIONS.md Open rows (O-3 to O-46) are not mirrored in the ledger
+Definition: Sweep 2026-10-15: O-3, O-8, O-13, O-16, O-18, O-19, O-33, O-36, O-38, O-40, O-46 are still under ## Open in apps/telephony-mcp/docs/plans/two-way-calling/DECISIONS.md; the register stays authoritative; import them when telephony work resumes.
+Created: 2026-10-15T03:38:40Z
+Updated: 2026-10-15T03:38:40Z
+Repo: EQStack
+Link: apps/telephony-mcp/docs/plans/two-way-calling/DECISIONS.md
+
 %rec: Comment
 %doc: A note on an item, by an agent or George. Append-only.
 %mandatory: Item Author At Text
@@ -290,3 +376,13 @@ Ended: 2026-10-15T02:45:27Z
 %type: Item Slug_t
 %type: Author Agent_t
 %type: At Stamp_t
+
+Item: secretary-voice
+Author: eqstack
+At: 2026-10-15T03:30:28Z
+Text: Chair voice archer is eqstack's pick (the only free distinct voice); George may change it.
+
+Item: telephony-register-open
+Author: eqstack
+At: 2026-10-15T03:39:06Z
+Text: O-23 tunnel-provisioning looks done: e2fd330 (2026-09-05) did steps 5-7 and withdrew step 8; the tunnel is live. Move it to Settled when telephony resumes.
