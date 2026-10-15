@@ -1194,3 +1194,519 @@ At: 2026-10-15T02:45:48Z
 Agent: eqstack
 Field: Ended
 Value: 2026-10-15T02:45:48Z
+
+Item: secretary-voice
+At: 2026-10-15T03:40:15Z
+Agent: eqstack
+Field: Status
+Value: started
+
+Item: secretary-voice
+At: 2026-10-15T03:40:15Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:15Z
+
+Item: secretary-voice
+At: 2026-10-15T03:40:15Z
+Agent: eqstack
+Field: Started
+Value: 2026-10-15T03:40:15Z
+
+Item: secretary-voice
+At: 2026-10-15T03:40:16Z
+Agent: eqstack
+Field: Status
+Value: done
+
+Item: secretary-voice
+At: 2026-10-15T03:40:16Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:16Z
+
+Item: secretary-voice
+At: 2026-10-15T03:40:16Z
+Agent: eqstack
+Field: Answer
+Value: Lily is her voice
+
+Item: secretary-voice
+At: 2026-10-15T03:40:16Z
+Agent: eqstack
+Field: AnsweredBy
+Value: george
+
+Item: secretary-voice
+At: 2026-10-15T03:40:16Z
+Agent: eqstack
+Field: Evidence
+Value: Executive relayed George's 2026-10-15 card answer. ~/.config/telephony-mcp/config.json: members.secretary=lily, chair=archer (a neutral chair; voices must differ); backup config.json.bak-20261015; doctor ok; meeting dry-run builds
+
+Item: secretary-voice
+At: 2026-10-15T03:40:16Z
+Agent: eqstack
+Field: Ended
+Value: 2026-10-15T03:40:16Z
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:17Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:17Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:17Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:17Z
+Agent: eqstack
+Field: Title
+Value: Week-back transcript sweep for lost items (D40)
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:17Z
+Agent: eqstack
+Field: Definition
+Value: Executive, George's words 2026-10-15: every agent sweeps its own transcripts a week back and files lost items.
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:17Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T03:40:17Z
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:17Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:17Z
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:17Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:18Z
+Agent: eqstack
+Field: Status
+Value: started
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:18Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:18Z
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:18Z
+Agent: eqstack
+Field: Started
+Value: 2026-10-15T03:40:18Z
+
+Item: imsg-timing-flakes
+At: 2026-10-15T03:40:19Z
+Agent: eqstack
+Field: Type
+Value: incident
+
+Item: imsg-timing-flakes
+At: 2026-10-15T03:40:19Z
+Agent: eqstack
+Field: Status
+Value: later
+
+Item: imsg-timing-flakes
+At: 2026-10-15T03:40:19Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: imsg-timing-flakes
+At: 2026-10-15T03:40:19Z
+Agent: eqstack
+Field: Title
+Value: imsg timing tests fail under root pnpm verify load
+
+Item: imsg-timing-flakes
+At: 2026-10-15T03:40:19Z
+Agent: eqstack
+Field: Definition
+Value: Sweep 2026-10-15: HANDOFF.md §10a row has no owner, status open; seen 2026-10-04 (cli-e2e 5 s timeout, help-bar-overflow, tui-memory lag budgets); not folded into the plan.
+
+Item: imsg-timing-flakes
+At: 2026-10-15T03:40:19Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T03:40:19Z
+
+Item: imsg-timing-flakes
+At: 2026-10-15T03:40:19Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:19Z
+
+Item: imsg-timing-flakes
+At: 2026-10-15T03:40:19Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: whatsapp-mcp-go-no-go
+At: 2026-10-15T03:40:20Z
+Agent: eqstack
+Field: Type
+Value: decision
+
+Item: whatsapp-mcp-go-no-go
+At: 2026-10-15T03:40:20Z
+Agent: eqstack
+Field: Status
+Value: circle-back
+
+Item: whatsapp-mcp-go-no-go
+At: 2026-10-15T03:40:20Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: whatsapp-mcp-go-no-go
+At: 2026-10-15T03:40:20Z
+Agent: eqstack
+Field: Title
+Value: WhatsApp and other messengers: revisit after contact identity
+
+Item: whatsapp-mcp-go-no-go
+At: 2026-10-15T03:40:20Z
+Agent: eqstack
+Field: Definition
+Value: Gate card 11: 'Not yet', after contact identity; the wacli read-only MCP and the mautrix/Beeper routes are kept as options (GATE-DECISIONS.md row 11).
+
+Item: whatsapp-mcp-go-no-go
+At: 2026-10-15T03:40:20Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T03:40:20Z
+
+Item: whatsapp-mcp-go-no-go
+At: 2026-10-15T03:40:20Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:20Z
+
+Item: whatsapp-mcp-go-no-go
+At: 2026-10-15T03:40:20Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: whatsapp-mcp-go-no-go
+At: 2026-10-15T03:40:20Z
+Agent: eqstack
+Field: Trigger
+Value: done(notes-corpus)
+
+Item: watcher-hardening
+At: 2026-10-15T03:40:21Z
+Agent: eqstack
+Field: Type
+Value: task
+
+Item: watcher-hardening
+At: 2026-10-15T03:40:21Z
+Agent: eqstack
+Field: Status
+Value: later
+
+Item: watcher-hardening
+At: 2026-10-15T03:40:21Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: watcher-hardening
+At: 2026-10-15T03:40:21Z
+Agent: eqstack
+Field: Title
+Value: Watcher and subprocess hardening (openclaw patterns)
+
+Item: watcher-hardening
+At: 2026-10-15T03:40:21Z
+Agent: eqstack
+Field: Definition
+Value: Gate card 9, 'Later': inode re-arm, a bounded stream with a resume cursor, the chat-link race, process-group kill, O_NOFOLLOW (packages/os/proc). Not in wave 2.
+
+Item: watcher-hardening
+At: 2026-10-15T03:40:21Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T03:40:21Z
+
+Item: watcher-hardening
+At: 2026-10-15T03:40:21Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:21Z
+
+Item: watcher-hardening
+At: 2026-10-15T03:40:21Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: personal-search-widen
+At: 2026-10-15T03:40:22Z
+Agent: eqstack
+Field: Type
+Value: question
+
+Item: personal-search-widen
+At: 2026-10-15T03:40:22Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: personal-search-widen
+At: 2026-10-15T03:40:22Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: personal-search-widen
+At: 2026-10-15T03:40:22Z
+Agent: eqstack
+Field: Title
+Value: Widen a personal message search to two more terms?
+
+Item: personal-search-widen
+At: 2026-10-15T03:40:22Z
+Agent: eqstack
+Field: Definition
+Value: eqstack offered on 2026-10-07 after finding one message; never answered (sweep 2026-10-15). The contact is deliberately not named here (public repo).
+
+Item: personal-search-widen
+At: 2026-10-15T03:40:22Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T03:40:22Z
+
+Item: personal-search-widen
+At: 2026-10-15T03:40:22Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:22Z
+
+Item: personal-search-widen
+At: 2026-10-15T03:40:22Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: personal-search-widen
+At: 2026-10-15T03:40:22Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: personal-search-widen
+At: 2026-10-15T03:40:22Z
+Agent: eqstack
+Field: Asks
+Value: Say if you want the 2026-10-07 message search widened to 'partner' and 'ex', or drop it
+
+Item: chair-voice-archer
+At: 2026-10-15T03:40:23Z
+Agent: eqstack
+Field: Type
+Value: question
+
+Item: chair-voice-archer
+At: 2026-10-15T03:40:23Z
+Agent: eqstack
+Field: Status
+Value: next
+
+Item: chair-voice-archer
+At: 2026-10-15T03:40:23Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: chair-voice-archer
+At: 2026-10-15T03:40:23Z
+Agent: eqstack
+Field: Title
+Value: Meeting chair: a neutral host on Archer, or the chair is the secretary (Lily)?
+
+Item: chair-voice-archer
+At: 2026-10-15T03:40:23Z
+Agent: eqstack
+Field: Definition
+Value: Executive relayed 'Lily is her voice' and said both slots are one identity; eqstack kept 'join as a member', so the chair needed a different voice (Archer). Bears on telephony O-40 (meeting-chair-vs-coordinator).
+
+Item: chair-voice-archer
+At: 2026-10-15T03:40:23Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T03:40:23Z
+
+Item: chair-voice-archer
+At: 2026-10-15T03:40:23Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:23Z
+
+Item: chair-voice-archer
+At: 2026-10-15T03:40:23Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: chair-voice-archer
+At: 2026-10-15T03:40:23Z
+Agent: eqstack
+Field: BlockedOn
+Value: george
+
+Item: chair-voice-archer
+At: 2026-10-15T03:40:23Z
+Agent: eqstack
+Field: Asks
+Value: Keep the chair as a neutral host on Archer, or make the chair the secretary in Lily's voice (dropping her separate member slot)?
+
+Item: telephony-register-open
+At: 2026-10-15T03:40:25Z
+Agent: eqstack
+Field: Type
+Value: info
+
+Item: telephony-register-open
+At: 2026-10-15T03:40:25Z
+Agent: eqstack
+Field: Status
+Value: later
+
+Item: telephony-register-open
+At: 2026-10-15T03:40:25Z
+Agent: eqstack
+Field: Owner
+Value: eqstack
+
+Item: telephony-register-open
+At: 2026-10-15T03:40:25Z
+Agent: eqstack
+Field: Title
+Value: Telephony DECISIONS.md Open rows are not mirrored in the ledger
+
+Item: telephony-register-open
+At: 2026-10-15T03:40:25Z
+Agent: eqstack
+Field: Definition
+Value: Sweep 2026-10-15: O-3, O-8, O-13, O-16, O-18, O-19, O-33, O-36, O-38, O-40, O-46 are still under ## Open in apps/telephony-mcp/docs/plans/two-way-calling/DECISIONS.md; the register stays authoritative; import them when telephony work resumes. O-23 looks done (e2fd330, the tunnel is live).
+
+Item: telephony-register-open
+At: 2026-10-15T03:40:25Z
+Agent: eqstack
+Field: Created
+Value: 2026-10-15T03:40:25Z
+
+Item: telephony-register-open
+At: 2026-10-15T03:40:25Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:25Z
+
+Item: telephony-register-open
+At: 2026-10-15T03:40:25Z
+Agent: eqstack
+Field: Repo
+Value: EQStack
+
+Item: telephony-register-open
+At: 2026-10-15T03:40:25Z
+Agent: eqstack
+Field: Link
+Value: apps/telephony-mcp/docs/plans/two-way-calling/DECISIONS.md
+
+Item: gc1-step10-rerun
+At: 2026-10-15T03:40:26Z
+Agent: eqstack
+Field: Status
+Value: circle-back
+
+Item: gc1-step10-rerun
+At: 2026-10-15T03:40:26Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:26Z
+
+Item: gc1-step10-rerun
+At: 2026-10-15T03:40:26Z
+Agent: eqstack
+Field: Trigger
+Value: done(live-rehearsal-real-sessions)
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T03:40:27Z
+Agent: eqstack
+Field: Status
+Value: circle-back
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T03:40:27Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:27Z
+
+Item: live-rehearsal-real-sessions
+At: 2026-10-15T03:40:27Z
+Agent: eqstack
+Field: Trigger
+Value: done(notes-corpus) OR done(telephony-exception)
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T03:40:27Z
+Agent: eqstack
+Field: Definition
+Value: Re-measured 2026-10-15: claude mcp list shows elevenlabs '! Needs authentication'.
+
+Item: elevenlabs-mcp-oauth
+At: 2026-10-15T03:40:27Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:27Z
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:28Z
+Agent: eqstack
+Field: Status
+Value: done
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:28Z
+Agent: eqstack
+Field: Updated
+Value: 2026-10-15T03:40:28Z
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:28Z
+Agent: eqstack
+Field: Evidence
+Value: readonly sweep 2026-10-08..10-15; filed 6 items, fixed 2 statuses, closed 1 stale bug row; the telephony 'disconnect' was session-only (claude mcp list: Connected)
+
+Item: transcript-sweep
+At: 2026-10-15T03:40:28Z
+Agent: eqstack
+Field: Ended
+Value: 2026-10-15T03:40:28Z
